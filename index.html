@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Finanzas Yayos</title>
+
+  <!-- UI -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    :root {
+      --bg-body:#f3f4f6;--bg-card:#fff;--text-main:#1f2937;--text-muted:#6b7280;
+      --primary:#2563eb;--danger:#ef4444;--success:#10b981;--warning:#f59e0b;
+      --border:#e5e7eb;--shadow:0 4px 6px rgba(0,0,0,.05)
+    }
+    [data-theme="dark"] {
+      --bg-body:#111827;--bg-card:#1f2937;--text-main:#f9fafb;
+      --text-muted:#9ca3af;--border:#374151
+    }
+    body{background:var(--bg-body);color:var(--text-main);font-family:Inter,sans-serif;padding-bottom:90px}
+    .card-box{background:var(--bg-card);border-radius:16px;padding:20px;margin-bottom:16px;box-shadow:var(--shadow)}
+    .fw-black{font-weight:800}
+    .blur{filter:blur(6px)}
+    .nav-bottom{position:fixed;bottom:0;width:100%;display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;
+      background:var(--bg-card);border-top:1px solid var(--border);padding:10px 0}
+    .nav-btn{background:none;border:none;color:var(--text-muted);font-size:.7rem;display:flex;flex-direction:column;align-items:center}
+    .nav-btn.active{color:var(--primary)}
+    .fab{background:var(--primary);color:#fff;width:56px;height:56px;border-radius:50%;
+      display:flex;align-items:center;justify-content:center;transform:translateY(-15px)}
+  </style>
+</head>
+
+<body>
+
+<div id="view-home" class="p-3">
+  <div class="d-flex justify-content-between mb-3">
+    <h5 class="fw-black">Finanzas Yayos</h5>
+    <select id="owner" class="form-select form-select-sm" style="width:110px">
+      <option value="haru">Haru</option>
+      <option value="yair">Yair</option>
+    </select>
+  </div>
+
+  <div class="card-box">
+    <h6 class="fw-black">Resumen</h6>
+    <div class="d-flex justify-content-between">
+      <div>
+        <small class="text-muted">Deuda</small>
+        <div class="fw-black text-danger" id="totalDebt">$0</div>
+      </div>
+      <div>
+        <small class="text-muted">Disponible</small>
+        <div class="fw-black text-success" id="totalAvail">$0</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card-box">
+    <canvas id="chart" height="200"></canvas>
+  </div>
+</div>
+
+<div class="nav-bottom">
+  <div><button class="nav-btn active"><i class="fas fa-home"></i>Inicio</button></div>
+  <div></div>
+  <div><div class="fab"><i class="fas fa-plus"></i></div></div>
+  <div></div>
+  <div></div>
+</div>
+
+<!-- Firebase -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
+  import {
+    getFirestore, collection, addDoc, onSnapshot,
+    query, where, Timestamp
+  } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
+
+  // =========================
+  // 🔥 TU FIREBASE CONFIG REAL
+  // =========================
+  const firebaseConfig = {
+    apiKey: "AIzaSyDTDnao-bkiC4yxmV-mGryBmmvlWOvMIpg",
+    authDomain: "finanzas-yayos-1738b.firebaseapp.com",
+    projectId: "finanzas-yayos-1738b",
+    storageBucket: "finanzas-yayos-1738b.firebasestorage.app",
+    messagingSenderId: "821972200592",
+    appId: "1:821972200592:web:de809935c39a319ff4bc15",
+    measurementId: "G-FL2NL2H5SR"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+
+  // =========================
+  // Owner (Haru / Yair)
+  // =========================
+  const OWNER_KEY = "fin_owner";
+  let owner = localStorage.getItem(OWNER_KEY) || "haru";
+  document.getElementById("owner").value = owner;
+
+  document.getElementById("owner").addEventListener("change", e=>{
+    owner = e.target.value;
+    localStorage.setItem(OWNER_KEY, owner);
+    loadData();
+  });
+
+  // =========================
+  // Data
+  // =========================
+  let chart;
+
+  function money(v){return "$"+Number(v||0).toLocaleString("es-MX",{minimumFractionDigits:2})}
+
+  function loadData(){
+    const q = query(collection(db,"cards"), where("owner","==",owner));
+    onSnapshot(q,snap=>{
+      let debt=0,limit=0;
+      snap.forEach(d=>{
+        const c=d.data();
+        debt+=Number(c.balance||0);
+        limit+=Number(c.limit||0);
+      });
+      document.getElementById("totalDebt").innerText=money(debt);
+      document.getElementById("totalAvail").innerText=money(limit-debt);
+    });
+
+    const q2=query(collection(db,"expenses"), where("owner","==",owner));
+    onSnapshot(q2,snap=>{
+      const cats={};
+      snap.forEach(d=>{
+        const t=d.data();
+        if(t.type==="expense"){
+          cats[t.category]=(cats[t.category]||0)+Number(t.amount||0)
+        }
+      });
+      drawChart(cats);
+    });
+  }
+
+  function drawChart(data){
+    const ctx=document.getElementById("chart");
+    if(chart)chart.destroy();
+    chart=new Chart(ctx,{
+      type:"doughnut",
+      data:{labels:Object.keys(data),datasets:[{data:Object.values(data)}]},
+      options:{plugins:{legend:{position:"bottom"}}}
+    });
+  }
+
+  loadData();
+</script>
+
+</body>
+</html>
