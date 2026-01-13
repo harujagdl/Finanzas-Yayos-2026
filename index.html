@@ -1,13 +1,22 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Mi Control Financiero</title>
 
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800&display=swap" rel="stylesheet">
+  <!-- ✅ PWA -->
+  <meta name="theme-color" content="#2563eb" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Finanzas Yayos" />
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="icon" href="./icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800&display=swap" rel="stylesheet" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
   <style>
@@ -33,20 +42,51 @@
       --border-color: #374151;
     }
 
-    body { background-color: var(--bg-body); color: var(--text-main); font-family: 'Inter', sans-serif; padding-bottom: 90px; transition: background 0.3s; -webkit-tap-highlight-color: transparent; }
+    body {
+      background-color: var(--bg-body);
+      color: var(--text-main);
+      font-family: 'Inter', sans-serif;
+      padding-bottom: 90px;
+      transition: background 0.3s;
+      -webkit-tap-highlight-color: transparent;
+    }
     .text-muted { color: var(--text-muted) !important; }
     .text-dark { color: var(--text-main) !important; }
     h1,h2,h3,h4,h5,h6 { color: var(--text-main); }
-    .card-box { background: var(--bg-card); border-radius: 16px; padding: 20px; margin-bottom: 16px; box-shadow: var(--shadow); border: none; transition: background 0.3s; }
+    .card-box {
+      background: var(--bg-card);
+      border-radius: 16px;
+      padding: 20px;
+      margin-bottom: 16px;
+      box-shadow: var(--shadow);
+      border: none;
+      transition: background 0.3s;
+    }
     .fw-black { font-weight: 800; }
 
     .blur-sensitive { filter: blur(6px); user-select: none; transition: filter 0.3s; }
     .kpi-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); font-weight: 700; }
     .kpi-value { font-size: 1.75rem; font-weight: 800; letter-spacing: -1px; }
 
-    .smart-banner { background: linear-gradient(135deg, var(--primary), #1e40af); color: white; border-radius: 16px; padding: 20px; margin-bottom: 24px; box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.3); }
+    .smart-banner {
+      background: linear-gradient(135deg, var(--primary), #1e40af);
+      color: white;
+      border-radius: 16px;
+      padding: 20px;
+      margin-bottom: 24px;
+      box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.3);
+    }
 
-    .list-item { background: var(--bg-card); padding: 16px; border-radius: 12px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; border: 1px solid var(--border-color); }
+    .list-item {
+      background: var(--bg-card);
+      padding: 16px;
+      border-radius: 12px;
+      margin-bottom: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border: 1px solid var(--border-color);
+    }
     .badge-status { padding: 4px 8px; border-radius: 6px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; }
     .bg-danger-light { background: rgba(239, 68, 68, 0.15); color: var(--danger); }
     .bg-success-light { background: rgba(16, 185, 129, 0.15); color: var(--success); }
@@ -66,7 +106,17 @@
     }
 
     .nav-container-item { display: flex; justify-content: center; align-items: center; position: relative; height: 100%; }
-    .nav-btn { background: none; border: none; color: var(--text-muted); font-size: 0.7rem; font-weight: 600; display: flex; flex-direction: column; align-items: center; width: 100%; }
+    .nav-btn {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-size: 0.7rem;
+      font-weight: 600;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 100%;
+    }
     .nav-btn i { font-size: 1.4rem; margin-bottom: 4px; }
     .nav-btn.active { color: var(--primary); }
 
@@ -90,23 +140,41 @@
     }
     .fab-main:active { transform: translateY(-12px) scale(0.95); }
 
-    .form-control, .form-select { background-color: var(--bg-body); border: 1px solid var(--border-color); color: var(--text-main); padding: 12px; border-radius: 10px; }
-    .form-control:focus, .form-select:focus { background-color: var(--bg-card); border-color: var(--primary); box-shadow: none; color: var(--text-main); }
+    .form-control, .form-select {
+      background-color: var(--bg-body);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      padding: 12px;
+      border-radius: 10px;
+    }
+    .form-control:focus, .form-select:focus {
+      background-color: var(--bg-card);
+      border-color: var(--primary);
+      box-shadow: none;
+      color: var(--text-main);
+    }
     .btn-disabled { background-color: #6b7280 !important; border-color: #6b7280 !important; cursor: not-allowed; opacity: 0.7; }
 
     .view-section { display: none; animation: fadeIn 0.2s ease-out; }
     .view-section.active { display: block; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
-    #loader { position: fixed; inset: 0; background: var(--bg-card); z-index: 2000; display: flex; justify-content: center; align-items: center; flex-direction: column; }
+    #loader {
+      position: fixed;
+      inset: 0;
+      background: var(--bg-card);
+      z-index: 2000;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      flex-direction: column;
+    }
 
-    /* selector mini */
     .owner-select { width: 120px; padding: 8px 10px; border-radius: 12px; font-weight: 800; }
   </style>
 </head>
 
 <body>
-
   <div id="loader">
     <div class="spinner-border text-primary" role="status"></div>
     <div class="mt-3 fw-bold small text-muted">Cargando Sistema...</div>
@@ -121,16 +189,20 @@
       </div>
 
       <div class="d-flex gap-2 align-items-center">
-        <!-- Selector Haru/Yair -->
         <select id="owner-select" class="form-select form-select-sm owner-select" title="¿Quién está usando la app?">
           <option value="yair">Yair</option>
           <option value="haru">Haru</option>
         </select>
 
-        <button class="btn btn-sm btn-outline-secondary rounded-circle" onclick="toggleTheme()" style="width: 40px; height: 40px; border-color: var(--border-color); color: var(--text-main);">
+        <button class="btn btn-sm btn-outline-secondary rounded-circle"
+                onclick="toggleTheme()"
+                style="width:40px;height:40px;border-color:var(--border-color);color:var(--text-main);">
           <i class="fas fa-moon"></i>
         </button>
-        <button class="btn btn-sm btn-outline-secondary rounded-circle" onclick="togglePrivacy()" style="width: 40px; height: 40px; border-color: var(--border-color); color: var(--text-main);">
+
+        <button class="btn btn-sm btn-outline-secondary rounded-circle"
+                onclick="togglePrivacy()"
+                style="width:40px;height:40px;border-color:var(--border-color);color:var(--text-main);">
           <i class="fas fa-eye" id="eye-icon"></i>
         </button>
       </div>
@@ -138,19 +210,17 @@
 
     <div id="smart-area" class="d-none">
       <div class="smart-banner">
-        <div class="d-flex align-items-center mb-2" style="opacity: 0.9;">
+        <div class="d-flex align-items-center mb-2" style="opacity:0.9;">
           <i class="fas fa-magic me-2"></i> RECOMENDACIÓN DEL DÍA
         </div>
         <h2 class="fw-black mb-1" id="smart-name">...</h2>
-        <p class="mb-0 small" id="smart-msg" style="opacity: 0.9;">...</p>
+        <p class="mb-0 small" id="smart-msg" style="opacity:0.9;">...</p>
       </div>
     </div>
 
     <div class="card-box mb-3">
       <h6 class="fw-bold mb-3"><i class="fas fa-clipboard-check me-2"></i>Monitor de Pagos (Mes Actual)</h6>
-      <div id="payment-monitor-list">
-        <small class="text-muted">Cargando pagos...</small>
-      </div>
+      <div id="payment-monitor-list"><small class="text-muted">Cargando pagos...</small></div>
     </div>
 
     <div class="card-box p-3 mb-3">
@@ -158,10 +228,10 @@
         <span class="kpi-label">Nivel de Endeudamiento</span>
         <span class="fw-bold small sensitive-data" id="util-text">0%</span>
       </div>
-      <div class="progress" style="height: 10px; background-color: var(--bg-body);">
-        <div id="util-bar" class="progress-bar" role="progressbar" style="width: 0%"></div>
+      <div class="progress" style="height:10px;background-color:var(--bg-body);">
+        <div id="util-bar" class="progress-bar" role="progressbar" style="width:0%"></div>
       </div>
-      <small class="text-muted d-block mt-2" style="font-size: 0.75rem;" id="util-msg">Calculando...</small>
+      <small class="text-muted d-block mt-2" style="font-size:0.75rem;" id="util-msg">Calculando...</small>
     </div>
 
     <div class="row g-3 mb-4">
@@ -184,7 +254,7 @@
         <h6 class="fw-bold m-0">Distribución de Gastos</h6>
         <select id="chart-month-filter" class="form-select form-select-sm w-auto py-1" onchange="updateChart()"></select>
       </div>
-      <div style="position: relative; height: 200px; display: flex; justify-content: center; align-items: center;" id="chart-container">
+      <div style="position:relative;height:200px;display:flex;justify-content:center;align-items:center;" id="chart-container">
         <canvas id="expensesChart"></canvas>
         <div id="no-data-msg" class="text-muted small d-none">Sin gastos en este periodo</div>
       </div>
@@ -196,9 +266,7 @@
 
   <div id="view-cards" class="view-section p-3">
     <h4 class="fw-black mb-4">Mis Tarjetas</h4>
-    <div class="text-muted small mb-2">
-      * Ya están precargadas. Aquí solo editas corte/pago/límite/deuda/meta.
-    </div>
+    <div class="text-muted small mb-2">* Ya están precargadas. Aquí solo editas corte/pago/límite/deuda/meta.</div>
     <div id="manage-card-list"></div>
     <button class="btn btn-primary w-100 py-3 rounded-4 fw-bold shadow mt-3" onclick="openCardModal()">
       <i class="fas fa-pen me-2"></i> Editar Tarjeta
@@ -209,19 +277,19 @@
     <h4 class="fw-black mb-4">Registrar Movimiento</h4>
     <div class="card-box">
       <form id="form-trans">
-        <input type="hidden" id="trans-id">
+        <input type="hidden" id="trans-id" />
 
-        <div class="btn-group w-100 mb-4 p-1 rounded-3" role="group" style="background-color: var(--bg-body);">
-          <input type="radio" class="btn-check" name="ttype" id="t-exp" value="expense" checked onchange="uiUpdateCats()">
+        <div class="btn-group w-100 mb-4 p-1 rounded-3" role="group" style="background-color:var(--bg-body);">
+          <input type="radio" class="btn-check" name="ttype" id="t-exp" value="expense" checked onchange="uiUpdateCats()" />
           <label class="btn btn-outline-danger border-0 rounded-3" for="t-exp">Gasto (-)</label>
 
-          <input type="radio" class="btn-check" name="ttype" id="t-pay" value="payment" onchange="uiUpdateCats()">
+          <input type="radio" class="btn-check" name="ttype" id="t-pay" value="payment" onchange="uiUpdateCats()" />
           <label class="btn btn-outline-success border-0 rounded-3" for="t-pay">Abono (+)</label>
         </div>
 
         <div class="mb-3">
           <label class="small fw-bold text-muted mb-1">Monto</label>
-          <input type="number" id="t-amount" class="form-control fw-bold" style="font-size: 1.5rem;" placeholder="0.00" step="0.01" required>
+          <input type="number" id="t-amount" class="form-control fw-bold" style="font-size:1.5rem;" placeholder="0.00" step="0.01" required />
         </div>
 
         <div class="mb-3">
@@ -236,12 +304,12 @@
 
         <div class="mb-3">
           <label class="small fw-bold text-muted mb-1">Concepto</label>
-          <input type="text" id="t-concept" class="form-control" placeholder="Ej: Supermercado" required>
+          <input type="text" id="t-concept" class="form-control" placeholder="Ej: Supermercado" required />
         </div>
 
         <div class="mb-4">
           <label class="small fw-bold text-muted mb-1">Fecha</label>
-          <input type="date" id="t-date" class="form-control" required>
+          <input type="date" id="t-date" class="form-control" required />
         </div>
 
         <button type="submit" id="btn-save-trans" class="btn btn-primary w-100 py-3 rounded-3 fw-bold shadow-sm">
@@ -249,8 +317,12 @@
         </button>
 
         <div id="edit-btns" class="row g-2 mt-3" style="display:none;">
-          <div class="col-6"><button type="button" class="btn btn-outline-danger w-100" onclick="deleteTrans()">Eliminar</button></div>
-          <div class="col-6"><button type="button" class="btn btn-light w-100" onclick="resetForm()">Cancelar</button></div>
+          <div class="col-6">
+            <button type="button" class="btn btn-outline-danger w-100" onclick="deleteTrans()">Eliminar</button>
+          </div>
+          <div class="col-6">
+            <button type="button" class="btn btn-light w-100" onclick="resetForm()">Cancelar</button>
+          </div>
         </div>
       </form>
     </div>
@@ -259,7 +331,7 @@
   <div id="view-hist" class="view-section p-3">
     <div class="d-flex justify-content-between align-items-center mb-3">
       <h4 class="fw-black m-0">Historial</h4>
-      <button class="btn btn-sm btn-outline-secondary" style="border-color: var(--border-color); color: var(--text-muted);" onclick="exportCSV()">
+      <button class="btn btn-sm btn-outline-secondary" style="border-color:var(--border-color);color:var(--text-muted);" onclick="exportCSV()">
         <i class="fas fa-file-csv me-1"></i> CSV
       </button>
     </div>
@@ -271,7 +343,7 @@
         </select>
       </div>
       <div class="col-7">
-        <input type="text" id="search-input" class="form-control" placeholder="🔍 Buscar..." onkeyup="renderHistory()">
+        <input type="text" id="search-input" class="form-control" placeholder="🔍 Buscar..." onkeyup="renderHistory()" />
       </div>
     </div>
 
@@ -307,42 +379,40 @@
       <div class="modal-content card-box border-0">
         <div class="modal-body">
           <h5 class="fw-black mb-3">Editar Tarjeta</h5>
-          <div class="text-muted small mb-2">
-            * Selecciona una tarjeta en la lista y edítala.
-          </div>
+          <div class="text-muted small mb-2">* Selecciona una tarjeta en la lista y edítala.</div>
 
           <form id="form-card">
-            <input type="hidden" id="c-id">
+            <input type="hidden" id="c-id" />
 
             <div class="mb-3">
               <label class="small text-muted fw-bold">Nombre</label>
-              <input type="text" id="c-name" class="form-control" placeholder="Ej: Visa Gold" required>
+              <input type="text" id="c-name" class="form-control" placeholder="Ej: Visa Gold" required />
             </div>
 
             <div class="row g-2 mb-3">
               <div class="col-6">
                 <label class="small text-muted fw-bold">Día Corte</label>
-                <input type="number" id="c-cut" class="form-control" placeholder="1-31" required>
+                <input type="number" id="c-cut" class="form-control" placeholder="1-31" required />
               </div>
               <div class="col-6">
                 <label class="small text-muted fw-bold">Día Pago</label>
-                <input type="number" id="c-pay" class="form-control" placeholder="1-31" required>
+                <input type="number" id="c-pay" class="form-control" placeholder="1-31" required />
               </div>
             </div>
 
-            <div class="mb-3 p-3 rounded-3" style="background-color: var(--bg-body); border: 1px dashed var(--border-color);">
+            <div class="mb-3 p-3 rounded-3" style="background-color:var(--bg-body);border:1px dashed var(--border-color);">
               <label class="small text-danger fw-bold">Pago para no generar intereses</label>
-              <input type="number" id="c-goal" class="form-control mt-1" value="0">
+              <input type="number" id="c-goal" class="form-control mt-1" value="0" />
             </div>
 
             <div class="mb-3">
               <label class="small text-muted fw-bold">Límite Total</label>
-              <input type="number" id="c-limit" class="form-control" required>
+              <input type="number" id="c-limit" class="form-control" required />
             </div>
 
             <div class="mb-3">
               <label class="small text-muted fw-bold">Deuda Total</label>
-              <input type="number" id="c-bal" class="form-control" value="0" required>
+              <input type="number" id="c-bal" class="form-control" value="0" required />
             </div>
 
             <button type="submit" class="btn btn-primary w-100 py-2 rounded-3 fw-bold">Guardar</button>
@@ -374,6 +444,20 @@
       getDocs
     } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
 
+    // =========================
+    // ✅ PWA (SW optional: si existe sw.js lo registra)
+    // =========================
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", async () => {
+        try {
+          await navigator.serviceWorker.register("./sw.js");
+          // console.log("SW ok");
+        } catch (e) {
+          console.log("SW no registrado (ok si no existe):", e?.message || e);
+        }
+      });
+    }
+
     // ✅ Config Firebase (la tuya)
     const firebaseConfig = {
       apiKey: "AIzaSyDTDnao-bkiC4yxmV-mGryBmmvlWOvMIpg",
@@ -386,7 +470,7 @@
     };
 
     // =========================
-    // Loader helpers (para que no se quede pegado)
+    // Loader helpers
     // =========================
     const loaderEl = document.getElementById('loader');
     const loaderMsg = document.getElementById('loader-msg');
@@ -535,14 +619,8 @@
       try {
         setLoaderMsg("Verificando tarjetas precargadas...");
 
-        // Trae todas (evita índices/rules raras con in)
         const existingSnap = await getDocs(query(collection(db,"cards")));
-
-        const existingByOwner = {
-          yair: new Set(),
-          haru: new Set(),
-          both: new Set()
-        };
+        const existingByOwner = { yair: new Set(), haru: new Set(), both: new Set() };
 
         existingSnap.forEach(d => {
           const data = d.data();
@@ -551,7 +629,6 @@
           if(existingByOwner[owner]) existingByOwner[owner].add(name);
         });
 
-        // Creamos SOLO las que correspondan al OWNER actual (y compartidas)
         const need = PRESET_CARDS.filter(c => c.owner === OWNER || c.owner === "both");
 
         for (const c of need){
@@ -572,7 +649,6 @@
         }
       } catch(e){
         console.error("Seed preset cards error:", e);
-        // No tronamos la app, pero avisamos
         alert("Aviso: no se pudieron verificar/crear tarjetas preset.\n\n" + (e.message || e));
       }
     }
@@ -588,7 +664,7 @@
       resetForm();
     }
 
-    // ✅ Cards: traemos TODAS y filtramos en front (evita 'in' y problemas de índice)
+    // ✅ Cards: traemos todas y filtramos en front (evita 'in')
     function subscribeCards(){
       setLoaderMsg("Cargando tarjetas...");
       const qCards = query(collection(db,"cards"), orderBy("name"));
@@ -597,7 +673,6 @@
         const tempAll = [];
         snap.forEach(d => { const c = d.data(); c.id = d.id; tempAll.push(c); });
 
-        // Filtrar por OWNER + both
         const temp = tempAll.filter(c => (c.owner === OWNER || c.owner === "both"));
 
         cards = [];
@@ -612,7 +687,6 @@
 
         const prevSel = select.value;
 
-        // Dropdown con grupos
         select.innerHTML = '';
         const optG_Y = document.createElement('optgroup'); optG_Y.label = "Tarjetas de Yair";
         const optG_H = document.createElement('optgroup'); optG_H.label = "Tarjetas de Haru";
@@ -693,7 +767,7 @@
       });
     }
 
-    // ✅ Trans: por owner
+    // ✅ Trans: por owner (requiere índice owner ASC + date DESC)
     function subscribeTrans(){
       setLoaderMsg("Cargando movimientos...");
       const qTrans = query(collection(db, "expenses"), where("owner","==",OWNER), orderBy("date","desc"));
@@ -711,7 +785,7 @@
     }
 
     // =========================
-    // Monitor pagos / smart pick
+    // Pagos / smart pick
     // =========================
     function updatePaymentMonitor() {
       const list = document.getElementById('payment-monitor-list');
@@ -929,7 +1003,7 @@
     };
 
     // =========================
-    // Movimientos (owner separado)
+    // Movimientos
     // =========================
     document.getElementById('form-trans').addEventListener('submit', async(e) => {
       e.preventDefault();
@@ -1061,8 +1135,6 @@
     // ===== Init =====
     uiUpdateCats();
     resetForm();
-
-    // Si la DB está cerrada por Rules, aquí va a fallar. Por eso tenemos loader + error.
     await seedPresetCards();
     resubscribeAll();
     stopLoader();
