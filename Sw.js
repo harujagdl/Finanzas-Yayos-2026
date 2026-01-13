@@ -1,4 +1,4 @@
-const CACHE_NAME = "finanzas-yayos-v1";
+const CACHE_NAME = "finanzas-yayos-v2";
 const ASSETS = [
   "/",
   "/manifest.webmanifest"
