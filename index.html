@@ -20,157 +20,62 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
   <style>
-    :root {
-      --bg-body: #f3f4f6;
-      --bg-card: #ffffff;
-      --text-main: #1f2937;
-      --text-muted: #6b7280;
-      --primary: #2563eb;
-      --danger: #ef4444;
-      --success: #10b981;
-      --warning: #f59e0b;
-      --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
-      --border-color: #e5e7eb;
+    :root{
+      --bg-body:#f3f4f6; --bg-card:#ffffff; --text-main:#1f2937; --text-muted:#6b7280;
+      --primary:#2563eb; --danger:#ef4444; --success:#10b981; --warning:#f59e0b;
+      --shadow:0 4px 6px -1px rgba(0,0,0,.05); --border-color:#e5e7eb;
     }
-
-    [data-theme="dark"] {
-      --bg-body: #111827;
-      --bg-card: #1f2937;
-      --text-main: #f9fafb;
-      --text-muted: #9ca3af;
-      --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
-      --border-color: #374151;
+    [data-theme="dark"]{
+      --bg-body:#111827; --bg-card:#1f2937; --text-main:#f9fafb; --text-muted:#9ca3af;
+      --shadow:0 4px 6px -1px rgba(0,0,0,.3); --border-color:#374151;
     }
+    body{background:var(--bg-body); color:var(--text-main); font-family:'Inter',sans-serif; padding-bottom:90px; transition:background .3s; -webkit-tap-highlight-color:transparent;}
+    .text-muted{color:var(--text-muted)!important;} .text-dark{color:var(--text-main)!important;}
+    h1,h2,h3,h4,h5,h6{color:var(--text-main);}
+    .card-box{background:var(--bg-card); border-radius:16px; padding:20px; margin-bottom:16px; box-shadow:var(--shadow); border:none; transition:background .3s;}
+    .fw-black{font-weight:800;}
+    .blur-sensitive{filter:blur(6px); user-select:none; transition:filter .3s;}
+    .kpi-label{font-size:.75rem; text-transform:uppercase; letter-spacing:1px; color:var(--text-muted); font-weight:700;}
+    .kpi-value{font-size:1.75rem; font-weight:800; letter-spacing:-1px;}
+    .smart-banner{background:linear-gradient(135deg,var(--primary),#1e40af); color:#fff; border-radius:16px; padding:20px; margin-bottom:24px; box-shadow:0 10px 15px -3px rgba(37,99,235,.3);}
+    .list-item{background:var(--bg-card); padding:16px; border-radius:12px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; border:1px solid var(--border-color);}
+    .badge-status{padding:4px 8px; border-radius:6px; font-size:.7rem; font-weight:700; text-transform:uppercase;}
+    .bg-danger-light{background:rgba(239,68,68,.15); color:var(--danger);}
+    .bg-success-light{background:rgba(16,185,129,.15); color:var(--success);}
+    .bg-warning-light{background:rgba(245,158,11,.15); color:var(--warning);}
 
-    body {
-      background-color: var(--bg-body);
-      color: var(--text-main);
-      font-family: 'Inter', sans-serif;
-      padding-bottom: 90px;
-      transition: background 0.3s;
-      -webkit-tap-highlight-color: transparent;
+    .nav-bottom{
+      position:fixed; bottom:0; width:100%;
+      background:var(--bg-card);
+      display:grid; grid-template-columns:1fr 1fr 1fr 1fr 1fr;
+      padding:10px 0; border-top:1px solid var(--border-color);
+      z-index:100; padding-bottom:max(10px, env(safe-area-inset-bottom));
     }
-    .text-muted { color: var(--text-muted) !important; }
-    .text-dark { color: var(--text-main) !important; }
-    h1,h2,h3,h4,h5,h6 { color: var(--text-main); }
-    .card-box {
-      background: var(--bg-card);
-      border-radius: 16px;
-      padding: 20px;
-      margin-bottom: 16px;
-      box-shadow: var(--shadow);
-      border: none;
-      transition: background 0.3s;
+    .nav-container-item{display:flex; justify-content:center; align-items:center; position:relative; height:100%;}
+    .nav-btn{background:none; border:none; color:var(--text-muted); font-size:.7rem; font-weight:600; display:flex; flex-direction:column; align-items:center; width:100%;}
+    .nav-btn i{font-size:1.4rem; margin-bottom:4px;}
+    .nav-btn.active{color:var(--primary);}
+
+    .fab-main{
+      background:var(--primary); color:#fff; width:56px; height:56px; border-radius:50%;
+      display:flex; justify-content:center; align-items:center;
+      position:relative; transform:translateY(-15px);
+      border:5px solid var(--bg-body);
+      box-shadow:0 4px 12px rgba(37,99,235,.4);
+      font-size:1.5rem; transition:border-color .3s, transform .1s; z-index:101; cursor:pointer;
     }
-    .fw-black { font-weight: 800; }
+    .fab-main:active{transform:translateY(-12px) scale(.95);}
 
-    .blur-sensitive { filter: blur(6px); user-select: none; transition: filter 0.3s; }
-    .kpi-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); font-weight: 700; }
-    .kpi-value { font-size: 1.75rem; font-weight: 800; letter-spacing: -1px; }
+    .form-control,.form-select{background:var(--bg-body); border:1px solid var(--border-color); color:var(--text-main); padding:12px; border-radius:10px;}
+    .form-control:focus,.form-select:focus{background:var(--bg-card); border-color:var(--primary); box-shadow:none; color:var(--text-main);}
+    .btn-disabled{background:#6b7280!important; border-color:#6b7280!important; cursor:not-allowed; opacity:.7;}
 
-    .smart-banner {
-      background: linear-gradient(135deg, var(--primary), #1e40af);
-      color: white;
-      border-radius: 16px;
-      padding: 20px;
-      margin-bottom: 24px;
-      box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.3);
-    }
+    .view-section{display:none; animation:fadeIn .2s ease-out;}
+    .view-section.active{display:block;}
+    @keyframes fadeIn{from{opacity:0; transform:translateY(10px);} to{opacity:1; transform:translateY(0);}}
 
-    .list-item {
-      background: var(--bg-card);
-      padding: 16px;
-      border-radius: 12px;
-      margin-bottom: 10px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      border: 1px solid var(--border-color);
-    }
-    .badge-status { padding: 4px 8px; border-radius: 6px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; }
-    .bg-danger-light { background: rgba(239, 68, 68, 0.15); color: var(--danger); }
-    .bg-success-light { background: rgba(16, 185, 129, 0.15); color: var(--success); }
-    .bg-warning-light { background: rgba(245, 158, 11, 0.15); color: var(--warning); }
-
-    .nav-bottom {
-      position: fixed;
-      bottom: 0;
-      width: 100%;
-      background: var(--bg-card);
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr 1fr 1fr;
-      padding: 10px 0;
-      border-top: 1px solid var(--border-color);
-      z-index: 100;
-      padding-bottom: max(10px, env(safe-area-inset-bottom));
-    }
-
-    .nav-container-item { display: flex; justify-content: center; align-items: center; position: relative; height: 100%; }
-    .nav-btn {
-      background: none;
-      border: none;
-      color: var(--text-muted);
-      font-size: 0.7rem;
-      font-weight: 600;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      width: 100%;
-    }
-    .nav-btn i { font-size: 1.4rem; margin-bottom: 4px; }
-    .nav-btn.active { color: var(--primary); }
-
-    .fab-main {
-      background: var(--primary);
-      color: white;
-      width: 56px;
-      height: 56px;
-      border-radius: 50%;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      position: relative;
-      transform: translateY(-15px);
-      border: 5px solid var(--bg-body);
-      box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4);
-      font-size: 1.5rem;
-      transition: border-color 0.3s, transform 0.1s;
-      z-index: 101;
-      cursor: pointer;
-    }
-    .fab-main:active { transform: translateY(-12px) scale(0.95); }
-
-    .form-control, .form-select {
-      background-color: var(--bg-body);
-      border: 1px solid var(--border-color);
-      color: var(--text-main);
-      padding: 12px;
-      border-radius: 10px;
-    }
-    .form-control:focus, .form-select:focus {
-      background-color: var(--bg-card);
-      border-color: var(--primary);
-      box-shadow: none;
-      color: var(--text-main);
-    }
-    .btn-disabled { background-color: #6b7280 !important; border-color: #6b7280 !important; cursor: not-allowed; opacity: 0.7; }
-
-    .view-section { display: none; animation: fadeIn 0.2s ease-out; }
-    .view-section.active { display: block; }
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-
-    #loader {
-      position: fixed;
-      inset: 0;
-      background: var(--bg-card);
-      z-index: 2000;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      flex-direction: column;
-    }
-
-    .owner-select { width: 120px; padding: 8px 10px; border-radius: 12px; font-weight: 800; }
+    #loader{position:fixed; inset:0; background:var(--bg-card); z-index:2000; display:flex; justify-content:center; align-items:center; flex-direction:column;}
+    .owner-select{width:120px; padding:8px 10px; border-radius:12px; font-weight:800;}
   </style>
 </head>
 
@@ -195,14 +100,14 @@
         </select>
 
         <button class="btn btn-sm btn-outline-secondary rounded-circle"
-                onclick="toggleTheme()"
-                style="width:40px;height:40px;border-color:var(--border-color);color:var(--text-main);">
+          onclick="toggleTheme()"
+          style="width:40px;height:40px;border-color:var(--border-color);color:var(--text-main);">
           <i class="fas fa-moon"></i>
         </button>
 
         <button class="btn btn-sm btn-outline-secondary rounded-circle"
-                onclick="togglePrivacy()"
-                style="width:40px;height:40px;border-color:var(--border-color);color:var(--text-main);">
+          onclick="togglePrivacy()"
+          style="width:40px;height:40px;border-color:var(--border-color);color:var(--text-main);">
           <i class="fas fa-eye" id="eye-icon"></i>
         </button>
       </div>
@@ -210,11 +115,11 @@
 
     <div id="smart-area" class="d-none">
       <div class="smart-banner">
-        <div class="d-flex align-items-center mb-2" style="opacity:0.9;">
+        <div class="d-flex align-items-center mb-2" style="opacity:.9;">
           <i class="fas fa-magic me-2"></i> RECOMENDACIÓN DEL DÍA
         </div>
         <h2 class="fw-black mb-1" id="smart-name">...</h2>
-        <p class="mb-0 small" id="smart-msg" style="opacity:0.9;">...</p>
+        <p class="mb-0 small" id="smart-msg" style="opacity:.9;">...</p>
       </div>
     </div>
 
@@ -231,7 +136,7 @@
       <div class="progress" style="height:10px;background-color:var(--bg-body);">
         <div id="util-bar" class="progress-bar" role="progressbar" style="width:0%"></div>
       </div>
-      <small class="text-muted d-block mt-2" style="font-size:0.75rem;" id="util-msg">Calculando...</small>
+      <small class="text-muted d-block mt-2" style="font-size:.75rem;" id="util-msg">Calculando...</small>
     </div>
 
     <div class="row g-3 mb-4">
@@ -278,11 +183,9 @@
     <div class="card-box">
       <form id="form-trans">
         <input type="hidden" id="trans-id" />
-
         <div class="btn-group w-100 mb-4 p-1 rounded-3" role="group" style="background-color:var(--bg-body);">
           <input type="radio" class="btn-check" name="ttype" id="t-exp" value="expense" checked onchange="uiUpdateCats()" />
           <label class="btn btn-outline-danger border-0 rounded-3" for="t-exp">Gasto (-)</label>
-
           <input type="radio" class="btn-check" name="ttype" id="t-pay" value="payment" onchange="uiUpdateCats()" />
           <label class="btn btn-outline-success border-0 rounded-3" for="t-pay">Abono (+)</label>
         </div>
@@ -312,9 +215,7 @@
           <input type="date" id="t-date" class="form-control" required />
         </div>
 
-        <button type="submit" id="btn-save-trans" class="btn btn-primary w-100 py-3 rounded-3 fw-bold shadow-sm">
-          Guardar Transacción
-        </button>
+        <button type="submit" id="btn-save-trans" class="btn btn-primary w-100 py-3 rounded-3 fw-bold shadow-sm">Guardar Transacción</button>
 
         <div id="edit-btns" class="row g-2 mt-3" style="display:none;">
           <div class="col-6">
@@ -352,24 +253,16 @@
 
   <div class="nav-bottom">
     <div class="nav-container-item">
-      <button class="nav-btn active" onclick="nav('view-home')" id="nav-home">
-        <i class="fas fa-chart-pie"></i> Inicio
-      </button>
+      <button class="nav-btn active" onclick="nav('view-home')" id="nav-home"><i class="fas fa-chart-pie"></i> Inicio</button>
     </div>
     <div class="nav-container-item">
-      <button class="nav-btn" onclick="nav('view-cards')" id="nav-cards">
-        <i class="fas fa-wallet"></i> Tarjetas
-      </button>
+      <button class="nav-btn" onclick="nav('view-cards')" id="nav-cards"><i class="fas fa-wallet"></i> Tarjetas</button>
     </div>
     <div class="nav-container-item">
-      <div class="fab-main" onclick="nav('view-add'); resetForm();">
-        <i class="fas fa-plus"></i>
-      </div>
+      <div class="fab-main" onclick="nav('view-add'); resetForm();"><i class="fas fa-plus"></i></div>
     </div>
     <div class="nav-container-item">
-      <button class="nav-btn" onclick="nav('view-hist')" id="nav-hist">
-        <i class="fas fa-list-ul"></i> Historial
-      </button>
+      <button class="nav-btn" onclick="nav('view-hist')" id="nav-hist"><i class="fas fa-list-ul"></i> Historial</button>
     </div>
     <div class="nav-container-item"></div>
   </div>
@@ -383,7 +276,6 @@
 
           <form id="form-card">
             <input type="hidden" id="c-id" />
-
             <div class="mb-3">
               <label class="small text-muted fw-bold">Nombre</label>
               <input type="text" id="c-name" class="form-control" placeholder="Ej: Visa Gold" required />
@@ -428,37 +320,48 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
     import {
-      getFirestore,
-      collection,
-      addDoc,
-      onSnapshot,
-      doc,
-      updateDoc,
-      deleteDoc,
-      query,
-      orderBy,
-      writeBatch,
-      Timestamp,
-      enableIndexedDbPersistence,
-      where,
-      getDocs
+      getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc,
+      query, orderBy, writeBatch, Timestamp, enableIndexedDbPersistence, where, getDocs
     } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
 
     // =========================
-    // ✅ PWA (SW optional: si existe sw.js lo registra)
+    // ✅ CONFIG SHEETS (Apps Script WebApp + Spreadsheet ID)
+    // =========================
+    const SHEETS_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbyf1WZ67vuH4mmhs8T6DvyirWdsVE8_uiUT4dRhbFbhJwhY7tQ2RwbTkFKRD1GV803a2A/exec";
+    const SHEETS_SPREADSHEET_ID = "1DLmT0ZBk-7o43rojSelLOtkLcnu9g-Z6lRklQP93agE";
+
+    // Envío a Sheets “no-cors” para que GitHub Pages no se atoré por CORS.
+    async function sheetsSend(payload){
+      try{
+        const body = JSON.stringify({
+          sheetId: SHEETS_SPREADSHEET_ID,
+          ...payload,
+          sentAt: new Date().toISOString()
+        });
+
+        await fetch(SHEETS_WEBHOOK_URL, {
+          method: "POST",
+          mode: "no-cors",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body
+        });
+        // No podemos leer respuesta en no-cors, pero sí se envía.
+      }catch(e){
+        console.log("Sheets send error:", e?.message || e);
+      }
+    }
+
+    // =========================
+    // ✅ PWA (SW optional)
     // =========================
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", async () => {
-        try {
-          await navigator.serviceWorker.register("./sw.js");
-          // console.log("SW ok");
-        } catch (e) {
-          console.log("SW no registrado (ok si no existe):", e?.message || e);
-        }
+        try { await navigator.serviceWorker.register("./sw.js"); }
+        catch (e) { console.log("SW no registrado (ok):", e?.message || e); }
       });
     }
 
-    // ✅ Config Firebase (la tuya)
+    // ✅ Firebase config
     const firebaseConfig = {
       apiKey: "AIzaSyDTDnao-bkiC4yxmV-mGryBmmvlWOvMIpg",
       authDomain: "finanzas-yayos-1738b.firebaseapp.com",
@@ -469,193 +372,147 @@
       measurementId: "G-FL2NL2H5SR"
     };
 
-    // =========================
-    // Loader helpers
-    // =========================
+    // Loader
     const loaderEl = document.getElementById('loader');
     const loaderMsg = document.getElementById('loader-msg');
-
-    function stopLoader(){
-      if(loaderEl) loaderEl.style.display = 'none';
-    }
-    function setLoaderMsg(msg){
-      if(loaderMsg) loaderMsg.textContent = msg;
-    }
+    function stopLoader(){ if(loaderEl) loaderEl.style.display='none'; }
+    function setLoaderMsg(msg){ if(loaderMsg) loaderMsg.textContent=msg; }
     function showLoaderError(msg){
-      console.error(msg);
-      stopLoader();
-      alert("No se pudo cargar el sistema:\n\n" + msg + "\n\nTip: revisa Firestore Rules / índices / conexión.");
+      console.error(msg); stopLoader();
+      alert("No se pudo cargar el sistema:\n\n"+msg+"\n\nTip: revisa Firestore Rules / índices / conexión.");
     }
-
-    // fallback por si no llega snapshot
     setTimeout(() => {
       if(loaderEl && loaderEl.style.display !== 'none'){
         showLoaderError("Firestore no respondió a tiempo (timeout).");
       }
     }, 12000);
 
-    // =========================
-    // App Firestore
-    // =========================
+    // Firestore init
     let app, db;
-    try {
-      app = initializeApp(firebaseConfig);
-      db = getFirestore(app);
-    } catch(e){
-      showLoaderError("Error inicializando Firebase: " + (e.message || e));
-    }
+    try { app = initializeApp(firebaseConfig); db = getFirestore(app); }
+    catch(e){ showLoaderError("Error inicializando Firebase: "+(e.message||e)); }
+    enableIndexedDbPersistence(db).catch((err)=>console.log("Persistence status:", err.code));
 
-    enableIndexedDbPersistence(db).catch((err) => console.log("Persistence status: " + err.code));
-
-    // =========================
-    // Tarjetas precargadas
-    // =========================
+    // Presets
     const PRESET_CARDS = [
       { name: "Like u", owner: "yair" },
       { name: "Free", owner: "yair" },
       { name: "Costco", owner: "yair" },
       { name: "Mercado Pago", owner: "yair" },
-
       { name: "Oro", owner: "haru" },
       { name: "Simplicity", owner: "haru" },
       { name: "BBVA", owner: "haru" },
       { name: "Liverpool", owner: "haru" },
       { name: "Palacio", owner: "haru" },
-
       { name: "Pago c/ Transferencia", owner: "both" }
     ];
 
-    // =========================
-    // Selector Haru/Yair
-    // =========================
-    const OWNER_KEY = "fy_owner";
+    // Owner
+    const OWNER_KEY="fy_owner";
     let OWNER = localStorage.getItem(OWNER_KEY) || "yair";
     const ownerSelect = document.getElementById("owner-select");
     ownerSelect.value = OWNER;
 
-    ownerSelect.addEventListener("change", async () => {
+    ownerSelect.addEventListener("change", async ()=>{
       OWNER = ownerSelect.value;
       localStorage.setItem(OWNER_KEY, OWNER);
       setLoaderMsg("Cambiando usuario...");
-      loaderEl.style.display = "flex";
+      loaderEl.style.display="flex";
       await seedPresetCards();
       resubscribeAll();
     });
 
-    // =========================
-    // Estado app
-    // =========================
-    let cards = [], trans = [];
-    let privacy = false, chartInstance = null;
-    let cardModal = null;
-    let unsubCards = null, unsubTrans = null;
+    // State
+    let cards=[], trans=[];
+    let privacy=false, chartInstance=null;
+    let cardModal=null;
+    let unsubCards=null, unsubTrans=null;
 
-    const formatMoney = (v) => '$' + parseFloat(v || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
+    const formatMoney = (v) => '$' + parseFloat(v||0).toLocaleString('en-US',{minimumFractionDigits:2});
 
-    // =========================
     // Online/offline
-    // =========================
-    window.addEventListener('online',  updateStatus);
+    window.addEventListener('online', updateStatus);
     window.addEventListener('offline', updateStatus);
-    function updateStatus() {
-      const s = document.getElementById('connection-status');
-      if(navigator.onLine) { s.innerHTML = 'Online 🟢'; s.className = 'text-muted fw-bold'; }
-      else { s.innerHTML = 'Offline 🔴'; s.className = 'text-danger fw-bold'; }
+    function updateStatus(){
+      const s=document.getElementById('connection-status');
+      if(navigator.onLine){ s.innerHTML='Online 🟢'; s.className='text-muted fw-bold'; }
+      else{ s.innerHTML='Offline 🔴'; s.className='text-danger fw-bold'; }
     }
     updateStatus();
 
-    // =========================
-    // Navegación
-    // =========================
-    window.nav = (vid) => {
-      document.querySelectorAll('.view-section').forEach(e => e.classList.remove('active'));
-      document.querySelectorAll('.nav-btn').forEach(e => e.classList.remove('active'));
+    // Nav + toggles
+    window.nav=(vid)=>{
+      document.querySelectorAll('.view-section').forEach(e=>e.classList.remove('active'));
+      document.querySelectorAll('.nav-btn').forEach(e=>e.classList.remove('active'));
       document.getElementById(vid).classList.add('active');
       if(vid.includes('home')) document.getElementById('nav-home').classList.add('active');
       if(vid.includes('cards')) document.getElementById('nav-cards').classList.add('active');
       if(vid.includes('hist')) document.getElementById('nav-hist').classList.add('active');
     };
 
-    window.toggleTheme = () => {
-      const body = document.body;
-      const isDark = body.getAttribute('data-theme') === 'dark';
-      body.setAttribute('data-theme', isDark ? 'light' : 'dark');
+    window.toggleTheme=()=>{
+      const body=document.body;
+      const isDark=body.getAttribute('data-theme')==='dark';
+      body.setAttribute('data-theme', isDark?'light':'dark');
       updateChart();
     };
 
-    window.togglePrivacy = () => {
-      privacy = !privacy;
-      document.querySelectorAll('.sensitive-data').forEach(el => {
+    window.togglePrivacy=()=>{
+      privacy=!privacy;
+      document.querySelectorAll('.sensitive-data').forEach(el=>{
         privacy ? el.classList.add('blur-sensitive') : el.classList.remove('blur-sensitive');
       });
       document.getElementById('eye-icon').className = privacy ? 'fas fa-eye-slash' : 'fas fa-eye';
     };
 
-    // =========================
-    // Filtros
-    // =========================
-    function initFilters() {
-      const chartSel = document.getElementById('chart-month-filter');
-      const histSel = document.getElementById('hist-month-filter');
-      chartSel.innerHTML = "";
-      histSel.innerHTML = '<option value="all">Todo</option>';
-
-      const now = new Date();
-      const monthNames = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
-      for(let i=0; i<12; i++) {
-        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-        const val = `${d.getFullYear()}-${d.getMonth()}`;
-        const txt = `${monthNames[d.getMonth()]} ${d.getFullYear()}`;
-        const optC = document.createElement('option'); optC.value = val; optC.text = txt; chartSel.appendChild(optC);
-        const optH = document.createElement('option'); optH.value = val; optH.text = txt; histSel.appendChild(optH);
+    // Filters
+    function initFilters(){
+      const chartSel=document.getElementById('chart-month-filter');
+      const histSel=document.getElementById('hist-month-filter');
+      chartSel.innerHTML=""; histSel.innerHTML='<option value="all">Todo</option>';
+      const now=new Date();
+      const monthNames=["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+      for(let i=0;i<12;i++){
+        const d=new Date(now.getFullYear(), now.getMonth()-i, 1);
+        const val=`${d.getFullYear()}-${d.getMonth()}`;
+        const txt=`${monthNames[d.getMonth()]} ${d.getFullYear()}`;
+        const optC=document.createElement('option'); optC.value=val; optC.text=txt; chartSel.appendChild(optC);
+        const optH=document.createElement('option'); optH.value=val; optH.text=txt; histSel.appendChild(optH);
       }
     }
     initFilters();
 
-    // =========================
-    // Seed tarjetas preset (sin where in)
-    // =========================
+    // Seed preset cards
     async function seedPresetCards(){
-      try {
+      try{
         setLoaderMsg("Verificando tarjetas precargadas...");
-
         const existingSnap = await getDocs(query(collection(db,"cards")));
-        const existingByOwner = { yair: new Set(), haru: new Set(), both: new Set() };
-
-        existingSnap.forEach(d => {
-          const data = d.data();
-          const name = (data.name || "").toLowerCase().trim();
-          const owner = (data.owner || "both");
+        const existingByOwner={ yair:new Set(), haru:new Set(), both:new Set() };
+        existingSnap.forEach(d=>{
+          const data=d.data();
+          const name=(data.name||"").toLowerCase().trim();
+          const owner=(data.owner||"both");
           if(existingByOwner[owner]) existingByOwner[owner].add(name);
         });
 
-        const need = PRESET_CARDS.filter(c => c.owner === OWNER || c.owner === "both");
-
-        for (const c of need){
-          const nm = c.name.toLowerCase();
-          const bucket = existingByOwner[c.owner] || new Set();
+        const need=PRESET_CARDS.filter(c=>c.owner===OWNER || c.owner==="both");
+        for(const c of need){
+          const nm=c.name.toLowerCase();
+          const bucket=existingByOwner[c.owner]||new Set();
           if(!bucket.has(nm)){
             await addDoc(collection(db,"cards"), {
-              name: c.name,
-              owner: c.owner,
-              cutDay: 1,
-              payDay: 1,
-              limit: 0,
-              balance: 0,
-              payGoal: 0
+              name:c.name, owner:c.owner, cutDay:1, payDay:1, limit:0, balance:0, payGoal:0
             });
             bucket.add(nm);
           }
         }
-      } catch(e){
+      }catch(e){
         console.error("Seed preset cards error:", e);
-        alert("Aviso: no se pudieron verificar/crear tarjetas preset.\n\n" + (e.message || e));
+        alert("Aviso: no se pudieron verificar/crear tarjetas preset.\n\n"+(e.message||e));
       }
     }
 
-    // =========================
-    // Suscripciones
-    // =========================
+    // Subscribe helpers
     function resubscribeAll(){
       if(unsubCards) unsubCards();
       if(unsubTrans) unsubTrans();
@@ -664,51 +521,45 @@
       resetForm();
     }
 
-    // ✅ Cards: traemos todas y filtramos en front (evita 'in')
+    // Cards subscribe (front filter)
     function subscribeCards(){
       setLoaderMsg("Cargando tarjetas...");
-      const qCards = query(collection(db,"cards"), orderBy("name"));
+      const qCards=query(collection(db,"cards"), orderBy("name"));
+      unsubCards = onSnapshot(qCards, (snap)=>{
+        const tempAll=[];
+        snap.forEach(d=>{ const c=d.data(); c.id=d.id; tempAll.push(c); });
+        const temp=tempAll.filter(c=>c.owner===OWNER || c.owner==="both");
 
-      unsubCards = onSnapshot(qCards, (snap) => {
-        const tempAll = [];
-        snap.forEach(d => { const c = d.data(); c.id = d.id; tempAll.push(c); });
+        cards=[]; let tDebt=0, tLimit=0;
 
-        const temp = tempAll.filter(c => (c.owner === OWNER || c.owner === "both"));
+        const listHome=document.getElementById('home-card-list');
+        const listManage=document.getElementById('manage-card-list');
+        const select=document.getElementById('t-card');
 
-        cards = [];
-        let tDebt = 0, tLimit = 0;
+        listHome.innerHTML=''; listManage.innerHTML='';
+        const prevSel=select.value;
 
-        const listHome = document.getElementById('home-card-list');
-        const listManage = document.getElementById('manage-card-list');
-        const select = document.getElementById('t-card');
+        select.innerHTML='';
+        const optG_Y=document.createElement('optgroup'); optG_Y.label="Tarjetas de Yair";
+        const optG_H=document.createElement('optgroup'); optG_H.label="Tarjetas de Haru";
+        const optG_B=document.createElement('optgroup'); optG_B.label="Compartidas";
 
-        listHome.innerHTML = '';
-        listManage.innerHTML = '';
+        temp.sort((a,b)=>(a.name||"").localeCompare(b.name||"","es"));
 
-        const prevSel = select.value;
-
-        select.innerHTML = '';
-        const optG_Y = document.createElement('optgroup'); optG_Y.label = "Tarjetas de Yair";
-        const optG_H = document.createElement('optgroup'); optG_H.label = "Tarjetas de Haru";
-        const optG_B = document.createElement('optgroup'); optG_B.label = "Compartidas";
-
-        temp.sort((a,b) => (a.name||"").localeCompare(b.name||"", "es"));
-
-        temp.forEach(c => {
+        temp.forEach(c=>{
           cards.push(c);
 
-          const debt = parseFloat(c.balance || 0);
-          const limit = parseFloat(c.limit || 0);
-          tDebt += debt; tLimit += limit;
+          const debt=parseFloat(c.balance||0);
+          const limit=parseFloat(c.limit||0);
+          tDebt+=debt; tLimit+=limit;
 
-          const today = new Date().getDate();
-          const cut = parseInt(c.cutDay || 1);
-          let diff = parseInt(c.payDay || 1) - today;
-          if(diff < 0) diff += 30;
+          const today=new Date().getDate();
+          const cut=parseInt(c.cutDay||1);
+          let diff=parseInt(c.payDay||1)-today; if(diff<0) diff+=30;
 
-          let status = { text: 'NORMAL', bg: 'bg-warning-light' };
-          if(diff <= 5) status = { text: `VENCE EN ${diff} DÍAS`, bg: 'bg-danger-light' };
-          else if(today >= cut && today <= cut + 5) status = { text: 'MEJOR OPCIÓN', bg: 'bg-success-light' };
+          let status={text:'NORMAL', bg:'bg-warning-light'};
+          if(diff<=5) status={text:`VENCE EN ${diff} DÍAS`, bg:'bg-danger-light'};
+          else if(today>=cut && today<=cut+5) status={text:'MEJOR OPCIÓN', bg:'bg-success-light'};
 
           listHome.innerHTML += `
             <div class="list-item">
@@ -718,7 +569,7 @@
               </div>
               <div class="text-end">
                 <div class="fw-bold text-danger sensitive-data">${formatMoney(debt)}</div>
-                <small class="text-success sensitive-data">Disp: ${formatMoney(limit - debt)}</small>
+                <small class="text-success sensitive-data">Disp: ${formatMoney(limit-debt)}</small>
               </div>
             </div>
           `;
@@ -730,12 +581,10 @@
             </div>
           `;
 
-          const opt = document.createElement("option");
-          opt.value = c.id;
-          opt.textContent = c.name;
-
-          if(c.owner === "yair") optG_Y.appendChild(opt);
-          else if(c.owner === "haru") optG_H.appendChild(opt);
+          const opt=document.createElement("option");
+          opt.value=c.id; opt.textContent=c.name;
+          if(c.owner==="yair") optG_Y.appendChild(opt);
+          else if(c.owner==="haru") optG_H.appendChild(opt);
           else optG_B.appendChild(opt);
         });
 
@@ -743,86 +592,82 @@
         if(optG_H.children.length) select.appendChild(optG_H);
         if(optG_B.children.length) select.appendChild(optG_B);
 
-        if(prevSel) select.value = prevSel;
-        if(!select.value && select.options.length) select.selectedIndex = 0;
+        if(prevSel) select.value=prevSel;
+        if(!select.value && select.options.length) select.selectedIndex=0;
 
-        document.getElementById('total-debt').innerText = formatMoney(tDebt);
-        document.getElementById('total-avail').innerText = formatMoney(tLimit - tDebt);
+        document.getElementById('total-debt').innerText=formatMoney(tDebt);
+        document.getElementById('total-avail').innerText=formatMoney(tLimit-tDebt);
 
-        const ratio = tLimit > 0 ? (tDebt / tLimit) * 100 : 0;
-        const uBar = document.getElementById('util-bar');
-        uBar.style.width = `${Math.min(ratio, 100)}%`;
-        document.getElementById('util-text').innerText = `${ratio.toFixed(1)}%`;
-        if(ratio < 30) uBar.className = 'progress-bar bg-success';
-        else if(ratio < 50) uBar.className = 'progress-bar bg-warning';
-        else uBar.className = 'progress-bar bg-danger';
+        const ratio = tLimit>0 ? (tDebt/tLimit)*100 : 0;
+        const uBar=document.getElementById('util-bar');
+        uBar.style.width=`${Math.min(ratio,100)}%`;
+        document.getElementById('util-text').innerText=`${ratio.toFixed(1)}%`;
+        if(ratio<30) uBar.className='progress-bar bg-success';
+        else if(ratio<50) uBar.className='progress-bar bg-warning';
+        else uBar.className='progress-bar bg-danger';
 
         if(privacy) togglePrivacy();
         updateSmartPick();
         updatePaymentMonitor();
 
         stopLoader();
-      }, (err) => {
-        showLoaderError("Error leyendo tarjetas (cards): " + (err.message || err));
+      }, (err)=>{
+        showLoaderError("Error leyendo tarjetas (cards): "+(err.message||err));
       });
     }
 
-    // ✅ Trans: por owner (requiere índice owner ASC + date DESC)
+    // Trans subscribe (owner)
     function subscribeTrans(){
       setLoaderMsg("Cargando movimientos...");
-      const qTrans = query(collection(db, "expenses"), where("owner","==",OWNER), orderBy("date","desc"));
-
-      unsubTrans = onSnapshot(qTrans, (snap) => {
-        trans = [];
-        snap.forEach(d => { const t = d.data(); t.id = d.id; trans.push(t); });
+      const qTrans=query(collection(db,"expenses"), where("owner","==",OWNER), orderBy("date","desc"));
+      unsubTrans = onSnapshot(qTrans, (snap)=>{
+        trans=[];
+        snap.forEach(d=>{ const t=d.data(); t.id=d.id; trans.push(t); });
         renderHistory();
         updateChart();
         updatePaymentMonitor();
         if(privacy) togglePrivacy();
-      }, (err) => {
-        showLoaderError("Error leyendo movimientos (expenses): " + (err.message || err));
+      }, (err)=>{
+        showLoaderError("Error leyendo movimientos (expenses): "+(err.message||err));
       });
     }
 
-    // =========================
-    // Pagos / smart pick
-    // =========================
-    function updatePaymentMonitor() {
-      const list = document.getElementById('payment-monitor-list');
-      list.innerHTML = '';
-      let hasGoals = false;
+    // Monitor pagos + smart pick
+    function updatePaymentMonitor(){
+      const list=document.getElementById('payment-monitor-list');
+      list.innerHTML='';
+      let hasGoals=false;
 
-      cards.forEach(c => {
-        const goal = parseFloat(c.payGoal || 0);
-        if(goal <= 0) return;
+      cards.forEach(c=>{
+        const goal=parseFloat(c.payGoal||0);
+        if(goal<=0) return;
 
-        hasGoals = true;
-        const today = new Date();
-        const cutDay = parseInt(c.cutDay || 1);
+        hasGoals=true;
+        const today=new Date();
+        const cutDay=parseInt(c.cutDay||1);
 
-        let cycleStart = new Date();
-        if(today.getDate() < cutDay) cycleStart.setMonth(cycleStart.getMonth() - 1);
+        let cycleStart=new Date();
+        if(today.getDate()<cutDay) cycleStart.setMonth(cycleStart.getMonth()-1);
         cycleStart.setDate(cutDay); cycleStart.setHours(0,0,0,0);
 
-        let paid = 0;
-        trans.forEach(t => {
-          if(t.cardId === c.id && t.type === 'payment' && t.date.toDate() > cycleStart) paid += t.amount;
+        let paid=0;
+        trans.forEach(t=>{
+          if(t.cardId===c.id && t.type==='payment' && t.date.toDate()>cycleStart) paid += t.amount;
         });
 
-        const pct = Math.min((paid / goal) * 100, 100);
-        const remaining = Math.max(goal - paid, 0);
-
-        let color = pct > 50 ? 'warning' : 'danger';
-        if(pct >= 100) color = 'success';
+        const pct=Math.min((paid/goal)*100,100);
+        const remaining=Math.max(goal-paid,0);
+        let color = pct>50 ? 'warning' : 'danger';
+        if(pct>=100) color='success';
 
         list.innerHTML += `
           <div class="mb-3">
             <div class="d-flex justify-content-between mb-1">
               <span class="small fw-bold">${c.name}</span>
-              <span class="small fw-bold text-${color} sensitive-data">${pct >= 100 ? '¡CUBIERTO!' : 'Faltan ' + formatMoney(remaining)}</span>
+              <span class="small fw-bold text-${color} sensitive-data">${pct>=100 ? '¡CUBIERTO!' : 'Faltan ' + formatMoney(remaining)}</span>
             </div>
-            <div class="progress" style="height: 12px; background-color: var(--bg-body);">
-              <div class="progress-bar bg-${color}" role="progressbar" style="width: ${pct}%"></div>
+            <div class="progress" style="height:12px;background-color:var(--bg-body);">
+              <div class="progress-bar bg-${color}" role="progressbar" style="width:${pct}%"></div>
             </div>
           </div>
         `;
@@ -832,61 +677,56 @@
       if(privacy) togglePrivacy();
     }
 
-    function updateSmartPick() {
-      const today = new Date().getDate(); let best = null, min = 999;
-      cards.forEach(c => {
-        let d = today - parseInt(c.cutDay || 1);
-        if(d >= 0 && d < min) { min = d; best = c; }
+    function updateSmartPick(){
+      const today=new Date().getDate(); let best=null, min=999;
+      cards.forEach(c=>{
+        let d=today-parseInt(c.cutDay||1);
+        if(d>=0 && d<min){ min=d; best=c; }
       });
-      const area = document.getElementById('smart-area');
-      if(best && min <= 7) {
+      const area=document.getElementById('smart-area');
+      if(best && min<=7){
         area.classList.remove('d-none');
-        document.getElementById('smart-name').innerText = best.name;
-        document.getElementById('smart-msg').innerText = `Cortó hace ${min} días. Úsala para máximo financiamiento.`;
-      } else {
-        area.classList.add('d-none');
-      }
+        document.getElementById('smart-name').innerText=best.name;
+        document.getElementById('smart-msg').innerText=`Cortó hace ${min} días. Úsala para máximo financiamiento.`;
+      }else area.classList.add('d-none');
     }
 
-    // =========================
-    // Historial + chart
-    // =========================
-    window.renderHistory = () => {
-      const list = document.getElementById('hist-list');
-      const term = document.getElementById('search-input').value.toLowerCase();
-      const dateFilter = document.getElementById('hist-month-filter').value;
+    // Historial
+    window.renderHistory=()=>{
+      const list=document.getElementById('hist-list');
+      const term=document.getElementById('search-input').value.toLowerCase();
+      const dateFilter=document.getElementById('hist-month-filter').value;
+      list.innerHTML='';
 
-      list.innerHTML = '';
-
-      const filtered = trans.filter(t => {
+      const filtered = trans.filter(t=>{
         const matchesText =
-          (t.concept || "").toLowerCase().includes(term) ||
-          (t.cardName || "").toLowerCase().includes(term) ||
-          (t.category || "").toLowerCase().includes(term);
+          (t.concept||"").toLowerCase().includes(term) ||
+          (t.cardName||"").toLowerCase().includes(term) ||
+          (t.category||"").toLowerCase().includes(term);
 
-        let matchesDate = true;
-        if (dateFilter !== 'all') {
-          const [y, m] = dateFilter.split('-').map(Number);
-          const d = t.date.toDate();
-          matchesDate = (d.getMonth() === m && d.getFullYear() === y);
+        let matchesDate=true;
+        if(dateFilter!=='all'){
+          const [y,m]=dateFilter.split('-').map(Number);
+          const d=t.date.toDate();
+          matchesDate=(d.getMonth()===m && d.getFullYear()===y);
         }
         return matchesText && matchesDate;
       });
 
-      if(filtered.length === 0) list.innerHTML = '<div class="text-center text-muted mt-3">No se encontraron resultados</div>';
+      if(filtered.length===0) list.innerHTML='<div class="text-center text-muted mt-3">No se encontraron resultados</div>';
 
-      filtered.forEach(t => {
-        const isExp = t.type === 'expense';
+      filtered.forEach(t=>{
+        const isExp=t.type==='expense';
         list.innerHTML += `
           <div class="list-item" onclick="editTrans('${t.id}')">
             <div class="d-flex align-items-center">
-              <div class="me-3 text-muted"><i class="fas ${isExp ? 'fa-shopping-cart' : 'fa-hand-holding-usd'}"></i></div>
+              <div class="me-3 text-muted"><i class="fas ${isExp?'fa-shopping-cart':'fa-hand-holding-usd'}"></i></div>
               <div>
                 <div class="fw-bold">${t.concept}</div>
                 <small class="text-muted">${t.date.toDate().toLocaleDateString()} • ${t.cardName}</small>
               </div>
             </div>
-            <div class="fw-bold ${isExp ? 'text-danger' : 'text-success'} sensitive-data">${isExp ? '-' : '+'}${formatMoney(t.amount)}</div>
+            <div class="fw-bold ${isExp?'text-danger':'text-success'} sensitive-data">${isExp?'-':'+'}${formatMoney(t.amount)}</div>
           </div>
         `;
       });
@@ -894,145 +734,171 @@
       if(privacy) togglePrivacy();
     };
 
-    window.updateChart = () => {
-      const ctx = document.getElementById('expensesChart');
-      const noDataMsg = document.getElementById('no-data-msg');
+    // Chart
+    window.updateChart=()=>{
+      const ctx=document.getElementById('expensesChart');
+      const noDataMsg=document.getElementById('no-data-msg');
 
-      const filterVal = document.getElementById('chart-month-filter').value;
-      const [selYear, selMonth] = filterVal.split('-').map(Number);
+      const filterVal=document.getElementById('chart-month-filter').value;
+      const [selYear, selMonth]=filterVal.split('-').map(Number);
 
-      const totals = {};
-      trans.filter(t => {
-        const d = t.date.toDate();
-        return t.type === 'expense' && d.getMonth() === selMonth && d.getFullYear() === selYear;
-      }).forEach(t => { totals[t.category] = (totals[t.category] || 0) + t.amount; });
+      const totals={};
+      trans.filter(t=>{
+        const d=t.date.toDate();
+        return t.type==='expense' && d.getMonth()===selMonth && d.getFullYear()===selYear;
+      }).forEach(t=>{ totals[t.category]=(totals[t.category]||0)+t.amount; });
 
-      if (Object.keys(totals).length === 0) { ctx.style.display = 'none'; noDataMsg.classList.remove('d-none'); }
-      else { ctx.style.display = 'block'; noDataMsg.classList.add('d-none'); }
+      if(Object.keys(totals).length===0){ ctx.style.display='none'; noDataMsg.classList.remove('d-none'); }
+      else{ ctx.style.display='block'; noDataMsg.classList.add('d-none'); }
 
       if(chartInstance) chartInstance.destroy();
 
-      const isDark = document.body.getAttribute('data-theme') === 'dark';
-      const textColor = isDark ? '#f9fafb' : '#6b7280';
+      const isDark=document.body.getAttribute('data-theme')==='dark';
+      const textColor=isDark ? '#f9fafb' : '#6b7280';
 
       chartInstance = new Chart(ctx, {
-        type: 'doughnut',
-        data: {
-          labels: Object.keys(totals),
-          datasets: [{
-            data: Object.values(totals),
-            backgroundColor: ['#2563eb','#ef4444','#10b981','#f59e0b','#8b5cf6','#ec4899','#6366f1'],
-            borderWidth: 0
-          }]
+        type:'doughnut',
+        data:{
+          labels:Object.keys(totals),
+          datasets:[{ data:Object.values(totals), backgroundColor:['#2563eb','#ef4444','#10b981','#f59e0b','#8b5cf6','#ec4899','#6366f1'], borderWidth:0 }]
         },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: { legend: { position: 'right', labels: { boxWidth: 10, font: {size: 10}, color: textColor } } }
+        options:{
+          responsive:true, maintainAspectRatio:false,
+          plugins:{ legend:{ position:'right', labels:{ boxWidth:10, font:{size:10}, color:textColor } } }
         }
       });
     };
 
+    // Categorías
+    window.uiUpdateCats=()=>{
+      const type=document.querySelector('input[name="ttype"]:checked').value;
+      const s=document.getElementById('t-cat');
+      s.innerHTML='';
+      const opts = type==='expense'
+        ? ['🛒 Supermercado','🍔 Comida','⛽ Transporte','🐜 Hormiga','💡 Servicios','📦 Compras','💊 Salud','🎓 Educación']
+        : ['💵 Abono Capital','💰 Sueldo/Ingreso','🔄 Transferencia'];
+      opts.forEach(o=> s.innerHTML += `<option>${o}</option>`);
+    };
+
+    // =========================
+    // ✅ SYNC HELPERS (SHEETS)
+    // =========================
+    function txToPlain(t){
+      return {
+        id: t.id,
+        owner: t.owner,
+        type: t.type,
+        amount: t.amount,
+        cardId: t.cardId,
+        cardName: t.cardName,
+        concept: t.concept,
+        category: t.category,
+        dateISO: (t.date?.toDate ? t.date.toDate().toISOString() : null)
+      };
+    }
+    function cardToPlain(c){
+      return {
+        id: c.id,
+        owner: c.owner,
+        name: c.name,
+        cutDay: Number(c.cutDay||1),
+        payDay: Number(c.payDay||1),
+        limit: Number(c.limit||0),
+        balance: Number(c.balance||0),
+        payGoal: Number(c.payGoal||0)
+      };
+    }
+
     // =========================
     // Tarjetas (editar)
     // =========================
-    window.openCardModal = () => {
-      alert("Tip: para editar, toca una tarjeta en la lista y se abrirá el editor 😉");
-    };
+    window.openCardModal=()=> alert("Tip: para editar, toca una tarjeta en la lista y se abrirá el editor 😉");
 
-    window.editCard = (id) => {
-      const c = cards.find(x => x.id === id);
-      if(!c) return;
-
-      document.getElementById('c-id').value = id;
-      document.getElementById('c-name').value = c.name;
-      document.getElementById('c-cut').value = c.cutDay;
-      document.getElementById('c-pay').value = c.payDay;
-      document.getElementById('c-limit').value = c.limit;
-      document.getElementById('c-bal').value = c.balance;
-      document.getElementById('c-goal').value = c.payGoal || 0;
-
-      document.getElementById('btn-del-card').style.display = (c.owner === "both") ? "none" : "block";
-
+    window.editCard=(id)=>{
+      const c=cards.find(x=>x.id===id); if(!c) return;
+      document.getElementById('c-id').value=id;
+      document.getElementById('c-name').value=c.name;
+      document.getElementById('c-cut').value=c.cutDay;
+      document.getElementById('c-pay').value=c.payDay;
+      document.getElementById('c-limit').value=c.limit;
+      document.getElementById('c-bal').value=c.balance;
+      document.getElementById('c-goal').value=c.payGoal||0;
+      document.getElementById('btn-del-card').style.display = (c.owner==="both") ? "none" : "block";
       cardModal = new bootstrap.Modal(document.getElementById('modalCard'));
       cardModal.show();
     };
 
-    document.getElementById('form-card').addEventListener('submit', async(e) => {
+    document.getElementById('form-card').addEventListener('submit', async(e)=>{
       e.preventDefault();
-      const id = document.getElementById('c-id').value;
-      if(!id) return;
+      const id=document.getElementById('c-id').value; if(!id) return;
 
-      const payload = {
+      const payload={
         name: document.getElementById('c-name').value,
-        cutDay: parseInt(document.getElementById('c-cut').value || 1),
-        payDay: parseInt(document.getElementById('c-pay').value || 1),
-        limit: parseFloat(document.getElementById('c-limit').value || 0),
-        balance: parseFloat(document.getElementById('c-bal').value || 0),
-        payGoal: parseFloat(document.getElementById('c-goal').value || 0)
+        cutDay: parseInt(document.getElementById('c-cut').value||1),
+        payDay: parseInt(document.getElementById('c-pay').value||1),
+        limit: parseFloat(document.getElementById('c-limit').value||0),
+        balance: parseFloat(document.getElementById('c-bal').value||0),
+        payGoal: parseFloat(document.getElementById('c-goal').value||0)
       };
 
       await updateDoc(doc(db,"cards",id), payload);
       cardModal.hide();
+
+      // ✅ Sync a Sheets
+      const updated = cards.find(x=>x.id===id);
+      await sheetsSend({
+        entity: "card",
+        action: "update",
+        owner: OWNER,
+        data: cardToPlain({ ...(updated||{}), ...payload, id })
+      });
     });
 
-    window.deleteCard = async() => {
-      const id = document.getElementById('c-id').value;
-      const c = cards.find(x => x.id === id);
+    window.deleteCard=async()=>{
+      const id=document.getElementById('c-id').value;
+      const c=cards.find(x=>x.id===id);
       if(!c) return;
-
-      if(c.owner === "both") return alert("Esa tarjeta es compartida. Mejor edítala 😉");
-
-      if(confirm("¿Eliminar tarjeta?")) {
-        await deleteDoc(doc(db, "cards", id));
+      if(c.owner==="both") return alert("Esa tarjeta es compartida. Mejor edítala 😉");
+      if(confirm("¿Eliminar tarjeta?")){
+        await deleteDoc(doc(db,"cards",id));
         cardModal.hide();
+
+        await sheetsSend({
+          entity: "card",
+          action: "delete",
+          owner: OWNER,
+          data: { id }
+        });
       }
     };
 
     // =========================
-    // Categorías
+    // Movimientos (crear/editar) + Sync Sheets
     // =========================
-    window.uiUpdateCats = () => {
-      const type = document.querySelector('input[name="ttype"]:checked').value;
-      const s = document.getElementById('t-cat');
-      s.innerHTML = '';
-      const opts = type === 'expense'
-        ? ['🛒 Supermercado','🍔 Comida','⛽ Transporte','🐜 Hormiga','💡 Servicios','📦 Compras','💊 Salud','🎓 Educación']
-        : ['💵 Abono Capital','💰 Sueldo/Ingreso','🔄 Transferencia'];
-      opts.forEach(o => s.innerHTML += `<option>${o}</option>`);
-    };
-
-    // =========================
-    // Movimientos
-    // =========================
-    document.getElementById('form-trans').addEventListener('submit', async(e) => {
+    document.getElementById('form-trans').addEventListener('submit', async(e)=>{
       e.preventDefault();
-      const btnSave = document.getElementById('btn-save-trans');
-      btnSave.disabled = true;
-      btnSave.classList.add('btn-disabled');
-      btnSave.innerText = "Procesando...";
+      const btnSave=document.getElementById('btn-save-trans');
+      btnSave.disabled=true; btnSave.classList.add('btn-disabled'); btnSave.innerText="Procesando...";
 
-      try {
-        const tid = document.getElementById('trans-id').value;
-        const type = document.querySelector('input[name="ttype"]:checked').value;
-        const amt = parseFloat(document.getElementById('t-amount').value);
-        const cid = document.getElementById('t-card').value;
-        const cObj = cards.find(c => c.id === cid);
+      try{
+        const tid=document.getElementById('trans-id').value;
+        const type=document.querySelector('input[name="ttype"]:checked').value;
+        const amt=parseFloat(document.getElementById('t-amount').value);
+        const cid=document.getElementById('t-card').value;
+        const cObj=cards.find(c=>c.id===cid);
+        if(!cObj) throw new Error("Tarjeta no encontrada");
 
-        if (!cObj) throw new Error("Tarjeta no encontrada");
+        let newBal=parseFloat(cObj.balance||0);
+        const batch=writeBatch(db);
 
-        let newBal = parseFloat(cObj.balance || 0);
-        const batch = writeBatch(db);
-
-        if(tid) {
-          const oldTrans = trans.find(t => t.id === tid);
-          if(oldTrans && oldTrans.cardId === cid) {
-            if(oldTrans.type === 'expense') newBal -= oldTrans.amount;
+        if(tid){
+          const oldTrans=trans.find(t=>t.id===tid);
+          if(oldTrans && oldTrans.cardId===cid){
+            if(oldTrans.type==='expense') newBal -= oldTrans.amount;
             else newBal += oldTrans.amount;
           }
         }
-
-        if(type === 'expense') newBal += amt;
+        if(type==='expense') newBal += amt;
         else newBal -= amt;
 
         const payload = {
@@ -1046,93 +912,115 @@
           date: Timestamp.fromDate(new Date(document.getElementById('t-date').value + 'T12:00'))
         };
 
-        const cardRef = doc(db, "cards", cid);
+        const cardRef=doc(db,"cards",cid);
 
-        if(tid) batch.update(doc(db, "expenses", tid), payload);
-        else batch.set(doc(collection(db, "expenses")), payload);
+        if(tid){
+          batch.update(doc(db,"expenses",tid), payload);
+          batch.update(cardRef, { balance:newBal });
+          await batch.commit();
 
-        batch.update(cardRef, { balance: newBal });
+          // ✅ Sync Sheets (update)
+          await sheetsSend({
+            entity: "transaction",
+            action: "update",
+            owner: OWNER,
+            data: txToPlain({ ...payload, id: tid })
+          });
 
-        await batch.commit();
+        }else{
+          // ✅ NEW: addDoc para obtener ID real y mandarlo a Sheets
+          const createdRef = await addDoc(collection(db,"expenses"), payload);
+
+          // Actualiza saldo tarjeta
+          await updateDoc(cardRef, { balance:newBal });
+
+          // ✅ Sync Sheets (create)
+          await sheetsSend({
+            entity: "transaction",
+            action: "create",
+            owner: OWNER,
+            data: txToPlain({ ...payload, id: createdRef.id })
+          });
+        }
 
         resetForm();
         nav('view-home');
-      } catch(e) {
-        alert("Error: " + e.message);
-      } finally {
-        btnSave.disabled = false;
-        btnSave.classList.remove('btn-disabled');
-        btnSave.innerText = "Guardar Transacción";
+      }catch(e){
+        alert("Error: "+e.message);
+      }finally{
+        btnSave.disabled=false; btnSave.classList.remove('btn-disabled'); btnSave.innerText="Guardar Transacción";
       }
     });
 
-    window.editTrans = (id) => {
-      const t = trans.find(x => x.id === id);
+    window.editTrans=(id)=>{
+      const t=trans.find(x=>x.id===id); if(!t) return;
+      nav('view-add');
+      document.getElementById('trans-id').value=id;
+      document.getElementById('t-amount').value=t.amount;
+      document.getElementById('t-card').value=t.cardId;
+      document.getElementById('t-concept').value=t.concept;
+      document.getElementById('t-date').value=t.date.toDate().toISOString().split('T')[0];
+      if(t.type==='payment') document.getElementById('t-pay').checked=true;
+      else document.getElementById('t-exp').checked=true;
+      uiUpdateCats();
+      document.getElementById('t-cat').value=t.category;
+      document.getElementById('edit-btns').style.display='flex';
+    };
+
+    window.deleteTrans=async()=>{
+      if(!confirm("¿Eliminar? Se recalculará el saldo.")) return;
+
+      const id=document.getElementById('trans-id').value;
+      const t=trans.find(x=>x.id===id);
       if(!t) return;
 
-      nav('view-add');
+      const cObj=cards.find(c=>c.id===t.cardId);
+      if(!cObj) return alert("Tarjeta no encontrada para recalcular saldo");
 
-      document.getElementById('trans-id').value = id;
-      document.getElementById('t-amount').value = t.amount;
-      document.getElementById('t-card').value = t.cardId;
-      document.getElementById('t-concept').value = t.concept;
-      document.getElementById('t-date').value = t.date.toDate().toISOString().split('T')[0];
+      let newBal=parseFloat(cObj.balance||0);
+      if(t.type==='expense') newBal -= t.amount;
+      else newBal += t.amount;
 
-      if(t.type === 'payment') document.getElementById('t-pay').checked = true;
-      else document.getElementById('t-exp').checked = true;
+      const batch=writeBatch(db);
+      batch.update(doc(db,"cards",t.cardId), { balance:newBal });
+      batch.delete(doc(db,"expenses",id));
+      await batch.commit();
 
-      uiUpdateCats();
-      document.getElementById('t-cat').value = t.category;
+      // ✅ Sync Sheets (delete)
+      await sheetsSend({
+        entity: "transaction",
+        action: "delete",
+        owner: OWNER,
+        data: { id }
+      });
 
-      document.getElementById('edit-btns').style.display = 'flex';
+      resetForm();
+      nav('view-hist');
     };
 
-    window.deleteTrans = async() => {
-      if(confirm("¿Eliminar? Se recalculará el saldo.")) {
-        const id = document.getElementById('trans-id').value;
-        const t = trans.find(x => x.id === id);
-        const cObj = cards.find(c => c.id === t.cardId);
-
-        let newBal = parseFloat(cObj.balance || 0);
-        if(t.type === 'expense') newBal -= t.amount;
-        else newBal += t.amount;
-
-        const batch = writeBatch(db);
-        batch.update(doc(db, "cards", t.cardId), { balance: newBal });
-        batch.delete(doc(db, "expenses", id));
-        await batch.commit();
-
-        resetForm();
-        nav('view-hist');
-      }
-    };
-
-    window.resetForm = () => {
+    window.resetForm=()=>{
       document.getElementById('form-trans').reset();
-      document.getElementById('trans-id').value = '';
-      document.getElementById('t-date').valueAsDate = new Date();
-      document.getElementById('edit-btns').style.display = 'none';
-      document.getElementById('t-exp').checked = true;
+      document.getElementById('trans-id').value='';
+      document.getElementById('t-date').valueAsDate=new Date();
+      document.getElementById('edit-btns').style.display='none';
+      document.getElementById('t-exp').checked=true;
       uiUpdateCats();
-
-      const btn = document.getElementById('btn-save-trans');
-      btn.disabled = false;
-      btn.classList.remove('btn-disabled');
-      btn.innerText = "Guardar Transacción";
+      const btn=document.getElementById('btn-save-trans');
+      btn.disabled=false; btn.classList.remove('btn-disabled'); btn.innerText="Guardar Transacción";
     };
 
-    window.exportCSV = () => {
-      let csv = "Fecha,Concepto,Categoria,Monto,Tipo,Tarjeta,Owner\n";
-      trans.forEach(t => {
+    window.exportCSV=()=>{
+      let csv="Fecha,Concepto,Categoria,Monto,Tipo,Tarjeta,Owner\n";
+      trans.forEach(t=>{
         csv += `${t.date.toDate().toLocaleDateString()},${t.concept},${t.category},${t.amount},${t.type},${t.cardName},${t.owner}\n`;
       });
-      const a = document.createElement('a');
-      a.href = 'data:text/csv;charset=utf-8,' + encodeURI(csv);
-      a.download = `backup_finanzas_${OWNER}.csv`;
+      const a=document.createElement('a');
+      a.href='data:text/csv;charset=utf-8,'+encodeURI(csv);
+      a.download=`backup_finanzas_${OWNER}.csv`;
       a.click();
     };
 
-    // ===== Init =====
+    // Init
     uiUpdateCats();
     resetForm();
     await seedPresetCards();
