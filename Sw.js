@@ -1,4 +1,4 @@
-const CACHE_NAME = "fyayos-v2";
+const CACHE_NAME = "fyayos-v3";
 const ASSETS = [
   "./",
   "./index.html",
@@ -31,3 +31,25 @@ self.addEventListener("fetch", (event) => {
     caches.match(event.request).then((cached) => cached || fetch(event.request))
   );
 });
+
+self.addEventListener("push", (event) => {
+  let data = {};
+  try { data = event.data.json(); } catch(e){ data = { title:"Recordatorio", body:event.data?.text() || "" }; }
+
+  const title = data.title || "Recordatorio de pago";
+  const options = {
+    body: data.body || "",
+    icon: "./icons/icon-192.png",
+    badge: "./icons/icon-192.png",
+    data: data.url || "/",
+  };
+
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = event.notification.data || "/";
+  event.waitUntil(clients.openWindow(url));
+});
+
