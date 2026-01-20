@@ -237,14 +237,33 @@
       </button>
     </div>
 
+    <!-- ✅ NUEVOS FILTROS: Mes + Tarjeta + Categoría + Buscar + Limpiar -->
     <div class="row g-2 mb-3">
-      <div class="col-5">
+      <div class="col-6">
         <select id="hist-month-filter" class="form-select" onchange="renderHistory()">
-          <option value="all">Todo</option>
+          <option value="all">Mes: Todo</option>
         </select>
       </div>
-      <div class="col-7">
+      <div class="col-6">
+        <select id="hist-card-filter" class="form-select" onchange="renderHistory()">
+          <option value="all">Tarjeta: Todas</option>
+        </select>
+      </div>
+
+      <div class="col-6">
+        <select id="hist-cat-filter" class="form-select" onchange="renderHistory()">
+          <option value="all">Categoría: Todas</option>
+        </select>
+      </div>
+
+      <div class="col-6">
         <input type="text" id="search-input" class="form-control" placeholder="🔍 Buscar..." onkeyup="renderHistory()" />
+      </div>
+
+      <div class="col-12 d-grid">
+        <button class="btn btn-light" style="border:1px solid var(--border-color);" onclick="clearHistFilters()">
+          <i class="fas fa-eraser me-2"></i> Limpiar filtros
+        </button>
       </div>
     </div>
 
@@ -469,7 +488,7 @@
     function initFilters(){
       const chartSel=document.getElementById('chart-month-filter');
       const histSel=document.getElementById('hist-month-filter');
-      chartSel.innerHTML=""; histSel.innerHTML='<option value="all">Todo</option>';
+      chartSel.innerHTML=""; histSel.innerHTML='<option value="all">Mes: Todo</option>';
       const now=new Date();
       const monthNames=["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
       for(let i=0;i<12;i++){
@@ -481,6 +500,55 @@
       }
     }
     initFilters();
+
+    // =========================
+    // ✅ HIST FILTERS (tarjeta + categoría)
+    // =========================
+    function fillHistFilters(){
+      const selCard = document.getElementById('hist-card-filter');
+      const selCat  = document.getElementById('hist-cat-filter');
+      if(!selCard || !selCat) return;
+
+      const prevCard = selCard.value || "all";
+      const prevCat  = selCat.value || "all";
+
+      // Tarjetas (desde cards cargadas)
+      selCard.innerHTML = `<option value="all">Tarjeta: Todas</option>`;
+      const names = [...new Set(cards.map(c => (c.name || '').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"es"));
+      names.forEach(n=>{
+        const opt=document.createElement('option');
+        opt.value=n;
+        opt.textContent=n;
+        selCard.appendChild(opt);
+      });
+
+      // Categorías (desde trans cargadas)
+      selCat.innerHTML = `<option value="all">Categoría: Todas</option>`;
+      const cats = [...new Set(trans.map(t => (t.category || '').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"es"));
+      cats.forEach(c=>{
+        const opt=document.createElement('option');
+        opt.value=c;
+        opt.textContent=c;
+        selCat.appendChild(opt);
+      });
+
+      selCard.value = [...selCard.options].some(o=>o.value===prevCard) ? prevCard : "all";
+      selCat.value  = [...selCat.options].some(o=>o.value===prevCat) ? prevCat : "all";
+    }
+
+    window.clearHistFilters = ()=>{
+      const m = document.getElementById('hist-month-filter');
+      const c = document.getElementById('hist-card-filter');
+      const g = document.getElementById('hist-cat-filter');
+      const s = document.getElementById('search-input');
+
+      if(m) m.value="all";
+      if(c) c.value="all";
+      if(g) g.value="all";
+      if(s) s.value="";
+
+      renderHistory();
+    };
 
     // Seed preset cards
     async function seedPresetCards(){
@@ -542,7 +610,8 @@
         select.innerHTML='';
         const optG_Y=document.createElement('optgroup'); optG_Y.label="Tarjetas de Yair";
         const optG_H=document.createElement('optgroup'); optG_H.label="Tarjetas de Haru";
-        const optG_B=document.createElement('optgroup'); optG_B.label="Compartidas";
+        const optG_B=document.createElement('optgroup'); optoptG_B?.label
+        const optG_B2=document.createElement('optgroup'); optG_B2.label="Compartidas";
 
         temp.sort((a,b)=>(a.name||"").localeCompare(b.name||"","es"));
 
@@ -585,12 +654,12 @@
           opt.value=c.id; opt.textContent=c.name;
           if(c.owner==="yair") optG_Y.appendChild(opt);
           else if(c.owner==="haru") optG_H.appendChild(opt);
-          else optG_B.appendChild(opt);
+          else optG_B2.appendChild(opt);
         });
 
         if(optG_Y.children.length) select.appendChild(optG_Y);
         if(optG_H.children.length) select.appendChild(optG_H);
-        if(optG_B.children.length) select.appendChild(optG_B);
+        if(optG_B2.children.length) select.appendChild(optG_B2);
 
         if(prevSel) select.value=prevSel;
         if(!select.value && select.options.length) select.selectedIndex=0;
@@ -610,6 +679,9 @@
         updateSmartPick();
         updatePaymentMonitor();
 
+        // ✅ refresca filtro de tarjetas en Historial
+        fillHistFilters();
+
         stopLoader();
       }, (err)=>{
         showLoaderError("Error leyendo tarjetas (cards): "+(err.message||err));
@@ -623,6 +695,10 @@
       unsubTrans = onSnapshot(qTrans, (snap)=>{
         trans=[];
         snap.forEach(d=>{ const t=d.data(); t.id=d.id; trans.push(t); });
+
+        // ✅ refresca filtro de categorías (y mantiene tarjetas)
+        fillHistFilters();
+
         renderHistory();
         updateChart();
         updatePaymentMonitor();
@@ -691,47 +767,61 @@
       }else area.classList.add('d-none');
     }
 
-    // Historial
-    window.renderHistory=()=>{
-      const list=document.getElementById('hist-list');
-      const term=document.getElementById('search-input').value.toLowerCase();
-      const dateFilter=document.getElementById('hist-month-filter').value;
-      list.innerHTML='';
+    // Historial (✅ con Mes + Tarjeta + Categoría + Buscar)
+    window.renderHistory = () => {
+      const list = document.getElementById('hist-list');
+      const term = (document.getElementById('search-input')?.value || "").toLowerCase();
 
-      const filtered = trans.filter(t=>{
+      const dateFilter = document.getElementById('hist-month-filter')?.value || "all";
+      const cardFilter = document.getElementById('hist-card-filter')?.value || "all";
+      const catFilter  = document.getElementById('hist-cat-filter')?.value || "all";
+
+      if(!list) return;
+      list.innerHTML = '';
+
+      const filtered = trans.filter(t => {
         const matchesText =
-          (t.concept||"").toLowerCase().includes(term) ||
-          (t.cardName||"").toLowerCase().includes(term) ||
-          (t.category||"").toLowerCase().includes(term);
+          (t.concept || "").toLowerCase().includes(term) ||
+          (t.cardName || "").toLowerCase().includes(term) ||
+          (t.category || "").toLowerCase().includes(term);
 
-        let matchesDate=true;
-        if(dateFilter!=='all'){
-          const [y,m]=dateFilter.split('-').map(Number);
-          const d=t.date.toDate();
-          matchesDate=(d.getMonth()===m && d.getFullYear()===y);
+        let matchesDate = true;
+        if (dateFilter !== 'all') {
+          const [y, m] = dateFilter.split('-').map(Number);
+          const d = t.date.toDate();
+          matchesDate = (d.getMonth() === m && d.getFullYear() === y);
         }
-        return matchesText && matchesDate;
+
+        let matchesCard = true;
+        if (cardFilter !== 'all') matchesCard = (t.cardName === cardFilter);
+
+        let matchesCat = true;
+        if (catFilter !== 'all') matchesCat = (t.category === catFilter);
+
+        return matchesText && matchesDate && matchesCard && matchesCat;
       });
 
-      if(filtered.length===0) list.innerHTML='<div class="text-center text-muted mt-3">No se encontraron resultados</div>';
+      if (filtered.length === 0) {
+        list.innerHTML = '<div class="text-center text-muted mt-3">No se encontraron resultados</div>';
+      }
 
-      filtered.forEach(t=>{
-        const isExp=t.type==='expense';
+      filtered.forEach(t => {
+        const isExp = t.type === 'expense';
         list.innerHTML += `
           <div class="list-item" onclick="editTrans('${t.id}')">
             <div class="d-flex align-items-center">
-              <div class="me-3 text-muted"><i class="fas ${isExp?'fa-shopping-cart':'fa-hand-holding-usd'}"></i></div>
+              <div class="me-3 text-muted"><i class="fas ${isExp ? 'fa-shopping-cart' : 'fa-hand-holding-usd'}"></i></div>
               <div>
                 <div class="fw-bold">${t.concept}</div>
-                <small class="text-muted">${t.date.toDate().toLocaleDateString()} • ${t.cardName}</small>
+                <small class="text-muted">${t.date.toDate().toLocaleDateString()} • ${t.cardName} • ${t.category}</small>
               </div>
             </div>
-            <div class="fw-bold ${isExp?'text-danger':'text-success'} sensitive-data">${isExp?'-':'+'}${formatMoney(t.amount)}</div>
+            <div class="fw-bold ${isExp ? 'text-danger' : 'text-success'} sensitive-data">${isExp ? '-' : '+'}${formatMoney(t.amount)}</div>
           </div>
         `;
       });
 
-      if(privacy) togglePrivacy();
+      if (privacy) togglePrivacy();
     };
 
     // Chart
@@ -928,10 +1018,7 @@
           });
 
         }else{
-          // ✅ NEW: addDoc para obtener ID real y mandarlo a Sheets
           const createdRef = await addDoc(collection(db,"expenses"), payload);
-
-          // Actualiza saldo tarjeta
           await updateDoc(cardRef, { balance:newBal });
 
           // ✅ Sync Sheets (create)
