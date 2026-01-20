@@ -237,7 +237,6 @@
       </button>
     </div>
 
-    <!-- ✅ NUEVOS FILTROS: Mes + Tarjeta + Categoría + Buscar + Limpiar -->
     <div class="row g-2 mb-3">
       <div class="col-6">
         <select id="hist-month-filter" class="form-select" onchange="renderHistory()">
@@ -344,12 +343,11 @@
     } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
 
     // =========================
-    // ✅ CONFIG SHEETS (Apps Script WebApp + Spreadsheet ID)
+    // ✅ CONFIG SHEETS
     // =========================
     const SHEETS_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbyf1WZ67vuH4mmhs8T6DvyirWdsVE8_uiUT4dRhbFbhJwhY7tQ2RwbTkFKRD1GV803a2A/exec";
     const SHEETS_SPREADSHEET_ID = "1DLmT0ZBk-7o43rojSelLOtkLcnu9g-Z6lRklQP93agE";
 
-    // Envío a Sheets “no-cors” para que GitHub Pages no se atoré por CORS.
     async function sheetsSend(payload){
       try{
         const body = JSON.stringify({
@@ -364,14 +362,13 @@
           headers: { "Content-Type": "text/plain;charset=utf-8" },
           body
         });
-        // No podemos leer respuesta en no-cors, pero sí se envía.
       }catch(e){
         console.log("Sheets send error:", e?.message || e);
       }
     }
 
     // =========================
-    // ✅ PWA (SW optional)
+    // ✅ PWA
     // =========================
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", async () => {
@@ -502,7 +499,7 @@
     initFilters();
 
     // =========================
-    // ✅ HIST FILTERS (tarjeta + categoría)
+    // ✅ HIST FILTERS (SMART por cardId)
     // =========================
     function fillHistFilters(){
       const selCard = document.getElementById('hist-card-filter');
@@ -512,17 +509,17 @@
       const prevCard = selCard.value || "all";
       const prevCat  = selCat.value || "all";
 
-      // Tarjetas (desde cards cargadas)
+      // Tarjetas (value = cardId)
       selCard.innerHTML = `<option value="all">Tarjeta: Todas</option>`;
-      const names = [...new Set(cards.map(c => (c.name || '').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"es"));
-      names.forEach(n=>{
+      const sortedCards = [...cards].sort((a,b)=>(a.name||"").localeCompare(b.name||"","es"));
+      sortedCards.forEach(c=>{
         const opt=document.createElement('option');
-        opt.value=n;
-        opt.textContent=n;
+        opt.value=c.id;
+        opt.textContent = c.owner==="both" ? `${c.name} (Compartida)` : c.name;
         selCard.appendChild(opt);
       });
 
-      // Categorías (desde trans cargadas)
+      // Categorías (desde trans)
       selCat.innerHTML = `<option value="all">Categoría: Todas</option>`;
       const cats = [...new Set(trans.map(t => (t.category || '').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"es"));
       cats.forEach(c=>{
@@ -550,12 +547,13 @@
       renderHistory();
     };
 
-    // Seed preset cards
+    // Seed preset cards (NO sobreescribe tus datos)
     async function seedPresetCards(){
       try{
         setLoaderMsg("Verificando tarjetas precargadas...");
         const existingSnap = await getDocs(query(collection(db,"cards")));
         const existingByOwner={ yair:new Set(), haru:new Set(), both:new Set() };
+
         existingSnap.forEach(d=>{
           const data=d.data();
           const name=(data.name||"").toLowerCase().trim();
@@ -569,7 +567,9 @@
           const bucket=existingByOwner[c.owner]||new Set();
           if(!bucket.has(nm)){
             await addDoc(collection(db,"cards"), {
-              name:c.name, owner:c.owner, cutDay:1, payDay:1, limit:0, balance:0, payGoal:0
+              name:c.name,
+              owner:c.owner,
+              cutDay:1, payDay:1, limit:0, balance:0, payGoal:0
             });
             bucket.add(nm);
           }
@@ -596,9 +596,12 @@
       unsubCards = onSnapshot(qCards, (snap)=>{
         const tempAll=[];
         snap.forEach(d=>{ const c=d.data(); c.id=d.id; tempAll.push(c); });
+
+        // Solo tarjetas visibles para el OWNER (y compartidas)
         const temp=tempAll.filter(c=>c.owner===OWNER || c.owner==="both");
 
-        cards=[]; let tDebt=0, tLimit=0;
+        cards=[];
+        let tDebt=0, tLimit=0;
 
         const listHome=document.getElementById('home-card-list');
         const listManage=document.getElementById('manage-card-list');
@@ -610,8 +613,7 @@
         select.innerHTML='';
         const optG_Y=document.createElement('optgroup'); optG_Y.label="Tarjetas de Yair";
         const optG_H=document.createElement('optgroup'); optG_H.label="Tarjetas de Haru";
-        const optG_B=document.createElement('optgroup'); optoptG_B?.label
-        const optG_B2=document.createElement('optgroup'); optG_B2.label="Compartidas";
+        const optG_B=document.createElement('optgroup'); optG_B.label="Compartidas";
 
         temp.sort((a,b)=>(a.name||"").localeCompare(b.name||"","es"));
 
@@ -651,15 +653,17 @@
           `;
 
           const opt=document.createElement("option");
-          opt.value=c.id; opt.textContent=c.name;
+          opt.value=c.id;
+          opt.textContent=c.name;
+
           if(c.owner==="yair") optG_Y.appendChild(opt);
           else if(c.owner==="haru") optG_H.appendChild(opt);
-          else optG_B2.appendChild(opt);
+          else optG_B.appendChild(opt);
         });
 
         if(optG_Y.children.length) select.appendChild(optG_Y);
         if(optG_H.children.length) select.appendChild(optG_H);
-        if(optG_B2.children.length) select.appendChild(optG_B2);
+        if(optG_B.children.length) select.appendChild(optG_B);
 
         if(prevSel) select.value=prevSel;
         if(!select.value && select.options.length) select.selectedIndex=0;
@@ -679,7 +683,7 @@
         updateSmartPick();
         updatePaymentMonitor();
 
-        // ✅ refresca filtro de tarjetas en Historial
+        // ✅ refresca filtro de tarjetas en Historial (por cardId)
         fillHistFilters();
 
         stopLoader();
@@ -696,9 +700,7 @@
         trans=[];
         snap.forEach(d=>{ const t=d.data(); t.id=d.id; trans.push(t); });
 
-        // ✅ refresca filtro de categorías (y mantiene tarjetas)
         fillHistFilters();
-
         renderHistory();
         updateChart();
         updatePaymentMonitor();
@@ -767,13 +769,13 @@
       }else area.classList.add('d-none');
     }
 
-    // Historial (✅ con Mes + Tarjeta + Categoría + Buscar)
+    // Historial (Mes + Tarjeta + Categoría + Buscar)
     window.renderHistory = () => {
       const list = document.getElementById('hist-list');
       const term = (document.getElementById('search-input')?.value || "").toLowerCase();
 
       const dateFilter = document.getElementById('hist-month-filter')?.value || "all";
-      const cardFilter = document.getElementById('hist-card-filter')?.value || "all";
+      const cardFilter = document.getElementById('hist-card-filter')?.value || "all"; // cardId
       const catFilter  = document.getElementById('hist-cat-filter')?.value || "all";
 
       if(!list) return;
@@ -793,7 +795,7 @@
         }
 
         let matchesCard = true;
-        if (cardFilter !== 'all') matchesCard = (t.cardName === cardFilter);
+        if (cardFilter !== 'all') matchesCard = (t.cardId === cardFilter);
 
         let matchesCat = true;
         if (catFilter !== 'all') matchesCat = (t.category === catFilter);
@@ -803,6 +805,7 @@
 
       if (filtered.length === 0) {
         list.innerHTML = '<div class="text-center text-muted mt-3">No se encontraron resultados</div>';
+        return;
       }
 
       filtered.forEach(t => {
@@ -870,9 +873,7 @@
       opts.forEach(o=> s.innerHTML += `<option>${o}</option>`);
     };
 
-    // =========================
-    // ✅ SYNC HELPERS (SHEETS)
-    // =========================
+    // Helpers
     function txToPlain(t){
       return {
         id: t.id,
@@ -899,9 +900,7 @@
       };
     }
 
-    // =========================
     // Tarjetas (editar)
-    // =========================
     window.openCardModal=()=> alert("Tip: para editar, toca una tarjeta en la lista y se abrirá el editor 😉");
 
     window.editCard=(id)=>{
@@ -934,7 +933,6 @@
       await updateDoc(doc(db,"cards",id), payload);
       cardModal.hide();
 
-      // ✅ Sync a Sheets
       const updated = cards.find(x=>x.id===id);
       await sheetsSend({
         entity: "card",
@@ -962,9 +960,7 @@
       }
     };
 
-    // =========================
-    // Movimientos (crear/editar) + Sync Sheets
-    // =========================
+    // Movimientos
     document.getElementById('form-trans').addEventListener('submit', async(e)=>{
       e.preventDefault();
       const btnSave=document.getElementById('btn-save-trans');
@@ -1009,7 +1005,6 @@
           batch.update(cardRef, { balance:newBal });
           await batch.commit();
 
-          // ✅ Sync Sheets (update)
           await sheetsSend({
             entity: "transaction",
             action: "update",
@@ -1021,7 +1016,6 @@
           const createdRef = await addDoc(collection(db,"expenses"), payload);
           await updateDoc(cardRef, { balance:newBal });
 
-          // ✅ Sync Sheets (create)
           await sheetsSend({
             entity: "transaction",
             action: "create",
@@ -1073,7 +1067,6 @@
       batch.delete(doc(db,"expenses",id));
       await batch.commit();
 
-      // ✅ Sync Sheets (delete)
       await sheetsSend({
         entity: "transaction",
         action: "delete",
