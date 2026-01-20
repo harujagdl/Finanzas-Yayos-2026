@@ -347,8 +347,11 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
     import {
       getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc,
-      query, orderBy, writeBatch, Timestamp, enableIndexedDbPersistence, where, getDocs
+      query, orderBy, writeBatch, Timestamp, enableIndexedDbPersistence, where, getDocs, setDoc
     } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
+
+    // ✅ Push (FCM)
+    import { getMessaging, getToken, onMessage } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-messaging.js";
 
     // =========================
     // ✅ CONFIG SHEETS
@@ -416,6 +419,78 @@
     try { app = initializeApp(firebaseConfig); db = getFirestore(app); }
     catch(e){ showLoaderError("Error inicializando Firebase: "+(e.message||e)); }
     enableIndexedDbPersistence(db).catch((err)=>console.log("Persistence status:", err.code));
+
+    // =========================
+    // 🔔 PUSH (FCM)
+    // =========================
+    const VAPID_PUBLIC_KEY = "BLLctcR6q6nf2ISMPYG_-MBPj-erDudltee2BVEBXOjTzj-ac8QpToDcK9mVcpCpzu6TYaa5Bu03ddbDJspVdi0";
+    let messaging = null;
+    try { messaging = getMessaging(app); } catch(e){ console.log("Messaging init error:", e); }
+
+    // Guardar token por owner (sin duplicados)
+    async function saveFcmToken(token, owner){
+      // Usamos token como id del documento (idempotente)
+      await setDoc(doc(db, "push_tokens", token), {
+        token,
+        owner,
+        userAgent: navigator.userAgent,
+        updatedAt: Timestamp.now()
+      }, { merge: true });
+    }
+
+    window.enablePush = async function enablePush(){
+      try{
+        if (!("serviceWorker" in navigator)) {
+          alert("Este dispositivo no soporta Service Worker.");
+          return;
+        }
+
+        const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+        const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+        if(isIOS && !isStandalone){
+          alert("En iPhone debes usarla INSTALADA como PWA:\nSafari → Compartir → Agregar a pantalla de inicio.\n\nLuego vuelve a picar la campana 🔔.");
+          return;
+        }
+
+        const perm = await Notification.requestPermission();
+        if (perm !== "granted") {
+          alert("Sin permiso no puedo enviarte recordatorios.");
+          return;
+        }
+
+        const reg = await navigator.serviceWorker.ready;
+
+        if(!messaging){
+          alert("FCM no pudo inicializarse. Revisa tu sw.js (compat) y que esté en raíz.");
+          return;
+        }
+
+        // ✅ Token FCM (esto es lo que necesitas para push automáticos reales)
+        const token = await getToken(messaging, {
+          vapidKey: VAPID_PUBLIC_KEY,
+          serviceWorkerRegistration: reg
+        });
+
+        if(!token){
+          alert("No se pudo obtener el token push. Tip: abre en HTTPS/GitHub Pages y recarga.");
+          return;
+        }
+
+        await saveFcmToken(token, OWNER);
+
+        alert("✅ Listo. Notificaciones activadas.\n\nSiguiente paso: configurar Cloud Function programada para avisos automáticos por fecha de pago.");
+      }catch(err){
+        console.error(err);
+        alert("No se pudo activar push:\n" + (err?.message || err));
+      }
+    }
+
+    // (Opcional) Si llega un push con la app abierta (foreground)
+    if(messaging){
+      onMessage(messaging, (payload) => {
+        console.log("🔔 Push foreground:", payload);
+      });
+    }
 
     // Presets
     const PRESET_CARDS = [
@@ -690,8 +765,6 @@
         if(privacy) togglePrivacy();
         updateSmartPick();
         updatePaymentMonitor();
-
-        // ✅ refresca filtro de tarjetas en Historial (por cardId)
         fillHistFilters();
 
         stopLoader();
@@ -777,13 +850,13 @@
       }else area.classList.add('d-none');
     }
 
-    // Historial (Mes + Tarjeta + Categoría + Buscar)
+    // Historial
     window.renderHistory = () => {
       const list = document.getElementById('hist-list');
       const term = (document.getElementById('search-input')?.value || "").toLowerCase();
 
       const dateFilter = document.getElementById('hist-month-filter')?.value || "all";
-      const cardFilter = document.getElementById('hist-card-filter')?.value || "all"; // cardId
+      const cardFilter = document.getElementById('hist-card-filter')?.value || "all";
       const catFilter  = document.getElementById('hist-cat-filter')?.value || "all";
 
       if(!list) return;
@@ -1107,66 +1180,6 @@
       a.download=`backup_finanzas_${OWNER}.csv`;
       a.click();
     };
-
-    // =========================
-    // ✅ PUSH: Suscripción + guardar en Firestore
-    // =========================
-    window.enablePush = async function enablePush() {
-      try{
-        if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
-          alert("Este dispositivo/navegador no soporta notificaciones push.\n\nEn iPhone: instala la PWA (Compartir → Agregar a pantalla de inicio) y usa iOS 16.4+.");
-          return;
-        }
-
-        // iOS: muchas veces solo jala bien en modo instalado
-        // (no bloqueamos, solo avisamos si no está instalada)
-        const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
-        const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
-        if(isIOS && !isStandalone){
-          alert("En iPhone necesitas usarla INSTALADA como PWA:\nCompartir → Agregar a pantalla de inicio.\n\nLuego vuelve a picar la campanita 🔔.");
-          return;
-        }
-
-        const perm = await Notification.requestPermission();
-        if (perm !== "granted") {
-          alert("Sin permiso no se pueden enviar recordatorios.");
-          return;
-        }
-
-        const reg = await navigator.serviceWorker.ready;
-
-        // 🔑 VAPID PUBLIC KEY (la del “Par actual” en tu screenshot)
-        const VAPID_PUBLIC_KEY =
-          "BLLctcR6q6nf2ISMPYG_-MBPj-erDudltee2BVEBXOjTzj-ac8QpToDcK9mVcpCpzu6TYaa5Bu03ddbDJspVdi0";
-
-        const sub = await reg.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
-        });
-
-        // Guardar suscripción en Firestore (por OWNER)
-        await addDoc(collection(db, "push_subscriptions"), {
-          owner: OWNER,
-          subscription: JSON.parse(JSON.stringify(sub)),
-          createdAt: Timestamp.now(),
-          userAgent: navigator.userAgent,
-        });
-
-        alert("✅ Listo. Ya quedó activado.\n\nSiguiente paso: configurar el backend que DISPARA los avisos según fechas de pago.");
-      }catch(err){
-        console.error(err);
-        alert("No se pudo activar push:\n" + (err?.message || err));
-      }
-    }
-
-    function urlBase64ToUint8Array(base64String) {
-      const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
-      const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
-      const rawData = atob(base64);
-      const outputArray = new Uint8Array(rawData.length);
-      for (let i = 0; i < rawData.length; ++i) outputArray[i] = rawData.charCodeAt(i);
-      return outputArray;
-    }
 
     // Init
     uiUpdateCats();
