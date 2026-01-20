@@ -99,6 +99,14 @@
           <option value="haru">Haru</option>
         </select>
 
+        <!-- 🔔 Push -->
+        <button class="btn btn-sm btn-outline-secondary rounded-circle"
+          onclick="enablePush()"
+          title="Activar recordatorios"
+          style="width:40px;height:40px;border-color:var(--border-color);color:var(--text-main);">
+          <i class="fas fa-bell"></i>
+        </button>
+
         <button class="btn btn-sm btn-outline-secondary rounded-circle"
           onclick="toggleTheme()"
           style="width:40px;height:40px;border-color:var(--border-color);color:var(--text-main);">
@@ -1099,6 +1107,66 @@
       a.download=`backup_finanzas_${OWNER}.csv`;
       a.click();
     };
+
+    // =========================
+    // ✅ PUSH: Suscripción + guardar en Firestore
+    // =========================
+    window.enablePush = async function enablePush() {
+      try{
+        if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+          alert("Este dispositivo/navegador no soporta notificaciones push.\n\nEn iPhone: instala la PWA (Compartir → Agregar a pantalla de inicio) y usa iOS 16.4+.");
+          return;
+        }
+
+        // iOS: muchas veces solo jala bien en modo instalado
+        // (no bloqueamos, solo avisamos si no está instalada)
+        const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+        const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+        if(isIOS && !isStandalone){
+          alert("En iPhone necesitas usarla INSTALADA como PWA:\nCompartir → Agregar a pantalla de inicio.\n\nLuego vuelve a picar la campanita 🔔.");
+          return;
+        }
+
+        const perm = await Notification.requestPermission();
+        if (perm !== "granted") {
+          alert("Sin permiso no se pueden enviar recordatorios.");
+          return;
+        }
+
+        const reg = await navigator.serviceWorker.ready;
+
+        // 🔑 VAPID PUBLIC KEY (la del “Par actual” en tu screenshot)
+        const VAPID_PUBLIC_KEY =
+          "BLLctcR6q6nf2ISMPYG_-MBPj-erDudltee2BVEBXOjTzj-ac8QpToDcK9mVcpCpzu6TYaa5Bu03ddbDJspVdi0";
+
+        const sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+        });
+
+        // Guardar suscripción en Firestore (por OWNER)
+        await addDoc(collection(db, "push_subscriptions"), {
+          owner: OWNER,
+          subscription: JSON.parse(JSON.stringify(sub)),
+          createdAt: Timestamp.now(),
+          userAgent: navigator.userAgent,
+        });
+
+        alert("✅ Listo. Ya quedó activado.\n\nSiguiente paso: configurar el backend que DISPARA los avisos según fechas de pago.");
+      }catch(err){
+        console.error(err);
+        alert("No se pudo activar push:\n" + (err?.message || err));
+      }
+    }
+
+    function urlBase64ToUint8Array(base64String) {
+      const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+      const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+      const rawData = atob(base64);
+      const outputArray = new Uint8Array(rawData.length);
+      for (let i = 0; i < rawData.length; ++i) outputArray[i] = rawData.charCodeAt(i);
+      return outputArray;
+    }
 
     // Init
     uiUpdateCats();
