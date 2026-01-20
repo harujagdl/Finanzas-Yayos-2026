@@ -1,90 +1,84 @@
-// sw.js (Finanzas Yayos) ✅ Copiar y pegar
-const CACHE_NAME = "fyayos-v4";
-
-// Usa rutas ABSOLUTAS (más estable en GitHub Pages)
+const CACHE_NAME = "fyayos-v5";
 const ASSETS = [
   "/",
   "/index.html",
   "/manifest.json",
+  "/icons/icon-72.png",
+  "/icons/icon-96.png",
+  "/icons/icon-128.png",
+  "/icons/icon-144.png",
+  "/icons/icon-152.png",
   "/icons/icon-192.png",
-  "/icons/icon-512.png",
+  "/icons/icon-384.png",
+  "/icons/icon-512.png"
 ];
 
 // Install
 self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS))
-  );
+  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS)));
   self.skipWaiting();
 });
 
-// Activate (limpia caches viejos)
+// Activate
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.map((k) => (k !== CACHE_NAME ? caches.delete(k) : null)))
+    caches.keys().then(keys =>
+      Promise.all(keys.map(k => (k !== CACHE_NAME ? caches.delete(k) : null)))
     )
   );
   self.clients.claim();
 });
 
-// Fetch (cache-first para lo estático)
+// Fetch
 self.addEventListener("fetch", (event) => {
-  // Solo cachea GET
-  if (event.request.method !== "GET") return;
-
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      return (
-        cached ||
-        fetch(event.request)
-          .then((resp) => {
-            // Guarda en cache solo si es respuesta válida
-            const copy = resp.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
-            return resp;
-          })
-          .catch(() => cached) // si falla fetch, regresa cache si existe
-      );
-    })
+    caches.match(event.request).then((cached) => cached || fetch(event.request))
   );
 });
 
-// Push notifications
-self.addEventListener("push", (event) => {
-  let data = {};
-  try {
-    data = event.data?.json() || {};
-  } catch (e) {
-    data = { title: "Recordatorio", body: event.data?.text() || "" };
-  }
+// =========================
+// 🔔 Firebase Cloud Messaging (background)
+// =========================
+// Usamos compat dentro del SW (es lo más estable en SW)
+importScripts("https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js");
+importScripts("https://www.gstatic.com/firebasejs/9.22.0/firebase-messaging-compat.js");
 
-  const title = data.title || "Recordatorio de pago";
-  const options = {
-    body: data.body || "",
+firebase.initializeApp({
+  apiKey: "AIzaSyDTDnao-bkiC4yxmV-mGryBmmvlWOvMIpg",
+  authDomain: "finanzas-yayos-1738b.firebaseapp.com",
+  projectId: "finanzas-yayos-1738b",
+  storageBucket: "finanzas-yayos-1738b.firebasestorage.app",
+  messagingSenderId: "821972200592",
+  appId: "1:821972200592:web:de809935c39a319ff4bc15"
+});
+
+const messaging = firebase.messaging();
+
+// Cuando llega push con app cerrada / background
+messaging.onBackgroundMessage((payload) => {
+  const title = payload?.notification?.title || "Recordatorio de pago";
+  const body  = payload?.notification?.body  || "";
+  const url   = payload?.data?.url || "/index.html";
+
+  self.registration.showNotification(title, {
+    body,
     icon: "/icons/icon-192.png",
     badge: "/icons/icon-192.png",
-    // url a abrir al tocar la notificación
-    data: data.url || "/",
-  };
-
-  event.waitUntil(self.registration.showNotification(title, options));
+    data: { url }
+  });
 });
 
 // Click en notificación
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const url = event.notification.data || "/";
+  const url = event.notification?.data?.url || "/index.html";
 
   event.waitUntil(
-    (async () => {
-      // Si ya hay una pestaña abierta, enfócala
-      const allClients = await clients.matchAll({ type: "window", includeUncontrolled: true });
-      for (const client of allClients) {
+    clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
         if (client.url.includes(url) && "focus" in client) return client.focus();
       }
-      // Si no, abre nueva
       if (clients.openWindow) return clients.openWindow(url);
-    })()
+    })
   );
 });
