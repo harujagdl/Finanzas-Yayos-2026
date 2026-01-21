@@ -137,6 +137,13 @@
     .trend-good{color:var(--success);}
     .trend-warn{color:var(--warning);}
     .trend-neutral{color:var(--text-muted);}
+    .insight-item{
+      display:flex; gap:12px; align-items:flex-start;
+      background:var(--bg-card); border:1px solid var(--border-color);
+      border-radius:12px; padding:12px 14px; margin-bottom:10px;
+    }
+    .insight-icon{font-size:1.1rem; line-height:1; margin-top:2px;}
+    .insight-title{font-weight:700;}
   </style>
 </head>
 
@@ -209,6 +216,13 @@
       </div>
       <div id="alerts-list"><small class="text-muted">Sin alertas por ahora.</small></div>
     </div>
+
+    <section id="insights-section" class="card-box d-none">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h6 class="fw-bold m-0"><i class="fas fa-lightbulb me-2 text-warning"></i>Insights</h6>
+      </div>
+      <div id="insights-list"><small class="text-muted">Cargando insights...</small></div>
+    </section>
 
     <div class="card-box mb-3">
       <div class="d-flex justify-content-between align-items-center mb-3">
@@ -903,6 +917,178 @@
       renderDashboardSummary(metrics);
     }
 
+    function computeInsights(owner, periodData = {}) {
+      const monthCurrent = periodData?.month?.current || [];
+      const monthPrevious = periodData?.month?.previous || [];
+      if (!monthCurrent.length) return [];
+
+      const insights = [];
+      const categoriesCurrent = groupByCategory(monthCurrent);
+      const categoriesPrevious = groupByCategory(monthPrevious);
+      const weekdayTotals = groupByWeekday(monthCurrent);
+      const totalMonth = sumExpenses(monthCurrent);
+      const countMonth = monthCurrent.length;
+
+      const wrapAmount = (value) => `<span class="sensitive-data">${formatCurrency(value)}</span>`;
+
+      if (monthPrevious.length && Object.keys(categoriesCurrent).length) {
+        const categoryKeys = new Set([
+          ...Object.keys(categoriesCurrent),
+          ...Object.keys(categoriesPrevious)
+        ]);
+        let maxIncrease = null;
+        let maxDecrease = null;
+
+        categoryKeys.forEach((key) => {
+          const currentVal = safeNumber(categoriesCurrent[key]);
+          const prevVal = safeNumber(categoriesPrevious[key]);
+          const diff = currentVal - prevVal;
+          if (diff > 0 && (!maxIncrease || diff > maxIncrease.delta)) {
+            maxIncrease = { category: key || "Sin categoría", delta: diff };
+          }
+          if (diff < 0 && (!maxDecrease || diff < maxDecrease.delta)) {
+            maxDecrease = { category: key || "Sin categoría", delta: diff };
+          }
+        });
+
+        if (maxIncrease || maxDecrease) {
+          let message = "";
+          if (maxIncrease && maxDecrease) {
+            message = `Este mes gastaron más en <strong>${maxIncrease.category}</strong> (+${wrapAmount(maxIncrease.delta)}) y menos en <strong>${maxDecrease.category}</strong> (${wrapAmount(maxDecrease.delta)}).`;
+          } else if (maxIncrease) {
+            message = `Este mes gastaron más en <strong>${maxIncrease.category}</strong> (+${wrapAmount(maxIncrease.delta)}).`;
+          } else if (maxDecrease) {
+            message = `Este mes gastaron menos en <strong>${maxDecrease.category}</strong> (${wrapAmount(maxDecrease.delta)}).`;
+          }
+          if (message) {
+            insights.push({
+              id: "category-delta",
+              title: "Cambio por categoría",
+              message,
+              priority: 1,
+              icon: "📈"
+            });
+          }
+        }
+      } else {
+        insights.push({
+          id: "category-neutral",
+          title: "Cambio por categoría",
+          message: "Aún falta historial para comparar categorías.",
+          priority: 4,
+          icon: "📌"
+        });
+      }
+
+      const weekdayEntries = Object.entries(weekdayTotals);
+      if (weekdayEntries.length) {
+        weekdayEntries.sort((a, b) => b[1] - a[1]);
+        const topValue = weekdayEntries[0][1];
+        if (topValue > 0) {
+          const topDays = weekdayEntries
+            .filter(([, value]) => value === topValue)
+            .slice(0, 2)
+            .map(([day]) => day);
+          const dayText = topDays.join(" y ");
+          insights.push({
+            id: "weekday-top",
+            title: "Día más gastón",
+            message: `El <strong>${dayText}</strong> es el día donde más gastan.`,
+            priority: 2,
+            icon: "🗓️"
+          });
+        }
+      }
+
+      if (countMonth > 0) {
+        const avgTicket = totalMonth / countMonth;
+        insights.push({
+          id: "avg-ticket",
+          title: "Ticket promedio",
+          message: `Tu gasto promedio por compra fue ${wrapAmount(avgTicket)} este mes.`,
+          priority: 3,
+          icon: "🧾"
+        });
+      }
+
+      const topExpenses = [...monthCurrent]
+        .filter((t) => safeNumber(t?.amount) > 0)
+        .sort((a, b) => safeNumber(b.amount) - safeNumber(a.amount))
+        .slice(0, 3);
+      if (topExpenses.length) {
+        const labels = topExpenses.map((t) => {
+          const label = (t.concept || t.cardName || t.category || "(sin concepto)").trim();
+          return `${label} ${wrapAmount(t.amount)}`;
+        });
+        insights.push({
+          id: "top-expenses",
+          title: "Top gastos del mes",
+          message: `Top gastos: ${labels.join(", ")}.`,
+          priority: 5,
+          icon: "🏷️"
+        });
+      }
+
+      const categoryCounts = monthCurrent.reduce((acc, item) => {
+        const key = item?.category || "Sin categoría";
+        acc[key] = (acc[key] || 0) + 1;
+        return acc;
+      }, {});
+      const categoryEntries = Object.entries(categoryCounts);
+      if (categoryEntries.length > 1) {
+        categoryEntries.sort((a, b) => b[1] - a[1]);
+        const topCategory = categoryEntries[0];
+        if (topCategory && topCategory[1] > 1) {
+          insights.push({
+            id: "freq-category",
+            title: "Categoría más frecuente",
+            message: `La categoría más repetida fue <strong>${topCategory[0]}</strong>.`,
+            priority: 6,
+            icon: "📊"
+          });
+        }
+      }
+
+      return insights
+        .sort((a, b) => a.priority - b.priority)
+        .slice(0, 5);
+    }
+
+    function renderInsights(insights = []) {
+      const section = document.getElementById("insights-section");
+      const list = document.getElementById("insights-list");
+      if (!section || !list) return;
+
+      if (!insights.length) {
+        section.classList.remove("d-none");
+        list.innerHTML = '<small class="text-muted">Aún no hay suficientes movimientos para generar insights de este mes.</small>';
+        return;
+      }
+
+      list.innerHTML = insights.map((item) => `
+        <div class="insight-item">
+          <div class="insight-icon">${item.icon || "💡"}</div>
+          <div class="insight-content">
+            <div class="insight-title">${item.title}</div>
+            <div class="small text-muted">${item.message}</div>
+          </div>
+        </div>
+      `).join("");
+      section.classList.remove("d-none");
+
+      if (privacy) togglePrivacy();
+    }
+
+    async function updateInsights({ force = false } = {}) {
+      const owner = getActiveOwner();
+      const useLoader = typeof window.loadPeriodData === "function";
+      const periodData = useLoader
+        ? await window.loadPeriodData(owner, { force })
+        : buildPeriodDataFallback(trans);
+      const insights = computeInsights(owner, periodData);
+      renderInsights(insights);
+    }
+
     // FASE 1 - Helpers base listos
 
     // ===== FASE 2: RANGOS + CACHE (sesión) =====
@@ -1210,6 +1396,7 @@
       subscribeTrans();
       resetForm();
       updateDashboardSummary({ force: true });
+      updateInsights({ force: true });
     }
 
     // Cards subscribe (front filter)
@@ -1335,6 +1522,7 @@
         renderMsi();
         updateDashboardSummary({ force: true });
         updateAlerts({ force: true });
+        updateInsights({ force: true });
 
         if(privacy) togglePrivacy();
       }, (err)=>{
@@ -2140,11 +2328,12 @@
           });
         }
 
-        invalidateCacheForOwner(OWNER);
-        updateDashboardSummary({ force: true });
-        updateAlerts({ force: true });
-        resetForm();
-        nav('view-home');
+      invalidateCacheForOwner(OWNER);
+      updateDashboardSummary({ force: true });
+      updateAlerts({ force: true });
+      updateInsights({ force: true });
+      resetForm();
+      nav('view-home');
       }catch(e){
         alert("Error: "+e.message);
       }finally{
@@ -2214,6 +2403,7 @@
       invalidateCacheForOwner(OWNER);
       updateDashboardSummary({ force: true });
       updateAlerts({ force: true });
+      updateInsights({ force: true });
       resetForm();
       nav('view-hist');
     };
