@@ -119,6 +119,22 @@
     .alert-icon{
       font-size:1.1rem; line-height:1; margin-top:2px;
     }
+    .dashboard-grid{
+      display:grid; gap:12px; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));
+    }
+    .dash-card{
+      background:var(--bg-body); border:1px solid var(--border-color);
+      border-radius:14px; padding:14px;
+    }
+    .dash-title{
+      font-size:.75rem; text-transform:uppercase; letter-spacing:.8px;
+      color:var(--text-muted); font-weight:700;
+    }
+    .dash-total{font-size:1.5rem; font-weight:800; letter-spacing:-0.5px;}
+    .dash-compare{font-size:.85rem; display:flex; gap:6px; align-items:center;}
+    .trend-good{color:var(--success);}
+    .trend-warn{color:var(--warning);}
+    .trend-neutral{color:var(--text-muted);}
   </style>
 </head>
 
@@ -176,6 +192,13 @@
         <p class="mb-0 small" id="smart-msg" style="opacity:.9;">...</p>
       </div>
     </div>
+
+    <section id="dashboard-summary" class="card-box">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h6 class="fw-bold m-0"><i class="fas fa-gauge-high me-2"></i>Resumen</h6>
+      </div>
+      <div id="dashboard-summary-body" class="text-muted small">Cargando resumen...</div>
+    </section>
 
     <div id="alerts-section" class="card-box d-none">
       <div class="d-flex justify-content-between align-items-center mb-3">
@@ -606,6 +629,7 @@
       loaderEl.style.display="flex";
       await seedPresetCards();
       resubscribeAll();
+      updateDashboardSummary({ force: true });
     });
 
     // State
@@ -724,6 +748,158 @@
       });
       return base;
     };
+
+    const computePeriodTotals = (periodData = {}) => {
+      const monthCurrentTotal = sumExpenses(periodData?.month?.current || []);
+      const monthPreviousTotal = sumExpenses(periodData?.month?.previous || []);
+      const yearCurrentTotal = sumExpenses(periodData?.year?.current || []);
+      const yearPreviousTotal = sumExpenses(periodData?.year?.previous || []);
+
+      return {
+        month: {
+          currentTotal: monthCurrentTotal,
+          previousTotal: monthPreviousTotal,
+          delta: buildDelta(monthCurrentTotal, monthPreviousTotal)
+        },
+        year: {
+          currentTotal: yearCurrentTotal,
+          previousTotal: yearPreviousTotal,
+          delta: buildDelta(yearCurrentTotal, yearPreviousTotal)
+        }
+      };
+    };
+
+    const buildDelta = (current, previous) => {
+      const curr = safeNumber(current);
+      const prev = safeNumber(previous);
+      const delta = curr - prev;
+      const arrow = delta > 0 ? "up" : delta < 0 ? "down" : "flat";
+      const pct = pctChange(curr, prev);
+
+      if (curr === 0 && prev === 0) {
+        return {
+          pct,
+          delta,
+          arrow: "flat",
+          labelPct: "Sin historial",
+          labelDelta: "",
+          showDelta: false
+        };
+      }
+
+      if (pct.kind === "new") {
+        return {
+          pct,
+          delta,
+          arrow,
+          labelPct: "nuevo",
+          labelDelta: "",
+          showDelta: false
+        };
+      }
+
+      const pctValue = safeNumber(pct.value);
+      const labelPct = `${pctValue > 0 ? "+" : ""}${pctValue}%`;
+      const labelDelta = `${delta > 0 ? "+" : delta < 0 ? "-" : ""}${formatCurrency(Math.abs(delta))}`;
+
+      return {
+        pct,
+        delta,
+        arrow,
+        labelPct,
+        labelDelta,
+        showDelta: true
+      };
+    };
+
+    const getExpenseTrendStyle = (delta) => {
+      if (delta > 0) return "trend-warn";
+      if (delta < 0) return "trend-good";
+      return "trend-neutral";
+    };
+
+    const buildPeriodDataFallback = (expenses = []) => {
+      const now = new Date();
+      const prevMonth = previousMonth(now);
+      const prevYear = new Date(now.getFullYear() - 1, 0, 1);
+      const onlyExpenses = (expenses || [])
+        .filter((t) => t?.type === "expense")
+        .map((t) => ({ ...t, date: toDate(t?.date) }));
+
+      const withinRange = (date, start, end) => date >= start && date <= end;
+      return {
+        month: {
+          current: onlyExpenses.filter((t) =>
+            withinRange(t.date, startOfMonth(now), endOfMonth(now))
+          ),
+          previous: onlyExpenses.filter((t) =>
+            withinRange(t.date, startOfMonth(prevMonth), endOfMonth(prevMonth))
+          )
+        },
+        year: {
+          current: onlyExpenses.filter((t) =>
+            withinRange(t.date, startOfYear(now), endOfYear(now))
+          ),
+          previous: onlyExpenses.filter((t) =>
+            withinRange(t.date, startOfYear(prevYear), endOfYear(prevYear))
+          )
+        }
+      };
+    };
+
+    function renderDashboardSummary(metrics) {
+      const body = document.getElementById("dashboard-summary-body");
+      if (!body) return;
+
+      if (!metrics) {
+        body.innerHTML = '<span class="text-muted small">Cargando resumen...</span>';
+        return;
+      }
+
+      const arrowMap = { up: "🔼", down: "🔽", flat: "➖" };
+      const monthTrend = getExpenseTrendStyle(metrics.month.delta.delta);
+      const yearTrend = getExpenseTrendStyle(metrics.year.delta.delta);
+
+      const buildCompareLine = (deltaInfo, label) => {
+        if (deltaInfo.labelPct === "Sin historial") {
+          return `${arrowMap.flat} Sin historial para comparar`;
+        }
+        const base = `${arrowMap[deltaInfo.arrow]} ${deltaInfo.labelPct} vs ${label}`;
+        return deltaInfo.showDelta ? `${base} (${deltaInfo.labelDelta})` : base;
+      };
+
+      body.innerHTML = `
+        <div class="dashboard-grid">
+          <div class="dash-card">
+            <div class="dash-title">Este mes</div>
+            <div class="dash-total sensitive-data">${formatCurrency(metrics.month.currentTotal)}</div>
+            <div class="dash-compare ${monthTrend}">
+              ${buildCompareLine(metrics.month.delta, "mes pasado")}
+            </div>
+          </div>
+          <div class="dash-card">
+            <div class="dash-title">Este año</div>
+            <div class="dash-total sensitive-data">${formatCurrency(metrics.year.currentTotal)}</div>
+            <div class="dash-compare ${yearTrend}">
+              ${buildCompareLine(metrics.year.delta, "año pasado")}
+            </div>
+          </div>
+        </div>
+      `;
+
+      if (privacy) togglePrivacy();
+    }
+
+    async function updateDashboardSummary({ force = false } = {}) {
+      renderDashboardSummary(null);
+      const owner = getActiveOwner();
+      const useLoader = typeof window.loadPeriodData === "function";
+      const periodData = useLoader
+        ? await window.loadPeriodData(owner, { force })
+        : buildPeriodDataFallback(trans);
+      const metrics = computePeriodTotals(periodData);
+      renderDashboardSummary(metrics);
+    }
 
     // FASE 1 - Helpers base listos
 
@@ -1031,6 +1207,7 @@
       subscribeCards();
       subscribeTrans();
       resetForm();
+      updateDashboardSummary({ force: true });
     }
 
     // Cards subscribe (front filter)
@@ -1154,6 +1331,7 @@
         updateChart();
         updatePaymentMonitor();
         renderMsi();
+        updateDashboardSummary({ force: true });
 
         if(privacy) togglePrivacy();
       }, (err)=>{
@@ -1805,6 +1983,7 @@
         }
 
         invalidateCacheForOwner(OWNER);
+        updateDashboardSummary({ force: true });
         resetForm();
         nav('view-home');
       }catch(e){
@@ -1874,6 +2053,7 @@
       });
 
       invalidateCacheForOwner(OWNER);
+      updateDashboardSummary({ force: true });
       resetForm();
       nav('view-hist');
     };
