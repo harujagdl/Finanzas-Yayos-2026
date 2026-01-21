@@ -111,6 +111,14 @@
       background:var(--bg-body);
       font-weight:800; font-size:.8rem;
     }
+    .alert-item{
+      display:flex; gap:12px; align-items:flex-start;
+      background:var(--bg-card); border:1px solid var(--border-color);
+      border-radius:12px; padding:12px 14px; margin-bottom:10px;
+    }
+    .alert-icon{
+      font-size:1.1rem; line-height:1; margin-top:2px;
+    }
   </style>
 </head>
 
@@ -167,6 +175,14 @@
         <h2 class="fw-black mb-1" id="smart-name">...</h2>
         <p class="mb-0 small" id="smart-msg" style="opacity:.9;">...</p>
       </div>
+    </div>
+
+    <div id="alerts-section" class="card-box d-none">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h6 class="fw-bold m-0"><i class="fas fa-triangle-exclamation me-2 text-danger"></i>Alertas</h6>
+        <span class="badge-status bg-danger-light">0-2 días</span>
+      </div>
+      <div id="alerts-list"><small class="text-muted">Sin alertas por ahora.</small></div>
     </div>
 
     <div class="card-box mb-3">
@@ -793,10 +809,14 @@
           if(diff<=5) status={text:`VENCE EN ${diff} DÍAS`, bg:'bg-danger-light'};
           else if(today>=cut && today<=cut+5) status={text:'MEJOR OPCIÓN', bg:'bg-success-light'};
 
+          const hasAlert = hasUpcomingAlert(c);
           listHome.innerHTML += `
             <div class="list-item">
               <div>
-                <div class="fw-bold mb-1">${c.name}</div>
+                <div class="fw-bold mb-1">
+                  ${c.name}
+                  ${hasAlert ? '<span class="badge-status bg-danger-light ms-2">ALERTA</span>' : ''}
+                </div>
                 <span class="badge-status ${status.bg}">${status.text}</span>
               </div>
               <div class="text-end">
@@ -808,7 +828,10 @@
 
           listManage.innerHTML += `
             <div class="list-item" onclick="editCard('${c.id}')">
-              <div class="fw-bold">${c.name}</div>
+              <div class="fw-bold">
+                ${c.name}
+                ${hasAlert ? '<span class="badge-status bg-danger-light ms-2">ALERTA</span>' : ''}
+              </div>
               <i class="fas fa-chevron-right text-muted"></i>
             </div>
           `;
@@ -843,6 +866,7 @@
         if(privacy) togglePrivacy();
         updateSmartPick();
         updatePaymentMonitor();
+        updateAlerts();
         fillHistFilters();
 
         stopLoader();
@@ -928,6 +952,127 @@
         document.getElementById('smart-name').innerText=best.name;
         document.getElementById('smart-msg').innerText=`Cortó hace ${min} días. Úsala para máximo financiamiento.`;
       }else area.classList.add('d-none');
+    }
+
+    // =========================
+    // ✅ Alertas inteligentes (0-2 días)
+    // =========================
+    function getLastDayOfMonth(year, month){
+      return new Date(year, month + 1, 0).getDate();
+    }
+
+    function getNextOccurrence(baseDate, targetDay){
+      const todayStart = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate());
+      const currentLast = getLastDayOfMonth(todayStart.getFullYear(), todayStart.getMonth());
+      const safeDay = Math.min(parseInt(targetDay || 1, 10), currentLast);
+      let candidate = new Date(todayStart.getFullYear(), todayStart.getMonth(), safeDay);
+
+      if(candidate < todayStart){
+        const nextMonth = new Date(todayStart.getFullYear(), todayStart.getMonth() + 1, 1);
+        const nextLast = getLastDayOfMonth(nextMonth.getFullYear(), nextMonth.getMonth());
+        const safeNext = Math.min(parseInt(targetDay || 1, 10), nextLast);
+        candidate = new Date(nextMonth.getFullYear(), nextMonth.getMonth(), safeNext);
+      }
+
+      candidate.setHours(0, 0, 0, 0);
+      return candidate;
+    }
+
+    function daysUntil(targetDate, baseDate){
+      const start = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate());
+      const diff = targetDate - start;
+      return Math.max(0, Math.ceil(diff / 86400000));
+    }
+
+    function pluralize(value, singular, plural){
+      return value === 1 ? singular : plural;
+    }
+
+    function buildAlertTitle(diff){
+      if(diff === 0) return "Vence hoy";
+      if(diff === 1) return "Mañana vence";
+      return `Vence en ${diff} días`;
+    }
+
+    function buildAlertText(diff, now){
+      if(diff === 0){
+        const hoursLeft = Math.max(0, 24 - now.getHours());
+        return `Faltan ${hoursLeft} ${pluralize(hoursLeft, "hora", "horas")}. Evita intereses pagando hoy.`;
+      }
+      return `Faltan ${diff} ${pluralize(diff, "día", "días")}. Evita intereses pagando hoy.`;
+    }
+
+    function getCardAlerts(card, now){
+      const alerts = [];
+      const payDay = parseInt(card.payDay || 1, 10);
+      const cutDay = parseInt(card.cutDay || 1, 10);
+
+      const payDate = getNextOccurrence(now, payDay);
+      const cutDate = getNextOccurrence(now, cutDay);
+      const payDiff = daysUntil(payDate, now);
+      const cutDiff = daysUntil(cutDate, now);
+
+      if(payDiff <= 2){
+        alerts.push({
+          type: "pay",
+          diff: payDiff,
+          title: buildAlertTitle(payDiff),
+          text: buildAlertText(payDiff, now)
+        });
+      }
+
+      if(cutDiff <= 2){
+        alerts.push({
+          type: "cut",
+          diff: cutDiff,
+          title: buildAlertTitle(cutDiff),
+          text: buildAlertText(cutDiff, now)
+        });
+      }
+
+      return alerts;
+    }
+
+    function hasUpcomingAlert(card){
+      const now = new Date();
+      return getCardAlerts(card, now).length > 0;
+    }
+
+    function updateAlerts(){
+      const section = document.getElementById('alerts-section');
+      const list = document.getElementById('alerts-list');
+      if(!section || !list) return;
+
+      const now = new Date();
+      const alerts = [];
+
+      cards.forEach(card => {
+        const cardAlerts = getCardAlerts(card, now);
+        cardAlerts.forEach(alert => {
+          const typeLabel = alert.type === "pay" ? "Pago" : "Corte";
+          alerts.push({ ...alert, name: card.name, typeLabel });
+        });
+      });
+
+      if(!alerts.length){
+        section.classList.add('d-none');
+        list.innerHTML = '<small class="text-muted">Sin alertas por ahora.</small>';
+        return;
+      }
+
+      alerts.sort((a, b) => a.diff - b.diff || a.title.localeCompare(b.title, "es"));
+      list.innerHTML = alerts.map(alert => `
+        <div class="alert-item">
+          <div class="alert-icon">⚠️</div>
+          <div>
+            <div class="fw-bold">${alert.title}</div>
+            <div class="text-muted small">${alert.name} · ${alert.typeLabel}</div>
+            <div class="small">${alert.text}</div>
+          </div>
+        </div>
+      `).join('');
+
+      section.classList.remove('d-none');
     }
 
     // =========================
