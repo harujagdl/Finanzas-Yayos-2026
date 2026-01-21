@@ -1797,7 +1797,8 @@
         }
       }catch(e){
         console.error("Seed preset cards error:", e);
-        alert("Aviso: no se pudieron verificar/crear tarjetas preset.\n\n"+(e.message||e));
+        showToast("Aviso: no se pudieron verificar/crear tarjetas preset.", { tone: "warning", duration: 3200 });
+        haptic("warn");
       }
     }
 
@@ -2629,7 +2630,12 @@
     }
 
     // Tarjetas (editar)
-    window.openCardModal=()=> alert("Tip: para editar, toca una tarjeta en la lista y se abrirá el editor 😉");
+    window.openCardModal=()=> {
+      showToast("Tip: para editar, toca una tarjeta en la lista y se abrirá el editor 😉", {
+        tone: "info",
+        duration: 2600
+      });
+    };
 
     window.editCard=(id)=>{
       const c=cards.find(x=>x.id===id); if(!c) return;
@@ -2674,7 +2680,10 @@
       const id=document.getElementById('c-id').value;
       const c=cards.find(x=>x.id===id);
       if(!c) return;
-      if(c.owner==="both") return alert("Esa tarjeta es compartida. Mejor edítala 😉");
+      if(c.owner==="both"){
+        showToast("Esa tarjeta es compartida. Mejor edítala 😉", { tone: "info", duration: 2400 });
+        return;
+      }
       if(confirm("¿Eliminar tarjeta?")){
         await deleteDoc(doc(db,"cards",id));
         cardModal.hide();
@@ -2840,7 +2849,10 @@
       if(!t) return;
 
       const cObj=cards.find(c=>c.id===t.cardId);
-      if(!cObj) return alert("Tarjeta no encontrada para recalcular saldo");
+      if(!cObj){
+        showToast("Tarjeta no encontrada para recalcular saldo.", { tone: "warning", duration: 2400 });
+        return;
+      }
 
       let newBal=parseFloat(cObj.balance||0);
       if(t.type==='expense') newBal -= t.amount;
