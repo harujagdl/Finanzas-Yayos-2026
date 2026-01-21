@@ -24,10 +24,24 @@
       --bg-body:#f3f4f6; --bg-card:#ffffff; --text-main:#1f2937; --text-muted:#6b7280;
       --primary:#2563eb; --danger:#ef4444; --success:#10b981; --warning:#f59e0b;
       --shadow:0 4px 6px -1px rgba(0,0,0,.05); --border-color:#e5e7eb;
+      --sheet-overlay:rgba(15,23,42,.35);
     }
-    [data-theme="dark"]{
+    @media (prefers-color-scheme: dark){
+      :root{
+        --bg-body:#111827; --bg-card:#1f2937; --text-main:#f9fafb; --text-muted:#9ca3af;
+        --shadow:0 4px 6px -1px rgba(0,0,0,.3); --border-color:#374151;
+        --sheet-overlay:rgba(2,6,23,.6);
+      }
+    }
+    html.theme-dark{
       --bg-body:#111827; --bg-card:#1f2937; --text-main:#f9fafb; --text-muted:#9ca3af;
       --shadow:0 4px 6px -1px rgba(0,0,0,.3); --border-color:#374151;
+      --sheet-overlay:rgba(2,6,23,.6);
+    }
+    html.theme-light{
+      --bg-body:#f3f4f6; --bg-card:#ffffff; --text-main:#1f2937; --text-muted:#6b7280;
+      --shadow:0 4px 6px -1px rgba(0,0,0,.05); --border-color:#e5e7eb;
+      --sheet-overlay:rgba(15,23,42,.35);
     }
     body{
       background:var(--bg-body); color:var(--text-main); font-family:'Inter',sans-serif;
@@ -147,6 +161,65 @@
       font-size:1.5rem; transition:border-color .3s, transform .1s; z-index:101; cursor:pointer;
     }
     .fab-main:active{transform:translateY(-12px) scale(.95);}
+    .quick-fab{
+      position:fixed; right:18px; bottom:92px;
+      width:56px; height:56px; border-radius:50%;
+      background:var(--primary); color:#fff; border:none;
+      box-shadow:0 8px 20px rgba(37,99,235,.4);
+      display:flex; align-items:center; justify-content:center;
+      z-index:120; font-size:1.4rem;
+    }
+    .quick-fab:active{transform:scale(.96);}
+    .quick-sheet-backdrop{
+      position:fixed; inset:0; background:var(--sheet-overlay);
+      opacity:0; pointer-events:none; transition:opacity .2s ease;
+      z-index:110;
+    }
+    .quick-sheet-backdrop.is-open{opacity:1; pointer-events:auto;}
+    .quick-sheet{
+      position:fixed; left:0; right:0; bottom:0;
+      background:var(--bg-card); border-top-left-radius:18px; border-top-right-radius:18px;
+      padding:18px; transform:translateY(120%); transition:transform .2s ease;
+      z-index:120; border:1px solid var(--border-color);
+      box-shadow:0 -10px 30px rgba(15,23,42,.15);
+    }
+    .quick-sheet.is-open{transform:translateY(0);}
+    .quick-sheet-handle{
+      width:48px; height:5px; background:var(--border-color);
+      border-radius:999px; margin:0 auto 12px;
+    }
+    .quick-sheet-title{font-weight:800; margin-bottom:10px;}
+    .quick-sheet-actions{display:flex; gap:10px; margin-top:12px;}
+    .quick-sheet-actions .btn{flex:1;}
+    .swipe-item{
+      touch-action:pan-y;
+      transition:transform .2s ease;
+      will-change:transform;
+    }
+    .swipe-item.dragging{transition:none;}
+    .swipe-item.reviewed{
+      border-color:rgba(16,185,129,.4);
+      background:rgba(16,185,129,.08);
+    }
+    .item-actions{position:relative;}
+    .action-kebab{
+      border:1px solid var(--border-color);
+      background:var(--bg-body); color:var(--text-muted);
+      width:32px; height:32px; border-radius:10px;
+      display:flex; align-items:center; justify-content:center;
+    }
+    .action-menu{
+      position:absolute; right:0; top:38px;
+      background:var(--bg-card); border:1px solid var(--border-color);
+      border-radius:12px; padding:6px; min-width:160px;
+      box-shadow:var(--shadow); display:none; z-index:130;
+    }
+    .action-menu button{
+      width:100%; border:none; background:none; text-align:left;
+      padding:6px 8px; border-radius:8px; color:var(--text-main); font-size:.85rem;
+    }
+    .action-menu button:hover{background:var(--bg-body);}
+    .action-menu.is-open{display:block;}
 
     .form-control,.form-select{
       background:var(--bg-body); border:1px solid var(--border-color);
@@ -155,6 +228,9 @@
     .form-control:focus,.form-select:focus{
       background:var(--bg-card); border-color:var(--primary);
       box-shadow:none; color:var(--text-main);
+    }
+    .form-control:focus-visible,.form-select:focus-visible,.btn:focus-visible{
+      outline:2px solid rgba(37,99,235,.5); outline-offset:2px;
     }
     .btn-disabled{background:#6b7280!important; border-color:#6b7280!important; cursor:not-allowed; opacity:.7;}
 
@@ -242,6 +318,7 @@
       .fade-in, .toast-message{transition:none;}
       .btn-loading .spinner, .skeleton::after{animation:none;}
       .view-section{animation:none;}
+      .quick-sheet, .quick-sheet-backdrop, .swipe-item{transition:none;}
     }
   </style>
 </head>
@@ -287,9 +364,17 @@
         </button>
 
         <button class="btn btn-sm btn-outline-secondary rounded-circle"
-          onclick="toggleTheme()"
+          onclick="manualRefresh()"
+          title="Actualizar datos"
           style="width:40px;height:40px;border-color:var(--border-color);color:var(--text-main);">
-          <i class="fas fa-moon"></i>
+          <i class="fas fa-rotate"></i>
+        </button>
+
+        <button class="btn btn-sm btn-outline-secondary rounded-circle"
+          onclick="toggleThemeMode()"
+          title="Cambiar tema"
+          style="width:40px;height:40px;border-color:var(--border-color);color:var(--text-main);">
+          <i class="fas fa-moon" id="theme-icon"></i>
         </button>
 
         <button class="btn btn-sm btn-outline-secondary rounded-circle"
@@ -600,6 +685,29 @@
         <span class="text-muted small" id="msi-count">0</span>
       </div>
       <div id="msi-list"><small class="text-muted">Cargando...</small></div>
+    </div>
+  </div>
+
+  <button class="quick-fab" type="button" onclick="openQuickAdd()" aria-label="Agregar gasto rápido">
+    <i class="fas fa-plus"></i>
+  </button>
+  <div id="quick-sheet-backdrop" class="quick-sheet-backdrop" onclick="closeQuickAdd()"></div>
+  <div id="quick-sheet" class="quick-sheet" role="dialog" aria-modal="true" aria-labelledby="quick-sheet-title">
+    <div class="quick-sheet-handle"></div>
+    <div class="quick-sheet-title" id="quick-sheet-title">Agregar gasto rápido</div>
+    <div class="row g-2">
+      <div class="col-6">
+        <label class="small fw-bold text-muted mb-1">Monto</label>
+        <input type="number" id="quick-amount" class="form-control fw-bold" placeholder="0.00" step="0.01" />
+      </div>
+      <div class="col-6">
+        <label class="small fw-bold text-muted mb-1">Categoría</label>
+        <select id="quick-category" class="form-select"></select>
+      </div>
+    </div>
+    <div class="quick-sheet-actions">
+      <button class="btn btn-light" type="button" onclick="closeQuickAdd()">Cancelar</button>
+      <button class="btn btn-primary" type="button" onclick="saveQuickAdd()">Guardar</button>
     </div>
   </div>
 
@@ -2036,12 +2144,56 @@
       if(vid === 'view-msi') renderMsi();
     };
 
-    window.toggleTheme=()=>{
-      const body=document.body;
-      const isDark=body.getAttribute('data-theme')==='dark';
-      body.setAttribute('data-theme', isDark?'light':'dark');
+    const THEME_KEY = "themeMode";
+    const THEME_MODES = ["auto", "light", "dark"];
+
+    const getStoredTheme = () => localStorage.getItem(THEME_KEY) || "auto";
+
+    const getSystemPrefersDark = () =>
+      window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+
+    const getEffectiveTheme = (mode) => {
+      if(mode === "dark") return "dark";
+      if(mode === "light") return "light";
+      return getSystemPrefersDark() ? "dark" : "light";
+    };
+
+    const isDarkMode = () => getEffectiveTheme(getStoredTheme()) === "dark";
+
+    const applyThemeMode = (mode) => {
+      const root = document.documentElement;
+      root.classList.remove("theme-dark", "theme-light");
+      if(mode === "dark") root.classList.add("theme-dark");
+      if(mode === "light") root.classList.add("theme-light");
+      const icon = document.getElementById("theme-icon");
+      if(icon){
+        icon.className = getEffectiveTheme(mode) === "dark" ? "fas fa-moon" : "fas fa-sun";
+      }
       updateChart();
-      renderMsi(); // actualiza colores labels
+      renderMsi();
+    };
+
+    window.toggleThemeMode = () => {
+      const current = getStoredTheme();
+      const idx = THEME_MODES.indexOf(current);
+      const next = THEME_MODES[(idx + 1) % THEME_MODES.length] || "auto";
+      localStorage.setItem(THEME_KEY, next);
+      applyThemeMode(next);
+      showToast(`Tema: ${next === "auto" ? "auto" : next === "dark" ? "oscuro" : "claro"}`, {
+        tone: "info",
+        duration: 1800
+      });
+    };
+
+    const initThemeMode = () => {
+      const mode = getStoredTheme();
+      applyThemeMode(mode);
+      const media = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
+      if(media && typeof media.addEventListener === "function"){
+        media.addEventListener("change", () => {
+          if(getStoredTheme() === "auto") applyThemeMode("auto");
+        });
+      }
     };
 
     window.togglePrivacy=()=>{
@@ -2050,6 +2202,83 @@
         privacy ? el.classList.add('blur-sensitive') : el.classList.remove('blur-sensitive');
       });
       document.getElementById('eye-icon').className = privacy ? 'fas fa-eye-slash' : 'fas fa-eye';
+    };
+
+    window.manualRefresh = async () => {
+      showToast("Actualizando datos...", { tone: "info", duration: 1600 });
+      setSyncStatus("syncing", { silent: true });
+      await refreshAfterReconnect();
+      setSyncStatus("synced", { silent: true });
+    };
+
+    const quickSheet = document.getElementById("quick-sheet");
+    const quickBackdrop = document.getElementById("quick-sheet-backdrop");
+    const quickAmount = document.getElementById("quick-amount");
+    const quickCategory = document.getElementById("quick-category");
+    let quickAddPending = false;
+
+    const syncQuickCategories = () => {
+      const source = document.getElementById("t-cat");
+      if(!source || !quickCategory) return;
+      quickCategory.innerHTML = "";
+      [...source.options].forEach((opt) => {
+        const option = document.createElement("option");
+        option.value = opt.value;
+        option.textContent = opt.textContent;
+        quickCategory.appendChild(option);
+      });
+      if(quickCategory.options.length) quickCategory.selectedIndex = 0;
+    };
+
+    window.openQuickAdd = () => {
+      syncQuickCategories();
+      if(quickAmount) quickAmount.value = "";
+      if(quickSheet) quickSheet.classList.add("is-open");
+      if(quickBackdrop) quickBackdrop.classList.add("is-open");
+      setTimeout(() => quickAmount?.focus(), 100);
+    };
+
+    window.closeQuickAdd = () => {
+      if(quickSheet) quickSheet.classList.remove("is-open");
+      if(quickBackdrop) quickBackdrop.classList.remove("is-open");
+    };
+
+    window.saveQuickAdd = () => {
+      const amount = safeNumber(quickAmount?.value);
+      if(!amount || amount <= 0){
+        showToast("Ingresa un monto válido.", { tone: "warning", duration: 2000 });
+        haptic("warn");
+        return;
+      }
+      const form = document.getElementById("form-trans");
+      if(!form) return;
+
+      document.getElementById('t-exp').checked = true;
+      uiUpdateCats();
+      uiToggleMsi();
+      document.getElementById('t-msi').checked = false;
+      uiToggleMsiFields();
+      const cardSelect = document.getElementById('t-card');
+      if(cardSelect && !cardSelect.value && cardSelect.options.length){
+        cardSelect.selectedIndex = 0;
+      }
+      document.getElementById('t-amount').value = amount;
+      const catValue = quickCategory?.value || "";
+      if(catValue){
+        const catSelect = document.getElementById('t-cat');
+        const hasOption = [...catSelect.options].some((opt) => opt.value === catValue);
+        if(!hasOption){
+          const opt = document.createElement("option");
+          opt.value = catValue;
+          opt.textContent = catValue;
+          catSelect.appendChild(opt);
+        }
+        catSelect.value = catValue;
+      }
+      document.getElementById('t-concept').value = catValue ? `Gasto rápido: ${catValue}` : "Gasto rápido";
+      document.getElementById('t-date').valueAsDate = new Date();
+      quickAddPending = true;
+      form.requestSubmit();
     };
 
     // Filters
@@ -2750,7 +2979,7 @@
         noData.classList.add('d-none');
       }
 
-      const isDark=document.body.getAttribute('data-theme')==='dark';
+      const isDark = isDarkMode();
       const textColor=isDark ? '#f9fafb' : '#6b7280';
 
       const labels = items.slice(0, 10).map(t => {
@@ -2794,6 +3023,33 @@
     // =========================
     // ✅ HISTORIAL
     // =========================
+    const REVIEWED_KEY = "fy_reviewed_ids";
+    let reviewedIds = new Set();
+
+    const loadReviewedIds = () => {
+      try{
+        const raw = JSON.parse(localStorage.getItem(REVIEWED_KEY) || "[]");
+        reviewedIds = new Set(Array.isArray(raw) ? raw : []);
+      }catch(e){
+        reviewedIds = new Set();
+      }
+    };
+
+    const saveReviewedIds = () => {
+      localStorage.setItem(REVIEWED_KEY, JSON.stringify(Array.from(reviewedIds)));
+    };
+
+    const isTransactionReviewed = (id) => reviewedIds.has(id);
+
+    const markTransactionReviewed = (id) => {
+      if(!id) return;
+      reviewedIds.add(id);
+      saveReviewedIds();
+      const item = document.querySelector(`.swipe-item[data-trans-id="${id}"]`);
+      if(item) item.classList.add("reviewed");
+      showToast("Marcado como revisado ✅", { tone: "success", duration: 1800 });
+    };
+
     const renderTimeline = (grouped = []) => grouped.map((group) => `
       <div class="timeline-day">
         <div class="timeline-header">
@@ -2807,8 +3063,9 @@
             const isExp = t.type === "expense";
             const tagMsi = (isExp && t.isMsi) ? `<span class="badge-status bg-success-light ms-2">MSI</span>` : "";
             const d = toDate(t.date);
+            const reviewedClass = isTransactionReviewed(t.id) ? "reviewed" : "";
             return `
-              <div class="list-item" onclick="editTrans('${t.id}')">
+              <div class="list-item swipe-item ${reviewedClass}" data-trans-id="${t.id}">
                 <div class="d-flex align-items-center">
                   <div class="me-3 text-muted"><i class="fas ${isExp ? "fa-shopping-cart" : "fa-hand-holding-usd"}"></i></div>
                   <div>
@@ -2816,7 +3073,19 @@
                     <small class="text-muted">${d.toLocaleDateString()} • ${t.cardName} • ${t.category}</small>
                   </div>
                 </div>
-                <div class="fw-bold ${isExp ? "text-danger" : "text-success"} sensitive-data">${isExp ? "-" : "+"}${formatMoney(t.amount)}</div>
+                <div class="d-flex align-items-center gap-2">
+                  <div class="fw-bold ${isExp ? "text-danger" : "text-success"} sensitive-data">${isExp ? "-" : "+"}${formatMoney(t.amount)}</div>
+                  <div class="item-actions">
+                    <button class="action-kebab" type="button" onclick="toggleTransMenu('${t.id}', event)" aria-label="Acciones">
+                      <i class="fas fa-ellipsis-v"></i>
+                    </button>
+                    <div class="action-menu" id="trans-menu-${t.id}">
+                      <button type="button" onclick="handleTransAction('edit','${t.id}', event)">Editar</button>
+                      <button type="button" onclick="handleTransAction('review','${t.id}', event)">Revisado</button>
+                      <button type="button" onclick="handleTransAction('delete','${t.id}', event)" class="text-danger">Borrar</button>
+                    </div>
+                  </div>
+                </div>
               </div>
             `;
           }).join("")}
@@ -2864,8 +3133,109 @@
 
       const grouped = groupExpensesByDay(filtered);
       list.innerHTML = renderTimeline(grouped);
+      setupHistoryInteractions();
 
       if (privacy) togglePrivacy();
+    };
+
+    const closeAllTransMenus = () => {
+      document.querySelectorAll(".action-menu.is-open").forEach((menu) => {
+        menu.classList.remove("is-open");
+      });
+    };
+
+    window.toggleTransMenu = (id, event) => {
+      event?.stopPropagation();
+      const menu = document.getElementById(`trans-menu-${id}`);
+      if(!menu) return;
+      const isOpen = menu.classList.contains("is-open");
+      closeAllTransMenus();
+      if(!isOpen) menu.classList.add("is-open");
+    };
+
+    window.handleTransAction = (action, id, event) => {
+      event?.stopPropagation();
+      closeAllTransMenus();
+      if(action === "edit") return editTrans(id);
+      if(action === "review") return markTransactionReviewed(id);
+      if(action === "delete"){
+        document.getElementById('trans-id').value = id;
+        return deleteTrans();
+      }
+    };
+
+    document.addEventListener("click", (event) => {
+      if(event.target.closest(".item-actions")) return;
+      closeAllTransMenus();
+    });
+
+    const setupHistoryInteractions = () => {
+      const items = document.querySelectorAll(".swipe-item");
+      items.forEach((item) => {
+        if(item.dataset.swipeBound === "1") return;
+        item.dataset.swipeBound = "1";
+
+        item.addEventListener("click", (event) => {
+          if(item.dataset.swipeMoved === "1") return;
+          if(event.target.closest(".item-actions")) return;
+          const id = item.dataset.transId;
+          if(id) editTrans(id);
+        });
+
+        item.addEventListener("pointerdown", (event) => {
+          if(event.target.closest(".item-actions")) return;
+          if(event.pointerType === "mouse") return;
+          const startX = event.clientX;
+          const startY = event.clientY;
+          let dx = 0;
+          let dy = 0;
+          let swiping = false;
+          item.dataset.swipeMoved = "0";
+          item.setPointerCapture(event.pointerId);
+
+          const onMove = (moveEvent) => {
+            dx = moveEvent.clientX - startX;
+            dy = moveEvent.clientY - startY;
+            if(!swiping){
+              if(Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy)){
+                swiping = true;
+                item.classList.add("dragging");
+              }else if(Math.abs(dy) > 10){
+                cleanup();
+                return;
+              }
+            }
+            if(swiping){
+              moveEvent.preventDefault();
+              const clamped = Math.max(Math.min(dx, 90), -90);
+              item.style.transform = `translateX(${clamped}px)`;
+              item.dataset.swipeMoved = "1";
+            }
+          };
+
+          const onEnd = () => {
+            item.classList.remove("dragging");
+            item.style.transform = "";
+            if(swiping && Math.abs(dx) >= 60 && Math.abs(dx) > Math.abs(dy)){
+              const id = item.dataset.transId;
+              if(dx > 0) markTransactionReviewed(id);
+              else editTrans(id);
+            }
+            cleanup();
+          };
+
+          const cleanup = () => {
+            item.releasePointerCapture(event.pointerId);
+            item.removeEventListener("pointermove", onMove);
+            item.removeEventListener("pointerup", onEnd);
+            item.removeEventListener("pointercancel", onEnd);
+          };
+
+          item.addEventListener("pointermove", onMove);
+          item.addEventListener("pointerup", onEnd);
+          item.addEventListener("pointercancel", onEnd);
+        });
+      });
     };
 
     // =========================
@@ -2889,7 +3259,7 @@
 
       if(chartInstance) chartInstance.destroy();
 
-      const isDark=document.body.getAttribute('data-theme')==='dark';
+      const isDark = isDarkMode();
       const textColor=isDark ? '#f9fafb' : '#6b7280';
 
       chartInstance = new Chart(ctx, {
@@ -2916,6 +3286,7 @@
         ? ['🛒 Supermercado','🍔 Comida','⛽ Transporte','🐜 Hormiga','💡 Servicios','📦 Compras','💊 Salud','🎓 Educación','👩‍🦰 Mamá']
         : ['💵 Abono Capital','💰 Sueldo/Ingreso','🔄 Transferencia'];
       opts.forEach(o=> s.innerHTML += `<option>${o}</option>`);
+      if(typeof syncQuickCategories === "function") syncQuickCategories();
     };
 
     // =========================
@@ -3159,6 +3530,10 @@
         }
         haptic("success");
         saveSuccess = true;
+        if(quickAddPending){
+          quickAddPending = false;
+          closeQuickAdd();
+        }
 
         invalidateCacheForOwner(OWNER);
         updateDashboardSummary({ force: true });
@@ -3172,6 +3547,7 @@
         showToast("No se pudo guardar. Intenta de nuevo.", { tone: "warning", duration: 2600 });
         haptic("error");
       }finally{
+        if(!saveSuccess) quickAddPending = false;
         setLoading(btnSave, false);
         if(saveSuccess) flashButtonSuccess(btnSave);
       }
@@ -3284,6 +3660,8 @@
     };
 
     // Init
+    loadReviewedIds();
+    initThemeMode();
     uiUpdateCats();
     resetForm();
     startLoader();
