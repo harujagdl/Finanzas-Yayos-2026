@@ -79,11 +79,48 @@
       border:1px solid var(--border-color);
       border-radius:12px; padding:10px 14px; font-size:.85rem;
       box-shadow:var(--shadow);
-      animation:fadeIn .2s ease-out;
+      opacity:0; transform:translateY(8px);
+      transition:opacity .2s ease, transform .2s ease;
     }
+    .toast-message.toast-show{opacity:1; transform:translateY(0);}
+    .toast-message.toast-hide{opacity:0; transform:translateY(6px);}
     .toast-message.success{border-color:rgba(16,185,129,.4);}
     .toast-message.warning{border-color:rgba(245,158,11,.4);}
     .toast-message.info{border-color:rgba(107,114,128,.4);}
+    .fade-in{opacity:0; transform:translateY(6px); transition:opacity .2s ease, transform .2s ease;}
+    .fade-in.is-visible{opacity:1; transform:translateY(0);}
+    .is-loading{opacity:.7; pointer-events:none;}
+    .btn-loading{
+      display:inline-flex; align-items:center; justify-content:center; gap:8px;
+    }
+    .btn-loading .spinner{
+      width:16px; height:16px; border-radius:50%;
+      border:2px solid rgba(255,255,255,.45); border-top-color:#fff;
+      animation:spin .6s linear infinite;
+    }
+    .btn-success-flash{
+      background:var(--success)!important; border-color:var(--success)!important;
+    }
+    .btn-success-flash .checkmark{
+      width:18px; height:18px; border-radius:50%;
+      display:inline-flex; align-items:center; justify-content:center;
+      background:rgba(255,255,255,.2); font-weight:800;
+    }
+    .skeleton{
+      position:relative; overflow:hidden; background:var(--bg-body);
+      border-radius:10px;
+    }
+    .skeleton::after{
+      content:""; position:absolute; inset:0;
+      background:linear-gradient(90deg, transparent, rgba(255,255,255,.35), transparent);
+      transform:translateX(-100%); animation:shimmer 1.2s ease-in-out infinite;
+    }
+    .skeleton-line{height:12px; margin:8px 0; border-radius:999px;}
+    .skeleton-line.tall{height:22px;}
+    .skeleton-card{padding:12px; border-radius:12px; border:1px solid var(--border-color);}
+    .skeleton-grid{display:grid; gap:12px; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));}
+    @keyframes spin{to{transform:rotate(360deg);}}
+    @keyframes shimmer{to{transform:translateX(100%);}}
 
     .nav-bottom{
       position:fixed; bottom:0; width:100%;
@@ -172,6 +209,11 @@
     }
     .insight-icon{font-size:1.1rem; line-height:1; margin-top:2px;}
     .insight-title{font-weight:700;}
+    @media (prefers-reduced-motion: reduce){
+      .fade-in, .toast-message{transition:none;}
+      .btn-loading .spinner, .skeleton::after{animation:none;}
+      .view-section{animation:none;}
+    }
   </style>
 </head>
 
@@ -700,6 +742,60 @@
 
     let netBadgeTimer = null;
 
+    const supportsReducedMotion = () =>
+      window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    const animateIn = (el) => {
+      if(!el) return;
+      if(supportsReducedMotion()){
+        el.classList.remove("fade-in");
+        el.classList.add("is-visible");
+        return;
+      }
+      el.classList.add("fade-in");
+      el.classList.remove("is-visible");
+      requestAnimationFrame(() => {
+        el.classList.add("is-visible");
+      });
+    };
+
+    const setLoading = (buttonEl, isLoading, { label = "Guardando..." } = {}) => {
+      if(!buttonEl) return;
+      if(isLoading){
+        buttonEl.dataset.originalText = buttonEl.dataset.originalText || buttonEl.textContent.trim();
+        buttonEl.classList.add("btn-loading", "is-loading", "btn-disabled");
+        buttonEl.disabled = true;
+        buttonEl.setAttribute("aria-busy", "true");
+        buttonEl.innerHTML = `<span class="spinner" aria-hidden="true"></span><span class="btn-text">${label}</span>`;
+        return;
+      }
+      buttonEl.classList.remove("btn-loading", "is-loading", "btn-disabled");
+      buttonEl.disabled = false;
+      buttonEl.removeAttribute("aria-busy");
+      buttonEl.textContent = buttonEl.dataset.originalText || buttonEl.textContent;
+    };
+
+    const flashButtonSuccess = (buttonEl, { label = "Guardado" } = {}) => {
+      if(!buttonEl) return;
+      const originalText = buttonEl.dataset.originalText || buttonEl.textContent.trim();
+      buttonEl.classList.add("btn-success-flash");
+      buttonEl.innerHTML = `<span class="checkmark">✓</span><span class="btn-text">${label}</span>`;
+      setTimeout(() => {
+        buttonEl.classList.remove("btn-success-flash");
+        buttonEl.textContent = originalText;
+      }, 500);
+    };
+
+    const haptic = (type = "success") => {
+      if(!navigator.vibrate) return;
+      const patterns = {
+        success: [10],
+        warn: [20],
+        error: [10, 40, 10]
+      };
+      navigator.vibrate(patterns[type] || patterns.success);
+    };
+
     function showToast(message, { tone = "info", duration = 2600 } = {}){
       const container = document.getElementById("toast-container");
       if(!container) return;
@@ -707,8 +803,11 @@
       toast.className = `toast-message ${tone}`;
       toast.textContent = message;
       container.appendChild(toast);
+      requestAnimationFrame(() => toast.classList.add("toast-show"));
       setTimeout(() => {
-        toast.remove();
+        toast.classList.remove("toast-show");
+        toast.classList.add("toast-hide");
+        setTimeout(() => toast.remove(), 220);
       }, duration);
     }
 
@@ -1014,7 +1113,20 @@
       if (!body) return;
 
       if (!metrics) {
-        body.innerHTML = '<span class="text-muted small">Cargando resumen...</span>';
+        body.innerHTML = `
+          <div class="skeleton-grid">
+            <div class="skeleton-card">
+              <div class="skeleton skeleton-line" style="width:45%;"></div>
+              <div class="skeleton skeleton-line tall" style="width:70%;"></div>
+              <div class="skeleton skeleton-line" style="width:80%;"></div>
+            </div>
+            <div class="skeleton-card">
+              <div class="skeleton skeleton-line" style="width:45%;"></div>
+              <div class="skeleton skeleton-line tall" style="width:70%;"></div>
+              <div class="skeleton skeleton-line" style="width:80%;"></div>
+            </div>
+          </div>
+        `;
         return;
       }
 
@@ -1048,6 +1160,7 @@
           </div>
         </div>
       `;
+      animateIn(body);
 
       if (privacy) togglePrivacy();
     }
@@ -1207,10 +1320,13 @@
 
       if (!insights.length) {
         section.classList.remove("d-none");
+        list.classList.remove("is-loading");
         list.innerHTML = '<small class="text-muted">Aún no hay suficientes movimientos para generar insights de este mes.</small>';
+        animateIn(section);
         return;
       }
 
+      list.classList.remove("is-loading");
       list.innerHTML = insights.map((item) => `
         <div class="insight-item">
           <div class="insight-icon">${item.icon || "💡"}</div>
@@ -1221,11 +1337,34 @@
         </div>
       `).join("");
       section.classList.remove("d-none");
+      animateIn(section);
 
       if (privacy) togglePrivacy();
     }
 
     async function updateInsights({ force = false } = {}) {
+      const section = document.getElementById("insights-section");
+      const list = document.getElementById("insights-list");
+      if (section && list) {
+        section.classList.remove("d-none");
+        list.classList.add("is-loading");
+        list.innerHTML = `
+          <div class="insight-item">
+            <div class="insight-icon">💡</div>
+            <div class="insight-content" style="flex:1;">
+              <div class="skeleton skeleton-line" style="width:55%;"></div>
+              <div class="skeleton skeleton-line" style="width:85%;"></div>
+            </div>
+          </div>
+          <div class="insight-item">
+            <div class="insight-icon">✨</div>
+            <div class="insight-content" style="flex:1;">
+              <div class="skeleton skeleton-line" style="width:45%;"></div>
+              <div class="skeleton skeleton-line" style="width:70%;"></div>
+            </div>
+          </div>
+        `;
+      }
       const owner = getActiveOwner();
       const useLoader = typeof window.loadPeriodData === "function";
       const periodData = useLoader
@@ -1950,6 +2089,7 @@
       if(!section || !list) return;
 
       activeAlerts = alerts;
+      list.classList.remove("is-loading");
 
       if(!alerts.length){
         section.classList.add('d-none');
@@ -1974,12 +2114,25 @@
       `).join('');
 
       section.classList.remove('d-none');
+      animateIn(section);
     }
 
     async function updateAlerts({ force = false } = {}){
       const section = document.getElementById('alerts-section');
       const list = document.getElementById('alerts-list');
       if(!section || !list) return;
+
+      section.classList.remove("d-none");
+      list.classList.add("is-loading");
+      list.innerHTML = `
+        <div class="alert-item">
+          <div class="alert-icon">⚠️</div>
+          <div class="alert-content" style="flex:1;">
+            <div class="skeleton skeleton-line" style="width:55%;"></div>
+            <div class="skeleton skeleton-line" style="width:80%;"></div>
+          </div>
+        </div>
+      `;
 
       const now = new Date();
       const alerts = await computeAlerts(getActiveOwner(), { force });
@@ -2403,13 +2556,22 @@
     document.getElementById('form-trans').addEventListener('submit', async(e)=>{
       e.preventDefault();
       const btnSave=document.getElementById('btn-save-trans');
-      btnSave.disabled=true; btnSave.classList.add('btn-disabled'); btnSave.innerText="Procesando...";
+      let saveSuccess = false;
+
+      const type=document.querySelector('input[name="ttype"]:checked')?.value;
+      const amt=parseFloat(document.getElementById('t-amount').value);
+      const cid=document.getElementById('t-card').value;
+      const dateValue = document.getElementById('t-date').value;
+      if(!type || !cid || !dateValue || !Number.isFinite(amt) || amt <= 0){
+        showToast("Completa los datos requeridos para guardar.", { tone: "warning", duration: 2400 });
+        haptic("error");
+        return;
+      }
+
+      setLoading(btnSave, true, { label: "Guardando..." });
 
       try{
         const tid=document.getElementById('trans-id').value;
-        const type=document.querySelector('input[name="ttype"]:checked').value;
-        const amt=parseFloat(document.getElementById('t-amount').value);
-        const cid=document.getElementById('t-card').value;
         const cObj=cards.find(c=>c.id===cid);
         if(!cObj) throw new Error("Tarjeta no encontrada");
 
@@ -2475,23 +2637,27 @@
           });
         }
 
-      if(!navigator.onLine){
-        showToast("Guardado (offline). Se sincroniza al reconectar.", { tone: "warning", duration: 3600 });
-        setSyncStatus("local", { silent: true });
-      }else{
-        showToast("Guardado", { tone: "success", duration: 2000 });
-      }
+        if(!navigator.onLine){
+          showToast("Guardado (offline). Se sincroniza al reconectar.", { tone: "warning", duration: 3600 });
+          setSyncStatus("local", { silent: true });
+        }else{
+          showToast("Guardado", { tone: "success", duration: 2000 });
+        }
+        haptic("success");
+        saveSuccess = true;
 
-      invalidateCacheForOwner(OWNER);
-      updateDashboardSummary({ force: true });
-      updateAlerts({ force: true });
-      updateInsights({ force: true });
-      resetForm();
-      nav('view-home');
+        invalidateCacheForOwner(OWNER);
+        updateDashboardSummary({ force: true });
+        updateAlerts({ force: true });
+        updateInsights({ force: true });
+        resetForm();
+        nav('view-home');
       }catch(e){
-        alert("Error: "+e.message);
+        showToast("No se pudo guardar. Intenta de nuevo.", { tone: "warning", duration: 2600 });
+        haptic("error");
       }finally{
-        btnSave.disabled=false; btnSave.classList.remove('btn-disabled'); btnSave.innerText="Guardar Transacción";
+        setLoading(btnSave, false);
+        if(saveSuccess) flashButtonSuccess(btnSave);
       }
     });
 
@@ -2579,7 +2745,7 @@
       uiCalcMsiMonthly();
 
       const btn=document.getElementById('btn-save-trans');
-      btn.disabled=false; btn.classList.remove('btn-disabled'); btn.innerText="Guardar Transacción";
+      setLoading(btn, false);
     };
 
     window.exportCSV=()=>{
