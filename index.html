@@ -768,7 +768,12 @@
     // 🔔 PUSH (por ahora placeholder)
     // =========================
     window.enablePush = () => {
-      alert("🔔 Push: lo armamos después.\n\nAhorita ya quedó MSI pro para saber cuándo se liberan compras 😌");
+      if(sessionStorage.getItem("msi_toast_shown") === "1") return;
+      sessionStorage.setItem("msi_toast_shown", "1");
+      showToast("MSI pro activado: ya puedes ver cuándo se liberan compras 😌", {
+        tone: "info",
+        duration: 2500
+      });
     };
 
     // Presets
