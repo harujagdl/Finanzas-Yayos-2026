@@ -56,6 +56,34 @@
     .bg-danger-light{background:rgba(239,68,68,.15); color:var(--danger);}
     .bg-success-light{background:rgba(16,185,129,.15); color:var(--success);}
     .bg-warning-light{background:rgba(245,158,11,.15); color:var(--warning);}
+    .net-badge{
+      display:inline-flex; align-items:center; gap:6px;
+      padding:3px 8px; border-radius:999px;
+      font-size:.7rem; font-weight:800; text-transform:uppercase;
+      border:1px solid var(--border-color);
+      background:var(--bg-body); color:var(--text-muted);
+    }
+    .net-badge.offline{background:rgba(239,68,68,.12); color:var(--danger); border-color:rgba(239,68,68,.3);}
+    .net-badge.online{background:rgba(16,185,129,.12); color:var(--success); border-color:rgba(16,185,129,.3);}
+    .sync-pill{padding:4px 8px; border-radius:999px; font-size:.7rem; font-weight:800; text-transform:uppercase;}
+    .sync-pill.syncing{background:rgba(245,158,11,.15); color:var(--warning);}
+    .sync-pill.synced{background:rgba(16,185,129,.15); color:var(--success);}
+    .sync-pill.local{background:rgba(107,114,128,.15); color:var(--text-muted);}
+    #toast-container{
+      position:fixed; left:50%; transform:translateX(-50%);
+      bottom:90px; z-index:1500; display:flex; flex-direction:column; gap:8px;
+      max-width:90vw; pointer-events:none;
+    }
+    .toast-message{
+      background:var(--bg-card); color:var(--text-main);
+      border:1px solid var(--border-color);
+      border-radius:12px; padding:10px 14px; font-size:.85rem;
+      box-shadow:var(--shadow);
+      animation:fadeIn .2s ease-out;
+    }
+    .toast-message.success{border-color:rgba(16,185,129,.4);}
+    .toast-message.warning{border-color:rgba(245,158,11,.4);}
+    .toast-message.info{border-color:rgba(107,114,128,.4);}
 
     .nav-bottom{
       position:fixed; bottom:0; width:100%;
@@ -161,7 +189,11 @@
     <div class="d-flex justify-content-between align-items-center mb-4">
       <div>
         <h5 class="fw-black m-0">Control Total</h5>
-        <small class="text-muted fw-bold" id="connection-status">Online 🟢</small>
+        <div class="d-flex align-items-center gap-2 flex-wrap mt-1">
+          <div id="netBadge" class="net-badge offline">Offline</div>
+          <span id="sync-status" class="sync-pill synced">Sincronizado</span>
+          <small id="sync-time" class="text-muted small d-none">Última sincronización: --</small>
+        </div>
       </div>
 
       <div class="d-flex gap-2 align-items-center">
@@ -535,6 +567,8 @@
     </div>
   </div>
 
+  <div id="toast-container" aria-live="polite" aria-atomic="true"></div>
+
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
   <script type="module">
@@ -656,6 +690,118 @@
 
     // MSI state
     let msiChartInstance=null;
+
+    const appState = {
+      isOnline: navigator.onLine,
+      syncStatus: "synced",
+      lastSync: null,
+      pendingWrites: false
+    };
+
+    let netBadgeTimer = null;
+
+    function showToast(message, { tone = "info", duration = 2600 } = {}){
+      const container = document.getElementById("toast-container");
+      if(!container) return;
+      const toast = document.createElement("div");
+      toast.className = `toast-message ${tone}`;
+      toast.textContent = message;
+      container.appendChild(toast);
+      setTimeout(() => {
+        toast.remove();
+      }, duration);
+    }
+
+    function renderConnectivityBadge(isOnline){
+      const badge = document.getElementById("netBadge");
+      if(!badge) return;
+      badge.classList.remove("offline", "online");
+      if(!isOnline){
+        badge.textContent = "Offline";
+        badge.classList.add("offline");
+        badge.classList.remove("d-none");
+        return;
+      }
+      badge.textContent = "Online";
+      badge.classList.add("online");
+      badge.classList.remove("d-none");
+      if(netBadgeTimer) clearTimeout(netBadgeTimer);
+      netBadgeTimer = setTimeout(() => {
+        badge.classList.add("d-none");
+      }, 2000);
+    }
+
+    function setSyncStatus(status, { silent = false } = {}){
+      const syncEl = document.getElementById("sync-status");
+      const timeEl = document.getElementById("sync-time");
+      if(!syncEl) return;
+      appState.syncStatus = status;
+      syncEl.classList.remove("syncing", "synced", "local");
+      if(status === "syncing"){
+        syncEl.textContent = "Sincronizando...";
+        syncEl.classList.add("syncing");
+      }else if(status === "local"){
+        syncEl.textContent = "Guardado local";
+        syncEl.classList.add("local");
+      }else{
+        syncEl.textContent = "Sincronizado";
+        syncEl.classList.add("synced");
+        appState.lastSync = new Date();
+        if(timeEl){
+          const time = appState.lastSync.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" });
+          timeEl.textContent = `Última sincronización: ${time}`;
+          timeEl.classList.remove("d-none");
+        }
+      }
+      if(!silent && status === "synced") showToast("Sincronizado", { tone: "success", duration: 1800 });
+    }
+
+    function handlePendingWrites(hasPendingWrites){
+      if(hasPendingWrites){
+        appState.pendingWrites = true;
+        setSyncStatus("syncing", { silent: true });
+        return;
+      }
+      if(appState.pendingWrites){
+        appState.pendingWrites = false;
+        setSyncStatus("synced");
+      }else{
+        setSyncStatus("synced", { silent: true });
+      }
+    }
+
+    async function refreshAfterReconnect(){
+      try{
+        const useLoader = typeof window.loadPeriodData === "function";
+        if(useLoader) await window.loadPeriodData(OWNER, { force: true });
+      }catch(e){
+        console.log("Refresh after reconnect error:", e?.message || e);
+      }
+      updateDashboardSummary({ force: true });
+      updateAlerts({ force: true });
+      updateInsights({ force: true });
+      renderHistory();
+      updateChart();
+    }
+
+    function setupConnectivityListeners(){
+      renderConnectivityBadge(appState.isOnline);
+      window.addEventListener("online", async () => {
+        appState.isOnline = true;
+        renderConnectivityBadge(true);
+        if(appState.pendingWrites) setSyncStatus("syncing", { silent: true });
+        else setSyncStatus("synced", { silent: true });
+        await refreshAfterReconnect();
+      });
+      window.addEventListener("offline", () => {
+        appState.isOnline = false;
+        renderConnectivityBadge(false);
+        setSyncStatus("local", { silent: true });
+      });
+    }
+
+    setupConnectivityListeners();
+    setSyncStatus(appState.isOnline ? "synced" : "local", { silent: true });
 
     const formatMoney = (v) => '$' + parseFloat(v||0).toLocaleString('en-US',{minimumFractionDigits:2});
 
@@ -1511,10 +1657,11 @@
     function subscribeTrans(){
       setLoaderMsg("Cargando movimientos...");
       const qTrans=query(collection(db,"expenses"), where("owner","==",OWNER), orderBy("date","desc"));
-      unsubTrans = onSnapshot(qTrans, (snap)=>{
+      unsubTrans = onSnapshot(qTrans, { includeMetadataChanges: true }, (snap)=>{
         trans=[];
         snap.forEach(d=>{ const t=d.data(); t.id=d.id; trans.push(t); });
 
+        handlePendingWrites(snap.metadata.hasPendingWrites);
         fillHistFilters();
         renderHistory();
         updateChart();
@@ -2327,6 +2474,13 @@
             data: txToPlain({ ...payload, id: createdRef.id })
           });
         }
+
+      if(!navigator.onLine){
+        showToast("Guardado (offline). Se sincroniza al reconectar.", { tone: "warning", duration: 3600 });
+        setSyncStatus("local", { silent: true });
+      }else{
+        showToast("Guardado", { tone: "success", duration: 2000 });
+      }
 
       invalidateCacheForOwner(OWNER);
       updateDashboardSummary({ force: true });

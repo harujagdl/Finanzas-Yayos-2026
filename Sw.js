@@ -1,4 +1,4 @@
-const CACHE_NAME = "fyayos-v5";
+const CACHE_NAME = "fyayos-v6";
 const ASSETS = [
   "/",
   "/index.html",
@@ -31,8 +31,19 @@ self.addEventListener("activate", (event) => {
 
 // Fetch
 self.addEventListener("fetch", (event) => {
+  if (event.request.method !== "GET") return;
+  const url = new URL(event.request.url);
+  const isShellAsset = url.origin === self.location.origin && ASSETS.includes(url.pathname);
+
+  if (isShellAsset) {
+    event.respondWith(
+      caches.match(event.request).then((cached) => cached || fetch(event.request))
+    );
+    return;
+  }
+
   event.respondWith(
-    caches.match(event.request).then((cached) => cached || fetch(event.request))
+    fetch(event.request).catch(() => caches.match(event.request))
   );
 });
 
