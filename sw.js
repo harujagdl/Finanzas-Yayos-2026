@@ -1,4 +1,4 @@
-const CACHE_NAME = "fyayos-v8";
+const CACHE_NAME = "fyayos-v10";
 const ASSETS = [
   "/",
   "/index.html",
