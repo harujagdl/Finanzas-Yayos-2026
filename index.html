@@ -395,6 +395,21 @@
       </div>
     </div>
 
+    <section id="scope-filter-section" class="card-box p-3 mb-3">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <div class="kpi-label">Filtro de gastos</div>
+        <span class="text-muted small" id="scope-filter-label">Todo</span>
+      </div>
+      <div class="btn-group w-100" role="group" aria-label="Filtro de gastos">
+        <input type="radio" class="btn-check" name="scope-filter" id="scope-filter-all" value="all" onchange="handleScopeFilterChange(this.value)">
+        <label class="btn btn-outline-secondary" for="scope-filter-all">Todo</label>
+        <input type="radio" class="btn-check" name="scope-filter" id="scope-filter-shared" value="shared" onchange="handleScopeFilterChange(this.value)">
+        <label class="btn btn-outline-secondary" for="scope-filter-shared">Compartido</label>
+        <input type="radio" class="btn-check" name="scope-filter" id="scope-filter-personal" value="personal" onchange="handleScopeFilterChange(this.value)">
+        <label class="btn btn-outline-secondary" for="scope-filter-personal">Personal</label>
+      </div>
+    </section>
+
     <section id="dashboard-summary" class="card-box">
       <div class="d-flex justify-content-between align-items-center mb-3">
         <h6 class="fw-bold m-0"><i class="fas fa-gauge-high me-2"></i>Resumen</h6>
@@ -447,6 +462,17 @@
         <h6 class="fw-bold m-0"><i class="fas fa-lightbulb me-2 text-warning"></i>Insights</h6>
       </div>
       <div id="insights-list"><small class="text-muted">Cargando insights...</small></div>
+    </section>
+
+    <section id="monthly-footprint-section" class="card-box d-none">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <div>
+          <h6 class="fw-bold m-0"><i class="fas fa-leaf me-2"></i>Huella mensual</h6>
+          <div class="text-muted small" id="monthly-footprint-period">Cierre del mes anterior</div>
+        </div>
+        <button class="btn btn-sm btn-outline-secondary" type="button" onclick="manualCloseMonth()">Cerrar mes</button>
+      </div>
+      <div id="monthly-footprint-body" class="text-muted small">Generando resumen...</div>
     </section>
 
     <div class="card-box mb-3">
@@ -522,9 +548,9 @@
         <input type="hidden" id="trans-id" />
 
         <div class="btn-group w-100 mb-4 p-1 rounded-3" role="group" style="background-color:var(--bg-body);">
-          <input type="radio" class="btn-check" name="ttype" id="t-exp" value="expense" checked onchange="uiUpdateCats(); uiToggleMsi();" />
+          <input type="radio" class="btn-check" name="ttype" id="t-exp" value="expense" checked onchange="uiUpdateCats(); uiToggleMsi(); uiToggleScope();" />
           <label class="btn btn-outline-danger border-0 rounded-3" for="t-exp">Gasto (-)</label>
-          <input type="radio" class="btn-check" name="ttype" id="t-pay" value="payment" onchange="uiUpdateCats(); uiToggleMsi();" />
+          <input type="radio" class="btn-check" name="ttype" id="t-pay" value="payment" onchange="uiUpdateCats(); uiToggleMsi(); uiToggleScope();" />
           <label class="btn btn-outline-success border-0 rounded-3" for="t-pay">Abono (+)</label>
         </div>
 
@@ -541,6 +567,17 @@
         <div class="mb-3">
           <label class="small fw-bold text-muted mb-1">Categoría</label>
           <select id="t-cat" class="form-select"></select>
+        </div>
+
+        <div class="mb-3" id="scope-field">
+          <label class="small fw-bold text-muted mb-1">Compartido o personal</label>
+          <div class="btn-group w-100 p-1 rounded-3" role="group" style="background-color:var(--bg-body);">
+            <input type="radio" class="btn-check" name="tscope" id="t-scope-shared" value="shared" checked />
+            <label class="btn btn-outline-secondary border-0 rounded-3" for="t-scope-shared">Compartido</label>
+            <input type="radio" class="btn-check" name="tscope" id="t-scope-personal" value="personal" />
+            <label class="btn btn-outline-secondary border-0 rounded-3" for="t-scope-personal">Personal</label>
+          </div>
+          <div class="text-muted small mt-1">* Por defecto es compartido para no friccionar.</div>
         </div>
 
         <div class="mb-3">
@@ -791,7 +828,7 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
     import {
       getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc,
-      query, orderBy, writeBatch, Timestamp, enableIndexedDbPersistence, where, getDocs
+      query, orderBy, writeBatch, Timestamp, enableIndexedDbPersistence, where, getDocs, getDoc, setDoc
     } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
 
     // =========================
@@ -990,22 +1027,27 @@
 
     // Owner
     const OWNER_KEY="fy_owner";
+    const SCOPE_FILTER_KEY="fy_scope_filter";
     let OWNER = localStorage.getItem(OWNER_KEY) || "yair";
     const ownerSelect = document.getElementById("owner-select");
     ownerSelect.value = OWNER;
 
+    const getActiveScopeFilter = () => localStorage.getItem(SCOPE_FILTER_KEY) || "all";
+
     ownerSelect.addEventListener("change", async ()=>{
       OWNER = ownerSelect.value;
       localStorage.setItem(OWNER_KEY, OWNER);
+      setState({ owner: OWNER });
       startLoader();
       setLoaderMsg("Cambiando usuario...");
       await seedPresetCards();
       resubscribeAll();
-      periodDataCache = { owner: null, data: null };
+      periodDataCache = { owner: null, scope: null, data: null };
       cancelSimulation();
       updateDashboardSummary({ force: true });
       updateInsights({ force: true });
       updatePrediction({ force: true });
+      updateMonthlyFootprint({ force: true });
     });
 
     // State
@@ -1014,17 +1056,59 @@
     let cardModal=null;
     let unsubCards=null, unsubTrans=null;
 
-    let periodDataCache = { owner: null, data: null };
+    let periodDataCache = { owner: null, scope: null, data: null };
     const simulationState = { active: false, amount: 0, category: "", result: null };
 
     // MSI state
     let msiChartInstance=null;
 
-    const appState = {
+    const FEATURES = {
+      dashboard: true,
+      alerts: true,
+      insights: true,
+      offlineUx: true,
+      timeline: true,
+      prediction: true,
+      simulator: true,
+      gestures: true,
+      darkMode: true,
+      coupleMode: true,
+      monthlyFootprint: true
+    };
+
+    let appState = {
+      owner: OWNER,
+      activeScopeFilter: localStorage.getItem(SCOPE_FILTER_KEY) || "all",
       isOnline: navigator.onLine,
+      periodDataCacheKeys: [],
+      ui: { loading: false, lastSync: null, toasts: [] },
       syncStatus: "synced",
-      lastSync: null,
       pendingWrites: false
+    };
+
+    const eventBus = new Map();
+    const on = (eventName, handler) => {
+      if(!eventBus.has(eventName)) eventBus.set(eventName, new Set());
+      eventBus.get(eventName).add(handler);
+      return () => eventBus.get(eventName)?.delete(handler);
+    };
+    const emit = (eventName, payload) => {
+      (eventBus.get(eventName) || []).forEach((handler) => safeRun(() => handler(payload), `event:${eventName}`));
+    };
+
+    const setState = (partial = {}) => {
+      const prev = { ...appState };
+      appState = {
+        ...appState,
+        ...partial,
+        ui: { ...appState.ui, ...(partial.ui || {}) }
+      };
+      if(partial.activeScopeFilter && prev.activeScopeFilter !== appState.activeScopeFilter){
+        emit("FILTER_CHANGED", { scopeFilter: appState.activeScopeFilter });
+      }
+      if(typeof partial.isOnline === "boolean" && prev.isOnline !== appState.isOnline){
+        emit(appState.isOnline ? "ONLINE" : "OFFLINE");
+      }
     };
 
     let netBadgeTimer = null;
@@ -1098,6 +1182,31 @@
       }, duration);
     }
 
+    function safeRun(fn, context = "app"){
+      try{
+        return fn();
+      }catch(e){
+        console.error(`Error en ${context}:`, e);
+        showToast("Ups… algo falló, pero seguimos.", { tone: "warning", duration: 2400 });
+        return null;
+      }
+    }
+
+    const applyFeatureVisibility = () => {
+      const toggle = (id, enabled) => {
+        const el = document.getElementById(id);
+        if(!el) return;
+        el.classList.toggle("d-none", !enabled);
+      };
+      toggle("dashboard-summary", FEATURES.dashboard);
+      toggle("alerts-section", FEATURES.alerts);
+      toggle("insights-section", FEATURES.insights);
+      toggle("prediction-section", FEATURES.prediction);
+      toggle("simulation-section", FEATURES.simulator);
+      toggle("monthly-footprint-section", FEATURES.monthlyFootprint);
+      toggle("scope-filter-section", FEATURES.coupleMode);
+    };
+
     function renderConnectivityBadge(isOnline){
       const badge = document.getElementById("netBadge");
       if(!badge) return;
@@ -1122,6 +1231,7 @@
       const timeEl = document.getElementById("sync-time");
       if(!syncEl) return;
       appState.syncStatus = status;
+      setState({ syncStatus: status });
       syncEl.classList.remove("syncing", "synced", "local");
       if(status === "syncing"){
         syncEl.textContent = "Sincronizando...";
@@ -1133,6 +1243,7 @@
         syncEl.textContent = "Sincronizado";
         syncEl.classList.add("synced");
         appState.lastSync = new Date();
+        setState({ ui: { lastSync: appState.lastSync } });
         if(timeEl){
           const time = appState.lastSync.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" });
           timeEl.textContent = `Última sincronización: ${time}`;
@@ -1166,6 +1277,7 @@
       updateAlerts({ force: true });
       updateInsights({ force: true });
       updatePrediction({ force: true });
+      updateMonthlyFootprint({ force: true });
       renderHistory();
       updateChart();
     }
@@ -1174,15 +1286,19 @@
       renderConnectivityBadge(appState.isOnline);
       window.addEventListener("online", async () => {
         appState.isOnline = true;
+        setState({ isOnline: true });
         renderConnectivityBadge(true);
         if(appState.pendingWrites) setSyncStatus("syncing", { silent: true });
         else setSyncStatus("synced", { silent: true });
+        emit("ONLINE");
         await refreshAfterReconnect();
       });
       window.addEventListener("offline", () => {
         appState.isOnline = false;
+        setState({ isOnline: false });
         renderConnectivityBadge(false);
         setSyncStatus("local", { silent: true });
+        emit("OFFLINE");
       });
     }
 
@@ -1195,6 +1311,65 @@
     const safeNumber = (n) => {
       const v = Number(n);
       return Number.isFinite(v) ? v : 0;
+    };
+
+    const normalizeScope = (scope) => {
+      if(scope === "personal" || scope === "shared") return scope;
+      return "shared";
+    };
+
+    const applyScopeFilter = (expenses = [], filter = getActiveScopeFilter()) => {
+      if(filter === "all") return expenses;
+      return expenses.filter((item) => {
+        if(item?.type && item.type !== "expense") return true;
+        return normalizeScope(item?.scope) === filter;
+      });
+    };
+
+    const applyScopeFilterToPeriodData = (periodData = {}, filter = getActiveScopeFilter()) => ({
+      ...periodData,
+      month: {
+        ...periodData?.month,
+        current: applyScopeFilter(periodData?.month?.current || [], filter),
+        previous: applyScopeFilter(periodData?.month?.previous || [], filter)
+      },
+      year: {
+        ...periodData?.year,
+        current: applyScopeFilter(periodData?.year?.current || [], filter),
+        previous: applyScopeFilter(periodData?.year?.previous || [], filter)
+      },
+      week: periodData?.week ? {
+        ...periodData.week,
+        current: applyScopeFilter(periodData?.week?.current || [], filter),
+        previous: applyScopeFilter(periodData?.week?.previous || [], filter)
+      } : undefined
+    });
+
+    const setActiveScopeFilter = (value) => {
+      const next = value === "shared" || value === "personal" ? value : "all";
+      localStorage.setItem(SCOPE_FILTER_KEY, next);
+      setState({ activeScopeFilter: next });
+      syncScopeFilterUI();
+      periodDataCache = { owner: null, scope: null, data: null };
+      emit("FILTER_CHANGED", { scopeFilter: next });
+    };
+
+    const scopeLabel = (value) => {
+      if(value === "shared") return "Compartido";
+      if(value === "personal") return "Personal";
+      return "Todo";
+    };
+
+    const syncScopeFilterUI = () => {
+      const value = getActiveScopeFilter();
+      const label = document.getElementById("scope-filter-label");
+      const all = document.getElementById("scope-filter-all");
+      const shared = document.getElementById("scope-filter-shared");
+      const personal = document.getElementById("scope-filter-personal");
+      if(label) label.textContent = scopeLabel(value);
+      if(all) all.checked = value === "all";
+      if(shared) shared.checked = value === "shared";
+      if(personal) personal.checked = value === "personal";
     };
 
     const toDate = (value) => {
@@ -1438,15 +1613,17 @@
 
     async function getPeriodData(owner, { force = false } = {}) {
       const o = getActiveOwner(owner);
-      if (!force && periodDataCache.data && periodDataCache.owner === o) {
+      const scopeFilter = getActiveScopeFilter();
+      if (!force && periodDataCache.data && periodDataCache.owner === o && periodDataCache.scope === scopeFilter) {
         return periodDataCache.data;
       }
       const useLoader = typeof window.loadPeriodData === "function";
       const periodData = useLoader
         ? await window.loadPeriodData(o, { force })
         : buildPeriodDataFallback(trans);
-      periodDataCache = { owner: o, data: periodData };
-      return periodData;
+      const scopedData = applyScopeFilterToPeriodData(periodData, scopeFilter);
+      periodDataCache = { owner: o, scope: scopeFilter, data: scopedData };
+      return scopedData;
     }
 
     function renderDashboardSummary(metrics) {
@@ -1507,6 +1684,12 @@
     }
 
     async function updateDashboardSummary({ force = false } = {}) {
+      const section = document.getElementById("dashboard-summary");
+      if(!FEATURES.dashboard){
+        section?.classList.add("d-none");
+        return;
+      }
+      section?.classList.remove("d-none");
       renderDashboardSummary(null);
       const owner = getActiveOwner();
       const periodData = await getPeriodData(owner, { force });
@@ -1683,6 +1866,10 @@
     async function updateInsights({ force = false } = {}) {
       const section = document.getElementById("insights-section");
       const list = document.getElementById("insights-list");
+      if(!FEATURES.insights){
+        section?.classList.add("d-none");
+        return;
+      }
       if (section && list) {
         section.classList.remove("d-none");
         list.classList.add("is-loading");
@@ -1880,6 +2067,12 @@
     };
 
     async function updatePrediction({ force = false } = {}) {
+      const section = document.getElementById("prediction-section");
+      if(!FEATURES.prediction){
+        section?.classList.add("d-none");
+        return;
+      }
+      section?.classList.remove("d-none");
       renderPrediction(null);
       const owner = getActiveOwner();
       const periodData = await getPeriodData(owner, { force });
@@ -1890,6 +2083,228 @@
         renderSimulationResult(simulationState.result);
       }
     }
+
+    // =========================
+    // ✅ HUELLA MENSUAL + YO VS YO
+    // =========================
+    const MONTHLY_SUMMARY_COLLECTION = "monthly_summaries";
+
+    const buildMonthlySummaryId = (owner, periodKey, scopeFilter) =>
+      `${owner}__${periodKey}__${scopeFilter || "all"}`;
+
+    const buildMonthlyNarrative = (summary) => {
+      if(!summary || !summary.counts?.txCount) return "";
+      const notes = [];
+      const topCategory = (summary.highlights?.topCategory || "").toLowerCase();
+      if(topCategory.includes("salida") || topCategory.includes("comida")){
+        notes.push("Mes movido: subieron las salidas; ojo con el ritmo.");
+      }
+      if(topCategory.includes("servicio") || topCategory.includes("fijo")){
+        notes.push("Buen control en fijos; se nota orden.");
+      }
+      if(summary.highlights?.avgTicket && summary.counts.txCount <= 5){
+        notes.push("Compras menos frecuentes pero más grandes.");
+      }
+      return notes.slice(0, 2).join(" ");
+    };
+
+    const computeMonthlySummary = (expenses = [], allExpenses = [], { owner, periodKey, scopeFilter } = {}) => {
+      const normalized = expenses.map((item) => ({ ...item, scope: normalizeScope(item?.scope) }));
+      const normalizedAll = (allExpenses.length ? allExpenses : expenses).map((item) => ({
+        ...item,
+        scope: normalizeScope(item?.scope)
+      }));
+
+      const total = sumExpenses(normalized);
+      const txCount = normalized.length;
+      const byCategoryTotals = groupByCategory(normalized);
+      const byCategory = Object.entries(byCategoryTotals)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([category, value]) => ({ category, total: value }));
+
+      const byScope = normalizedAll.reduce((acc, item) => {
+        if(item?.type && item.type !== "expense") return acc;
+        const scope = normalizeScope(item?.scope);
+        acc[scope] = safeNumber(acc[scope]) + safeNumber(item?.amount);
+        return acc;
+      }, { shared: 0, personal: 0 });
+
+      const weekdayTotals = groupByWeekday(normalized);
+      const topDayEntry = Object.entries(weekdayTotals).sort((a, b) => b[1] - a[1])[0];
+      const topDay = topDayEntry && topDayEntry[1] > 0 ? topDayEntry[0] : null;
+
+      const avgTicket = txCount > 0 ? total / txCount : 0;
+      const topCategory = byCategory[0]?.category || null;
+
+      const summary = {
+        owner,
+        periodKey,
+        scopeFilter: scopeFilter || "all",
+        createdAt: Timestamp.now(),
+        totals: {
+          total,
+          byCategory,
+          byWeekday: weekdayTotals,
+          byScope
+        },
+        counts: { txCount },
+        highlights: {
+          topCategory,
+          topDay,
+          avgTicket
+        }
+      };
+      summary.narrative = buildMonthlyNarrative(summary);
+      return summary;
+    };
+
+    const saveMonthlySummary = async (summary) => {
+      if(!summary) return null;
+      const id = buildMonthlySummaryId(summary.owner, summary.periodKey, summary.scopeFilter);
+      await setDoc(doc(db, MONTHLY_SUMMARY_COLLECTION, id), summary, { merge: true });
+      return summary;
+    };
+
+    const maybeGenerateMonthlySummary = async (owner, { force = false, scopeFilter = getActiveScopeFilter() } = {}) => {
+      const o = getActiveOwner(owner);
+      const periodKey = getMonthKey(previousMonth(new Date()));
+      const summaryId = buildMonthlySummaryId(o, periodKey, scopeFilter);
+      const docRef = doc(db, MONTHLY_SUMMARY_COLLECTION, summaryId);
+
+      if(!force){
+        const existing = await getDoc(docRef);
+        if(existing.exists()) return existing.data();
+      }
+
+      const monthExpenses = await loadExpensesMonthOffset(o, 1, { force });
+      const normalizedAll = monthExpenses.map((item) => ({ ...item, scope: normalizeScope(item?.scope) }));
+      const scopedExpenses = applyScopeFilter(normalizedAll, scopeFilter);
+
+      if(!scopedExpenses.length) return null;
+
+      const summary = computeMonthlySummary(scopedExpenses, normalizedAll, {
+        owner: o,
+        periodKey,
+        scopeFilter
+      });
+      await saveMonthlySummary(summary);
+      return summary;
+    };
+
+    const loadMonthlySummaries = async (owner, lastN = 6, scopeFilter = getActiveScopeFilter()) => {
+      const o = getActiveOwner(owner);
+      const snap = await getDocs(query(collection(db, MONTHLY_SUMMARY_COLLECTION), where("owner", "==", o)));
+      const summaries = [];
+      snap.forEach((docSnap) => {
+        const data = docSnap.data();
+        if(scopeFilter === "all"){
+          if((data.scopeFilter || "all") !== "all") return;
+        }else if(data.scopeFilter !== scopeFilter){
+          return;
+        }
+        summaries.push(data);
+      });
+      summaries.sort((a, b) => (b.periodKey || "").localeCompare(a.periodKey || ""));
+      return summaries.slice(0, lastN);
+    };
+
+    const computeComparisons = (summary, summaries = []) => {
+      if(!summary) return null;
+      const totals = summaries.map((item) => safeNumber(item?.totals?.total)).filter((value) => value > 0);
+      if(!totals.length) return null;
+
+      const avg6 = totals.length >= 6
+        ? totals.slice(0, 6).reduce((acc, val) => acc + val, 0) / 6
+        : null;
+      const best = totals.length >= 3 ? Math.min(...totals) : null;
+
+      const currentIndex = summaries.findIndex((item) => item.periodKey === summary.periodKey);
+      const prevSummary = currentIndex >= 0 ? summaries[currentIndex + 1] : null;
+      const prevTotal = prevSummary ? safeNumber(prevSummary.totals?.total) : null;
+
+      return { avg6, best, prevTotal };
+    };
+
+    const renderMonthlyFootprint = (summary, comparisons) => {
+      const section = document.getElementById("monthly-footprint-section");
+      const body = document.getElementById("monthly-footprint-body");
+      const periodEl = document.getElementById("monthly-footprint-period");
+      if(!section || !body) return;
+
+      if(!summary){
+        body.innerHTML = '<small class="text-muted">Aún no hay datos suficientes para cerrar el mes anterior.</small>';
+        section.classList.remove("d-none");
+        return;
+      }
+
+      const periodText = summary.periodKey ? `Cierre ${summary.periodKey}` : "Cierre del mes anterior";
+      if(periodEl) periodEl.textContent = periodText;
+
+      const scopeTotals = summary.totals?.byScope || { shared: 0, personal: 0 };
+      const comparisonLines = [];
+      if(comparisons?.avg6){
+        const delta = pctChange(summary.totals.total, comparisons.avg6);
+        const label = delta.kind === "pct" ? `${delta.value > 0 ? "+" : ""}${delta.value}%` : delta.value;
+        comparisonLines.push(`Vs promedio 6 meses: <strong>${label}</strong>`);
+      }
+      if(comparisons?.best){
+        const delta = pctChange(summary.totals.total, comparisons.best);
+        const label = delta.kind === "pct" ? `${delta.value > 0 ? "+" : ""}${delta.value}%` : delta.value;
+        comparisonLines.push(`Vs tu mejor mes: <strong>${label}</strong>`);
+      }
+      if(comparisons?.prevTotal){
+        const delta = pctChange(summary.totals.total, comparisons.prevTotal);
+        const label = delta.kind === "pct" ? `${delta.value > 0 ? "+" : ""}${delta.value}%` : delta.value;
+        comparisonLines.push(`Vs mes anterior: <strong>${label}</strong>`);
+      }
+
+      const topCategories = (summary.totals?.byCategory || [])
+        .map((item) => `${item.category}: ${formatCurrency(item.total)}`)
+        .join(" • ");
+
+      body.innerHTML = `
+        <div class="mb-2">
+          <div><strong>Total:</strong> <span class="sensitive-data">${formatCurrency(summary.totals.total)}</span></div>
+          <div class="text-muted small">
+            Compartido: <span class="sensitive-data">${formatCurrency(scopeTotals.shared)}</span> ·
+            Personal: <span class="sensitive-data">${formatCurrency(scopeTotals.personal)}</span>
+          </div>
+        </div>
+        ${topCategories ? `<div class="small text-muted mb-2">Top categorías: ${topCategories}</div>` : ""}
+        ${summary.narrative ? `<div class="small mb-2">“${summary.narrative}”</div>` : ""}
+        ${comparisonLines.length
+          ? `<div class="small">${comparisonLines.join("<br>")}</div>`
+          : '<div class="small text-muted">Aún falta historial para comparaciones.</div>'}
+      `;
+
+      section.classList.remove("d-none");
+      animateIn(section);
+      if(privacy) togglePrivacy();
+    };
+
+    async function updateMonthlyFootprint({ force = false } = {}){
+      const section = document.getElementById("monthly-footprint-section");
+      const body = document.getElementById("monthly-footprint-body");
+      if(!section || !body) return;
+      if(!FEATURES.monthlyFootprint){
+        section.classList.add("d-none");
+        return;
+      }
+      section.classList.remove("d-none");
+      body.innerHTML = '<small class="text-muted">Generando resumen...</small>';
+      const owner = getActiveOwner();
+      const scopeFilter = getActiveScopeFilter();
+      const summary = await maybeGenerateMonthlySummary(owner, { force, scopeFilter });
+      const summaries = await loadMonthlySummaries(owner, 6, scopeFilter);
+      const comparisons = summary ? computeComparisons(summary, summaries) : null;
+      renderMonthlyFootprint(summary, comparisons);
+    }
+
+    window.manualCloseMonth = async () => {
+      await updateMonthlyFootprint({ force: true });
+      showToast("Resumen mensual actualizado.", { tone: "success", duration: 2000 });
+    };
 
     window.runSimulation = async () => {
       const amountInput = document.getElementById("sim-amount");
@@ -1928,6 +2343,8 @@
       nav("view-add");
       document.getElementById("t-exp").checked = true;
       uiUpdateCats();
+      uiToggleScope();
+      document.getElementById("t-scope-shared").checked = true;
       document.getElementById("t-amount").value = simulationState.amount;
       const catSelect = document.getElementById("t-cat");
       if (simulationState.category) {
@@ -1998,7 +2415,8 @@
           results.push({
             id: docSnap.id,
             ...data,
-            date: toDate(data?.date)
+            date: toDate(data?.date),
+            scope: normalizeScope(data?.scope)
           });
         });
         return results;
@@ -2209,6 +2627,7 @@
       setSyncStatus("syncing", { silent: true });
       await refreshAfterReconnect();
       setSyncStatus("synced", { silent: true });
+      updateMonthlyFootprint({ force: true });
     };
 
     const quickSheet = document.getElementById("quick-sheet");
@@ -2256,6 +2675,8 @@
       document.getElementById('t-exp').checked = true;
       uiUpdateCats();
       uiToggleMsi();
+      uiToggleScope();
+      document.getElementById('t-scope-shared').checked = true;
       document.getElementById('t-msi').checked = false;
       uiToggleMsiFields();
       const cardSelect = document.getElementById('t-card');
@@ -2279,6 +2700,18 @@
       document.getElementById('t-date').valueAsDate = new Date();
       quickAddPending = true;
       form.requestSubmit();
+    };
+
+    window.handleScopeFilterChange = (value) => {
+      if(!FEATURES.coupleMode) return;
+      setActiveScopeFilter(value);
+      updateDashboardSummary({ force: true });
+      updateAlerts({ force: true });
+      updateInsights({ force: true });
+      updatePrediction({ force: true });
+      updateMonthlyFootprint({ force: true });
+      renderHistory();
+      updateChart();
     };
 
     // Filters
@@ -2389,6 +2822,7 @@
       updateDashboardSummary({ force: true });
       updateInsights({ force: true });
       updatePrediction({ force: true });
+      updateMonthlyFootprint({ force: true });
     }
 
     // Cards subscribe (front filter)
@@ -2515,18 +2949,16 @@
           firstSnapshot = false;
         }
         trans=[];
-        snap.forEach(d=>{ const t=d.data(); t.id=d.id; trans.push(t); });
+        snap.forEach(d=>{
+          const t=d.data();
+          t.id=d.id;
+          t.scope = normalizeScope(t.scope);
+          trans.push(t);
+        });
 
         handlePendingWrites(snap.metadata.hasPendingWrites);
         fillHistFilters();
-        renderHistory();
-        updateChart();
-        updatePaymentMonitor();
-        renderMsi();
-        updateDashboardSummary({ force: true });
-        updateAlerts({ force: true });
-        updateInsights({ force: true });
-        updatePrediction({ force: true });
+        emit("DATA_LOADED", { owner: OWNER, count: trans.length });
 
         if(privacy) togglePrivacy();
       }, (err)=>{
@@ -2716,20 +3148,22 @@
     async function computeAlerts(owner, { force = false } = {}){
       const o = getActiveOwner(owner);
       const now = new Date();
+      const scopeFilter = getActiveScopeFilter();
       const useLoader = typeof window.loadPeriodData === "function";
       const periodData = useLoader
         ? await window.loadPeriodData(o, { force })
         : buildPeriodDataFallback(trans);
+      const scopedPeriodData = applyScopeFilterToPeriodData(periodData, scopeFilter);
 
-      const monthCurrentTotal = sumExpenses(periodData?.month?.current || []);
+      const monthCurrentTotal = sumExpenses(scopedPeriodData?.month?.current || []);
       const weekCurrentTotal = sumExpenses(
-        periodData?.week?.current || buildWeekFallback(trans, now)
+        applyScopeFilter(scopedPeriodData?.week?.current || buildWeekFallback(trans, now), scopeFilter)
       );
 
       const prevMonthsExpenses = await Promise.all(
         [1, 2, 3].map((offset) => loadExpensesMonthOffset(o, offset, { force }))
       );
-      const prevMonthsTotals = prevMonthsExpenses.map((list) => sumExpenses(list));
+      const prevMonthsTotals = prevMonthsExpenses.map((list) => sumExpenses(applyScopeFilter(list, scopeFilter)));
       const avgPrevMonths = prevMonthsTotals.length
         ? prevMonthsTotals.reduce((acc, val) => acc + val, 0) / prevMonthsTotals.length
         : 0;
@@ -2747,7 +3181,7 @@
         periodKey: "weeks-previous-4",
         force
       });
-      const avgPrevWeeks = sumExpenses(prevWeeksExpenses) / 4;
+      const avgPrevWeeks = sumExpenses(applyScopeFilter(prevWeeksExpenses, scopeFilter)) / 4;
 
       const alerts = [];
 
@@ -2840,6 +3274,10 @@
       const section = document.getElementById('alerts-section');
       const list = document.getElementById('alerts-list');
       if(!section || !list) return;
+      if(!FEATURES.alerts){
+        section.classList.add("d-none");
+        return;
+      }
 
       section.classList.remove("d-none");
       list.classList.add("is-loading");
@@ -3104,7 +3542,8 @@
       if(!list) return;
       list.innerHTML = '';
 
-      const filtered = trans.filter(t => {
+      const scopedTrans = FEATURES.coupleMode ? applyScopeFilter(trans, getActiveScopeFilter()) : trans;
+      const filtered = scopedTrans.filter(t => {
         const matchesText =
           (t.concept || "").toLowerCase().includes(term) ||
           (t.cardName || "").toLowerCase().includes(term) ||
@@ -3249,7 +3688,8 @@
       const [selYear, selMonth]=filterVal.split('-').map(Number);
 
       const totals={};
-      trans.filter(t=>{
+      const scopeFilter = getActiveScopeFilter();
+      applyScopeFilter(trans, scopeFilter).filter(t=>{
         const d=t.date.toDate();
         return t.type==='expense' && d.getMonth()===selMonth && d.getFullYear()===selYear;
       }).forEach(t=>{ totals[t.category]=(totals[t.category]||0)+t.amount; });
@@ -3305,6 +3745,18 @@
       uiCalcMsiMonthly();
     };
 
+    window.uiToggleScope = () => {
+      const type=document.querySelector('input[name="ttype"]:checked').value;
+      const scopeField = document.getElementById('scope-field');
+      if(!scopeField) return;
+      if(type === 'expense'){
+        scopeField.style.display = 'block';
+      }else{
+        scopeField.style.display = 'none';
+        document.getElementById('t-scope-shared').checked = true;
+      }
+    };
+
     window.uiToggleMsiFields = () => {
       const on = document.getElementById('t-msi').checked;
       const fields = document.getElementById('msi-fields');
@@ -3348,6 +3800,7 @@
         cardName: t.cardName,
         concept: t.concept,
         category: t.category,
+        scope: t.scope || null,
         isMsi: !!t.isMsi,
         msiMonths: t.msiMonths || null,
         msiStartISO: (t.msiStart?.toDate ? t.msiStart.toDate().toISOString() : null),
@@ -3480,6 +3933,10 @@
         const msiStartStr = isMsi ? (document.getElementById('t-msi-start').value || document.getElementById('t-date').value) : null;
         const msiStart = (isMsi && msiStartStr) ? Timestamp.fromDate(new Date(msiStartStr + 'T12:00')) : null;
 
+        const scopeValue = type === "expense"
+          ? normalizeScope(document.querySelector('input[name="tscope"]:checked')?.value)
+          : null;
+
         const payload = {
           owner: OWNER,
           amount: amt,
@@ -3489,6 +3946,7 @@
           concept: document.getElementById('t-concept').value,
           category: document.getElementById('t-cat').value,
           date: Timestamp.fromDate(new Date(document.getElementById('t-date').value + 'T12:00')),
+          scope: scopeValue,
 
           // MSI
           isMsi: !!isMsi,
@@ -3509,6 +3967,7 @@
             owner: OWNER,
             data: txToPlain({ ...payload, id: tid })
           });
+          emit("EXPENSE_UPDATED", { id: tid, data: payload });
 
         }else{
           const createdRef = await addDoc(collection(db,"expenses"), payload);
@@ -3520,6 +3979,7 @@
             owner: OWNER,
             data: txToPlain({ ...payload, id: createdRef.id })
           });
+          emit("EXPENSE_ADDED", { id: createdRef.id, data: payload });
         }
 
         if(!navigator.onLine){
@@ -3568,6 +4028,13 @@
 
       uiUpdateCats();
       document.getElementById('t-cat').value=t.category;
+      uiToggleScope();
+      const scopeValue = normalizeScope(t.scope);
+      if(scopeValue === "personal"){
+        document.getElementById('t-scope-personal').checked = true;
+      }else{
+        document.getElementById('t-scope-shared').checked = true;
+      }
 
       // MSI
       uiToggleMsi();
@@ -3614,6 +4081,7 @@
         owner: OWNER,
         data: { id }
       });
+      emit("EXPENSE_DELETED", { id });
 
       invalidateCacheForOwner(OWNER);
       updateDashboardSummary({ force: true });
@@ -3635,6 +4103,8 @@
       // MSI defaults
       uiUpdateCats();
       uiToggleMsi();
+      uiToggleScope();
+      document.getElementById('t-scope-shared').checked = true;
       document.getElementById('t-msi').checked=false;
       document.getElementById('t-msi-months').value="6";
       document.getElementById('t-msi-start').value = document.getElementById('t-date').value;
@@ -3646,12 +4116,13 @@
     };
 
     window.exportCSV=()=>{
-      let csv="Fecha,Concepto,Categoria,Monto,Tipo,Tarjeta,Owner,MSI,MSI_Meses,MSI_Inicio\n";
+      let csv="Fecha,Concepto,Categoria,Monto,Tipo,Tarjeta,Owner,Scope,MSI,MSI_Meses,MSI_Inicio\n";
       trans.forEach(t=>{
         const msi = t.isMsi ? "SI" : "NO";
         const msiMonths = t.msiMonths || "";
         const msiStart = t.msiStart?.toDate ? t.msiStart.toDate().toLocaleDateString() : "";
-        csv += `${t.date.toDate().toLocaleDateString()},${(t.concept||"").replaceAll(","," ")},${(t.category||"").replaceAll(","," ")},${t.amount},${t.type},${(t.cardName||"").replaceAll(","," ")},${t.owner},${msi},${msiMonths},${msiStart}\n`;
+        const scope = t.scope ? t.scope : "";
+        csv += `${t.date.toDate().toLocaleDateString()},${(t.concept||"").replaceAll(","," ")},${(t.category||"").replaceAll(","," ")},${t.amount},${t.type},${(t.cardName||"").replaceAll(","," ")},${t.owner},${scope},${msi},${msiMonths},${msiStart}\n`;
       });
       const a=document.createElement('a');
       a.href='data:text/csv;charset=utf-8,'+encodeURI(csv);
@@ -3659,11 +4130,40 @@
       a.click();
     };
 
+    on("DATA_LOADED", () => {
+      updateDashboardSummary({ force: true });
+      updateAlerts({ force: true });
+      updateInsights({ force: true });
+      updatePrediction({ force: true });
+      updateMonthlyFootprint({ force: true });
+      if(FEATURES.timeline){
+        renderHistory();
+      }
+      updateChart();
+      updatePaymentMonitor();
+      renderMsi();
+    });
+
+    on("FILTER_CHANGED", () => {
+      updateDashboardSummary({ force: true });
+      updateAlerts({ force: true });
+      updateInsights({ force: true });
+      updatePrediction({ force: true });
+      updateMonthlyFootprint({ force: true });
+      if(FEATURES.timeline){
+        renderHistory();
+      }
+      updateChart();
+    });
+
     // Init
     loadReviewedIds();
     initThemeMode();
     uiUpdateCats();
     resetForm();
+    uiToggleScope();
+    applyFeatureVisibility();
+    syncScopeFilterUI();
     startLoader();
     await seedPresetCards();
     resubscribeAll();
