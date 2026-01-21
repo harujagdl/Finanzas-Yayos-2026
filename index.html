@@ -660,7 +660,7 @@
     // =========================
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", async () => {
-        try { await navigator.serviceWorker.register("./sw.js"); }
+        try { await navigator.serviceWorker.register("/sw.js"); }
         catch (e) { console.log("SW no registrado (ok):", e?.message || e); }
       });
     }
@@ -1616,6 +1616,17 @@
     window.addEventListener('offline', updateStatus);
     function updateStatus(){
       const s=document.getElementById('connection-status');
+      if(!s){
+        const badge=document.getElementById('netBadge');
+        if(badge){
+          badge.textContent = navigator.onLine ? 'Online' : 'Offline';
+          badge.classList.toggle('online', navigator.onLine);
+          badge.classList.toggle('offline', !navigator.onLine);
+        }else{
+          console.warn("updateStatus: elemento 'connection-status' no encontrado.");
+        }
+        return;
+      }
       if(navigator.onLine){ s.innerHTML='Online 🟢'; s.className='text-muted fw-bold'; }
       else{ s.innerHTML='Offline 🔴'; s.className='text-danger fw-bold'; }
     }
