@@ -215,6 +215,29 @@
     }
     .insight-icon{font-size:1.1rem; line-height:1; margin-top:2px;}
     .insight-title{font-weight:700;}
+    .bg-neutral-light{background:rgba(107,114,128,.15); color:var(--text-muted);}
+    .timeline-day{margin-bottom:16px;}
+    .timeline-header{
+      display:flex; justify-content:space-between; align-items:center;
+      margin-bottom:8px; padding-bottom:6px; border-bottom:1px dashed var(--border-color);
+    }
+    .timeline-title{font-weight:800;}
+    .timeline-subtotal{font-size:.85rem; color:var(--text-muted);}
+    .timeline-items .list-item{margin-bottom:8px;}
+    .simulation-box{
+      background:var(--bg-body); border:1px dashed var(--border-color);
+      border-radius:14px; padding:12px;
+    }
+    .simulation-result{
+      background:var(--bg-card); border:1px solid var(--border-color);
+      border-radius:12px; padding:12px; margin-top:12px;
+    }
+    .simulation-result.sim-active{border-color:rgba(37,99,235,.3);}
+    .simulation-label{
+      font-size:.75rem; text-transform:uppercase; letter-spacing:.8px;
+      color:var(--text-muted); font-weight:700;
+    }
+    .simulation-value{font-weight:800;}
     @media (prefers-reduced-motion: reduce){
       .fade-in, .toast-message{transition:none;}
       .btn-loading .spinner, .skeleton::after{animation:none;}
@@ -292,6 +315,38 @@
         <h6 class="fw-bold m-0"><i class="fas fa-gauge-high me-2"></i>Resumen</h6>
       </div>
       <div id="dashboard-summary-body" class="text-muted small">Cargando resumen...</div>
+    </section>
+
+    <section id="prediction-section" class="card-box">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h6 class="fw-bold m-0"><i class="fas fa-chart-line me-2"></i>Predicción del mes</h6>
+        <span id="prediction-status" class="badge-status bg-neutral-light">Sin datos</span>
+      </div>
+      <div id="prediction-body" class="text-muted small">Calculando predicción...</div>
+    </section>
+
+    <section id="simulation-section" class="card-box">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h6 class="fw-bold m-0"><i class="fas fa-vial me-2"></i>Simular gasto</h6>
+        <span id="simulation-status" class="badge-status bg-warning-light d-none">SIMULADO</span>
+      </div>
+      <div class="simulation-box">
+        <div class="row g-2">
+          <div class="col-7">
+            <label class="small fw-bold text-muted mb-1">Monto</label>
+            <input type="number" id="sim-amount" class="form-control" placeholder="0.00" step="0.01" />
+          </div>
+          <div class="col-5">
+            <label class="small fw-bold text-muted mb-1">Categoría (opcional)</label>
+            <input type="text" id="sim-category" class="form-control" placeholder="Ej: Comida" />
+          </div>
+        </div>
+        <div class="d-flex gap-2 mt-3">
+          <button class="btn btn-outline-primary flex-fill" type="button" onclick="runSimulation()">Simular</button>
+          <button class="btn btn-light flex-fill" type="button" onclick="cancelSimulation()">Cancelar</button>
+        </div>
+        <div id="simulation-result" class="simulation-result d-none"></div>
+      </div>
     </section>
 
     <div id="alerts-section" class="card-box d-none">
@@ -838,7 +893,11 @@
       setLoaderMsg("Cambiando usuario...");
       await seedPresetCards();
       resubscribeAll();
+      periodDataCache = { owner: null, data: null };
+      cancelSimulation();
       updateDashboardSummary({ force: true });
+      updateInsights({ force: true });
+      updatePrediction({ force: true });
     });
 
     // State
@@ -846,6 +905,9 @@
     let privacy=false, chartInstance=null;
     let cardModal=null;
     let unsubCards=null, unsubTrans=null;
+
+    let periodDataCache = { owner: null, data: null };
+    const simulationState = { active: false, amount: 0, category: "", result: null };
 
     // MSI state
     let msiChartInstance=null;
@@ -988,14 +1050,14 @@
 
     async function refreshAfterReconnect(){
       try{
-        const useLoader = typeof window.loadPeriodData === "function";
-        if(useLoader) await window.loadPeriodData(OWNER, { force: true });
+        await getPeriodData(OWNER, { force: true });
       }catch(e){
         console.log("Refresh after reconnect error:", e?.message || e);
       }
       updateDashboardSummary({ force: true });
       updateAlerts({ force: true });
       updateInsights({ force: true });
+      updatePrediction({ force: true });
       renderHistory();
       updateChart();
     }
@@ -1127,6 +1189,47 @@
       return base;
     };
 
+    const startOfDay = (date = new Date()) => {
+      const d = toDate(date);
+      return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
+    };
+
+    const formatDayLabel = (date, now = new Date()) => {
+      const day = startOfDay(date);
+      const today = startOfDay(now);
+      const diffDays = Math.floor((today - day) / 86400000);
+      if (diffDays === 0) return "Hoy";
+      if (diffDays === 1) return "Ayer";
+      if (diffDays > 1 && diffDays <= 6) {
+        const weekday = day.toLocaleDateString("es-MX", { weekday: "long" });
+        return weekday.charAt(0).toUpperCase() + weekday.slice(1);
+      }
+      return day.toLocaleDateString("es-MX", { day: "numeric", month: "long", year: "numeric" });
+    };
+
+    const groupExpensesByDay = (expenses = []) => {
+      const groups = new Map();
+      expenses.forEach((exp) => {
+        const d = toDate(exp?.date);
+        if (Number.isNaN(d.getTime())) return;
+        const day = startOfDay(d);
+        const key = day.toISOString().split("T")[0];
+        const current = groups.get(key) || { key, date: day, items: [], subtotal: 0 };
+        current.items.push(exp);
+        if (exp?.type === "expense") {
+          current.subtotal += safeNumber(exp?.amount);
+        }
+        groups.set(key, current);
+      });
+      return Array.from(groups.values())
+        .sort((a, b) => b.date - a.date)
+        .map((group) => ({
+          ...group,
+          label: formatDayLabel(group.date, new Date()),
+          items: group.items.sort((a, b) => toDate(b?.date) - toDate(a?.date))
+        }));
+    };
+
     const computePeriodTotals = (periodData = {}) => {
       const monthCurrentTotal = sumExpenses(periodData?.month?.current || []);
       const monthPreviousTotal = sumExpenses(periodData?.month?.previous || []);
@@ -1225,6 +1328,19 @@
       };
     };
 
+    async function getPeriodData(owner, { force = false } = {}) {
+      const o = getActiveOwner(owner);
+      if (!force && periodDataCache.data && periodDataCache.owner === o) {
+        return periodDataCache.data;
+      }
+      const useLoader = typeof window.loadPeriodData === "function";
+      const periodData = useLoader
+        ? await window.loadPeriodData(o, { force })
+        : buildPeriodDataFallback(trans);
+      periodDataCache = { owner: o, data: periodData };
+      return periodData;
+    }
+
     function renderDashboardSummary(metrics) {
       const body = document.getElementById("dashboard-summary-body");
       if (!body) return;
@@ -1285,10 +1401,7 @@
     async function updateDashboardSummary({ force = false } = {}) {
       renderDashboardSummary(null);
       const owner = getActiveOwner();
-      const useLoader = typeof window.loadPeriodData === "function";
-      const periodData = useLoader
-        ? await window.loadPeriodData(owner, { force })
-        : buildPeriodDataFallback(trans);
+      const periodData = await getPeriodData(owner, { force });
       const metrics = computePeriodTotals(periodData);
       renderDashboardSummary(metrics);
     }
@@ -1483,13 +1596,249 @@
         `;
       }
       const owner = getActiveOwner();
-      const useLoader = typeof window.loadPeriodData === "function";
-      const periodData = useLoader
-        ? await window.loadPeriodData(owner, { force })
-        : buildPeriodDataFallback(trans);
+      const periodData = await getPeriodData(owner, { force });
       const insights = computeInsights(owner, periodData);
       renderInsights(insights);
     }
+
+    const computeMonthlyAverage = (expenses = []) => {
+      const totals = expenses.reduce((acc, exp) => {
+        const d = toDate(exp?.date);
+        if (Number.isNaN(d.getTime())) return acc;
+        const key = `${d.getFullYear()}-${d.getMonth()}`;
+        acc[key] = safeNumber(acc[key]) + safeNumber(exp?.amount);
+        return acc;
+      }, {});
+      const values = Object.values(totals).filter((value) => value > 0);
+      if (!values.length) return 0;
+      return values.reduce((sum, value) => sum + value, 0) / values.length;
+    };
+
+    const computeMonthlyPrediction = (periodData = {}, { extraAmount = 0 } = {}) => {
+      const now = toDate(periodData?.now || new Date());
+      const monthCurrent = periodData?.month?.current || [];
+      const monthPrevious = periodData?.month?.previous || [];
+      const yearCurrent = periodData?.year?.current || [];
+      const monthTotal = sumExpenses(monthCurrent) + safeNumber(extraAmount);
+      const monthStart = startOfMonth(now);
+      const daysElapsed = Math.max(1, Math.floor((startOfDay(now) - monthStart) / 86400000) + 1);
+      const daysTotal = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+      const txCount = monthCurrent.length;
+
+      if (daysElapsed < 5 || txCount < 3) {
+        return {
+          show: false,
+          reason: "Aún hay pocos datos para una predicción confiable."
+        };
+      }
+
+      const predictedTotal = (monthTotal / daysElapsed) * daysTotal;
+      const avgMonthly = computeMonthlyAverage(yearCurrent);
+      const lastMonthTotal = sumExpenses(monthPrevious);
+
+      let baseline = 0;
+      if (avgMonthly > 0 && lastMonthTotal > 0) baseline = (avgMonthly + lastMonthTotal) / 2;
+      else if (avgMonthly > 0) baseline = avgMonthly;
+      else if (lastMonthTotal > 0) baseline = lastMonthTotal;
+
+      let status = { tone: "neutral", label: "Sin historial" };
+      if (baseline > 0) {
+        const delta = (predictedTotal - baseline) / baseline;
+        if (delta <= 0.05) status = { tone: "success", label: "Dentro de lo normal" };
+        else if (delta <= 0.15) status = { tone: "warning", label: "Ligeramente arriba" };
+        else status = { tone: "danger", label: "Muy arriba" };
+      }
+
+      return {
+        show: true,
+        predictedTotal,
+        daysElapsed,
+        daysTotal,
+        monthTotal,
+        avgMonthly,
+        lastMonthTotal,
+        baseline,
+        status
+      };
+    };
+
+    const computeSimulationImpact = (simAmount, periodData) => {
+      const base = computeMonthlyPrediction(periodData);
+      const simulated = computeMonthlyPrediction(periodData, { extraAmount: simAmount });
+      const delta = base?.show && simulated?.show
+        ? simulated.predictedTotal - base.predictedTotal
+        : null;
+      return { base, simulated, delta };
+    };
+
+    const renderPrediction = (prediction) => {
+      const section = document.getElementById("prediction-section");
+      const statusEl = document.getElementById("prediction-status");
+      const body = document.getElementById("prediction-body");
+      if (!section || !statusEl || !body) return;
+
+      if (!prediction) {
+        body.innerHTML = `
+          <div class="skeleton skeleton-line" style="width:55%;"></div>
+          <div class="skeleton skeleton-line" style="width:80%;"></div>
+        `;
+        statusEl.textContent = "Calculando";
+        statusEl.className = "badge-status bg-neutral-light";
+        return;
+      }
+
+      if (!prediction.show) {
+        statusEl.textContent = "Pocos datos";
+        statusEl.className = "badge-status bg-neutral-light";
+        body.innerHTML = `
+          <div>${prediction.reason}</div>
+          <div class="text-muted mt-1">Sigue registrando gastos para desbloquear la predicción.</div>
+        `;
+        animateIn(section);
+        return;
+      }
+
+      const badgeMap = {
+        success: "bg-success-light",
+        warning: "bg-warning-light",
+        danger: "bg-danger-light",
+        neutral: "bg-neutral-light"
+      };
+      statusEl.textContent = prediction.status.label;
+      statusEl.className = `badge-status ${badgeMap[prediction.status.tone] || "bg-neutral-light"}`;
+
+      const baseParts = [];
+      if (prediction.avgMonthly > 0) {
+        baseParts.push(`Promedio histórico: <span class="sensitive-data">${formatCurrency(prediction.avgMonthly)}</span>`);
+      }
+      if (prediction.lastMonthTotal > 0) {
+        baseParts.push(`Mes pasado: <span class="sensitive-data">${formatCurrency(prediction.lastMonthTotal)}</span>`);
+      }
+
+      body.innerHTML = `
+        <div class="fw-bold">
+          A este ritmo, cerrarás el mes en
+          <span class="sensitive-data">${formatCurrency(prediction.predictedTotal)}</span>.
+        </div>
+        <div class="text-muted mt-1">Basado en ${prediction.daysElapsed} de ${prediction.daysTotal} días.</div>
+        ${baseParts.length ? `<div class="text-muted mt-1">${baseParts.join(" • ")}</div>` : ""}
+      `;
+      animateIn(section);
+      if (privacy) togglePrivacy();
+    };
+
+    const renderSimulationResult = (result) => {
+      const statusEl = document.getElementById("simulation-status");
+      const container = document.getElementById("simulation-result");
+      if (!statusEl || !container) return;
+
+      if (!result) {
+        container.classList.add("d-none");
+        container.classList.remove("sim-active");
+        statusEl.classList.add("d-none");
+        return;
+      }
+
+      statusEl.classList.remove("d-none");
+      container.classList.remove("d-none");
+      container.classList.add("sim-active");
+
+      if (!result.simulated?.show) {
+        container.innerHTML = `
+          <div class="text-muted">${result.simulated?.reason || "No hay suficientes datos para simular."}</div>
+        `;
+        return;
+      }
+
+      const delta = result.delta;
+      const deltaLabel = (typeof delta === "number")
+        ? `${delta >= 0 ? "+" : "-"}${formatCurrency(Math.abs(delta))}`
+        : null;
+      const deltaColor = delta >= 0 ? "text-danger" : "text-success";
+
+      container.innerHTML = `
+        <div class="simulation-label">Nueva predicción mensual</div>
+        <div class="simulation-value sensitive-data">${formatCurrency(result.simulated.predictedTotal)}</div>
+        ${deltaLabel ? `
+          <div class="small ${deltaColor} mt-1">
+            ${deltaLabel} vs predicción actual
+          </div>
+        ` : ""}
+        <button class="btn btn-sm btn-outline-secondary mt-2" type="button" onclick="convertSimulationToReal()">
+          Convertir en gasto real
+        </button>
+      `;
+      if (privacy) togglePrivacy();
+    };
+
+    async function updatePrediction({ force = false } = {}) {
+      renderPrediction(null);
+      const owner = getActiveOwner();
+      const periodData = await getPeriodData(owner, { force });
+      const prediction = computeMonthlyPrediction(periodData);
+      renderPrediction(prediction);
+      if (simulationState.active) {
+        simulationState.result = computeSimulationImpact(simulationState.amount, periodData);
+        renderSimulationResult(simulationState.result);
+      }
+    }
+
+    window.runSimulation = async () => {
+      const amountInput = document.getElementById("sim-amount");
+      const categoryInput = document.getElementById("sim-category");
+      const amount = safeNumber(amountInput?.value);
+      const category = (categoryInput?.value || "").trim();
+
+      if (!amount || amount <= 0) {
+        showToast("Ingresa un monto válido para simular.", { tone: "warning", duration: 2200 });
+        haptic("warn");
+        return;
+      }
+
+      const periodData = await getPeriodData(getActiveOwner(), { force: false });
+      simulationState.active = true;
+      simulationState.amount = amount;
+      simulationState.category = category;
+      simulationState.result = computeSimulationImpact(amount, periodData);
+      renderSimulationResult(simulationState.result);
+    };
+
+    window.cancelSimulation = () => {
+      simulationState.active = false;
+      simulationState.amount = 0;
+      simulationState.category = "";
+      simulationState.result = null;
+      const amountInput = document.getElementById("sim-amount");
+      const categoryInput = document.getElementById("sim-category");
+      if (amountInput) amountInput.value = "";
+      if (categoryInput) categoryInput.value = "";
+      renderSimulationResult(null);
+    };
+
+    window.convertSimulationToReal = () => {
+      if (!simulationState.active) return;
+      nav("view-add");
+      document.getElementById("t-exp").checked = true;
+      uiUpdateCats();
+      document.getElementById("t-amount").value = simulationState.amount;
+      const catSelect = document.getElementById("t-cat");
+      if (simulationState.category) {
+        const hasOption = [...catSelect.options].some((opt) => opt.value === simulationState.category);
+        if (!hasOption) {
+          const opt = document.createElement("option");
+          opt.value = simulationState.category;
+          opt.textContent = simulationState.category;
+          catSelect.appendChild(opt);
+        }
+        catSelect.value = simulationState.category;
+      }
+      if (!document.getElementById("t-concept").value) {
+        document.getElementById("t-concept").value = "Simulación";
+      }
+      document.getElementById("t-date").valueAsDate = new Date();
+      cancelSimulation();
+      showToast("Simulación cargada en el formulario. Solo falta guardar 😉", { tone: "info", duration: 2600 });
+    };
 
     // FASE 1 - Helpers base listos
 
@@ -1810,6 +2159,7 @@
       resetForm();
       updateDashboardSummary({ force: true });
       updateInsights({ force: true });
+      updatePrediction({ force: true });
     }
 
     // Cards subscribe (front filter)
@@ -1947,6 +2297,7 @@
         updateDashboardSummary({ force: true });
         updateAlerts({ force: true });
         updateInsights({ force: true });
+        updatePrediction({ force: true });
 
         if(privacy) togglePrivacy();
       }, (err)=>{
@@ -2443,6 +2794,36 @@
     // =========================
     // ✅ HISTORIAL
     // =========================
+    const renderTimeline = (grouped = []) => grouped.map((group) => `
+      <div class="timeline-day">
+        <div class="timeline-header">
+          <div class="timeline-title">${group.label}</div>
+          <div class="timeline-subtotal">
+            Subtotal: <span class="sensitive-data">${formatCurrency(group.subtotal)}</span>
+          </div>
+        </div>
+        <div class="timeline-items">
+          ${group.items.map((t) => {
+            const isExp = t.type === "expense";
+            const tagMsi = (isExp && t.isMsi) ? `<span class="badge-status bg-success-light ms-2">MSI</span>` : "";
+            const d = toDate(t.date);
+            return `
+              <div class="list-item" onclick="editTrans('${t.id}')">
+                <div class="d-flex align-items-center">
+                  <div class="me-3 text-muted"><i class="fas ${isExp ? "fa-shopping-cart" : "fa-hand-holding-usd"}"></i></div>
+                  <div>
+                    <div class="fw-bold">${t.concept}${tagMsi}</div>
+                    <small class="text-muted">${d.toLocaleDateString()} • ${t.cardName} • ${t.category}</small>
+                  </div>
+                </div>
+                <div class="fw-bold ${isExp ? "text-danger" : "text-success"} sensitive-data">${isExp ? "-" : "+"}${formatMoney(t.amount)}</div>
+              </div>
+            `;
+          }).join("")}
+        </div>
+      </div>
+    `).join("");
+
     window.renderHistory = () => {
       const list = document.getElementById('hist-list');
       const term = (document.getElementById('search-input')?.value || "").toLowerCase();
@@ -2463,7 +2844,7 @@
         let matchesDate = true;
         if (dateFilter !== 'all') {
           const [y, m] = dateFilter.split('-').map(Number);
-          const d = t.date.toDate();
+          const d = toDate(t.date);
           matchesDate = (d.getMonth() === m && d.getFullYear() === y);
         }
 
@@ -2481,22 +2862,8 @@
         return;
       }
 
-      filtered.forEach(t => {
-        const isExp = t.type === 'expense';
-        const tagMsi = (isExp && t.isMsi) ? `<span class="badge-status bg-success-light ms-2">MSI</span>` : '';
-        list.innerHTML += `
-          <div class="list-item" onclick="editTrans('${t.id}')">
-            <div class="d-flex align-items-center">
-              <div class="me-3 text-muted"><i class="fas ${isExp ? 'fa-shopping-cart' : 'fa-hand-holding-usd'}"></i></div>
-              <div>
-                <div class="fw-bold">${t.concept}${tagMsi}</div>
-                <small class="text-muted">${t.date.toDate().toLocaleDateString()} • ${t.cardName} • ${t.category}</small>
-              </div>
-            </div>
-            <div class="fw-bold ${isExp ? 'text-danger' : 'text-success'} sensitive-data">${isExp ? '-' : '+'}${formatMoney(t.amount)}</div>
-          </div>
-        `;
-      });
+      const grouped = groupExpensesByDay(filtered);
+      list.innerHTML = renderTimeline(grouped);
 
       if (privacy) togglePrivacy();
     };
@@ -2797,6 +3164,8 @@
         updateDashboardSummary({ force: true });
         updateAlerts({ force: true });
         updateInsights({ force: true });
+        updatePrediction({ force: true });
+        cancelSimulation();
         resetForm();
         nav('view-home');
       }catch(e){
@@ -2874,6 +3243,8 @@
       updateDashboardSummary({ force: true });
       updateAlerts({ force: true });
       updateInsights({ force: true });
+      updatePrediction({ force: true });
+      cancelSimulation();
       resetForm();
       nav('view-hist');
     };
