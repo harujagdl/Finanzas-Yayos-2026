@@ -727,6 +727,164 @@
 
     // FASE 1 - Helpers base listos
 
+    // ===== FASE 2: RANGOS + CACHE (sesión) =====
+    const expensesCache = new Map();
+
+    const getActiveOwner = (owner) => owner || OWNER || localStorage.getItem(OWNER_KEY) || "yair";
+
+    const getCacheKey = ({ owner, periodKey, start, end }) => {
+      const s = toDate(start).getTime();
+      const e = toDate(end).getTime();
+      return `${owner}::${periodKey}::${s}::${e}`;
+    };
+
+    const getCachedExpenses = (key) => expensesCache.get(key) || null;
+
+    const setCachedExpenses = (key, expenses) => {
+      expensesCache.set(key, expenses);
+    };
+
+    const invalidateCacheKey = (key) => {
+      expensesCache.delete(key);
+    };
+
+    const invalidateCacheForOwner = (owner) => {
+      const prefix = `${owner}::`;
+      Array.from(expensesCache.keys()).forEach((key) => {
+        if (key.startsWith(prefix)) expensesCache.delete(key);
+      });
+    };
+
+    async function fetchExpensesByRange({ owner, start, end, type = "expense" }) {
+      const o = getActiveOwner(owner);
+      const rangeStart = toDate(start);
+      const rangeEnd = toDate(end);
+      try {
+        const qRange = query(
+          collection(db, "expenses"),
+          where("owner", "==", o),
+          where("type", "==", type),
+          where("date", ">=", rangeStart),
+          where("date", "<=", rangeEnd),
+          orderBy("date", "asc")
+        );
+        const snap = await getDocs(qRange);
+        const results = [];
+        snap.forEach((docSnap) => {
+          const data = docSnap.data();
+          results.push({
+            id: docSnap.id,
+            ...data,
+            date: toDate(data?.date)
+          });
+        });
+        return results;
+      } catch (err) {
+        const baseMsg = "Error consultando expenses por rango.";
+        const needsIndex = (err?.message || "").toLowerCase().includes("index");
+        if (needsIndex) {
+          console.error(
+            `${baseMsg} Falta índice compuesto: owner + type + date (asc).`,
+            err
+          );
+        } else {
+          console.error(baseMsg, err);
+        }
+        return [];
+      }
+    }
+
+    async function loadExpensesByPeriod(owner, { start, end, periodKey, force = false } = {}) {
+      const o = getActiveOwner(owner);
+      const key = getCacheKey({ owner: o, periodKey, start, end });
+      if (!force) {
+        const cached = getCachedExpenses(key);
+        if (cached) return cached;
+      }
+      const expenses = await fetchExpensesByRange({ owner: o, start, end, type: "expense" });
+      setCachedExpenses(key, expenses);
+      return expenses;
+    }
+
+    async function loadExpensesMonthCurrent(owner, { force = false } = {}) {
+      const now = new Date();
+      return loadExpensesByPeriod(owner, {
+        start: startOfMonth(now),
+        end: endOfMonth(now),
+        periodKey: "month-current",
+        force
+      });
+    }
+
+    async function loadExpensesMonthPrevious(owner, { force = false } = {}) {
+      const now = new Date();
+      const prev = previousMonth(now);
+      return loadExpensesByPeriod(owner, {
+        start: startOfMonth(prev),
+        end: endOfMonth(prev),
+        periodKey: "month-previous",
+        force
+      });
+    }
+
+    async function loadExpensesYearCurrent(owner, { force = false } = {}) {
+      const now = new Date();
+      return loadExpensesByPeriod(owner, {
+        start: startOfYear(now),
+        end: endOfYear(now),
+        periodKey: "year-current",
+        force
+      });
+    }
+
+    async function loadExpensesYearPrevious(owner, { force = false } = {}) {
+      const now = new Date();
+      const prevYear = new Date(now.getFullYear() - 1, 0, 1);
+      return loadExpensesByPeriod(owner, {
+        start: startOfYear(prevYear),
+        end: endOfYear(prevYear),
+        periodKey: "year-previous",
+        force
+      });
+    }
+
+    async function loadExpensesWeekCurrent(owner, { force = false } = {}) {
+      const now = new Date();
+      return loadExpensesByPeriod(owner, {
+        start: startOfWeek(now),
+        end: endOfWeek(now),
+        periodKey: "week-current",
+        force
+      });
+    }
+
+    window.loadPeriodData = async (owner, { force = false } = {}) => {
+      const o = getActiveOwner(owner);
+      const [monthCurrent, monthPrevious, yearCurrent, yearPrevious, weekCurrent] = await Promise.all([
+        loadExpensesMonthCurrent(o, { force }),
+        loadExpensesMonthPrevious(o, { force }),
+        loadExpensesYearCurrent(o, { force }),
+        loadExpensesYearPrevious(o, { force }),
+        loadExpensesWeekCurrent(o, { force })
+      ]);
+      return {
+        owner: o,
+        now: new Date(),
+        month: { current: monthCurrent, previous: monthPrevious },
+        year: { current: yearCurrent, previous: yearPrevious },
+        week: { current: weekCurrent }
+      };
+    };
+
+    window.loadExpensesMonthCurrent = loadExpensesMonthCurrent;
+    window.loadExpensesMonthPrevious = loadExpensesMonthPrevious;
+    window.loadExpensesYearCurrent = loadExpensesYearCurrent;
+    window.loadExpensesYearPrevious = loadExpensesYearPrevious;
+    window.loadExpensesWeekCurrent = loadExpensesWeekCurrent;
+    window.fetchExpensesByRange = fetchExpensesByRange;
+    window.invalidateCacheForOwner = invalidateCacheForOwner;
+    window.invalidateCacheKey = invalidateCacheKey;
+
     // Online/offline
     window.addEventListener('online', updateStatus);
     window.addEventListener('offline', updateStatus);
@@ -1646,6 +1804,7 @@
           });
         }
 
+        invalidateCacheForOwner(OWNER);
         resetForm();
         nav('view-home');
       }catch(e){
@@ -1714,6 +1873,7 @@
         data: { id }
       });
 
+      invalidateCacheForOwner(OWNER);
       resetForm();
       nav('view-hist');
     };
