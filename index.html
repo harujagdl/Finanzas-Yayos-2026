@@ -29,16 +29,29 @@
       --bg-body:#111827; --bg-card:#1f2937; --text-main:#f9fafb; --text-muted:#9ca3af;
       --shadow:0 4px 6px -1px rgba(0,0,0,.3); --border-color:#374151;
     }
-    body{background:var(--bg-body); color:var(--text-main); font-family:'Inter',sans-serif; padding-bottom:90px; transition:background .3s; -webkit-tap-highlight-color:transparent;}
+    body{
+      background:var(--bg-body); color:var(--text-main); font-family:'Inter',sans-serif;
+      padding-bottom:110px; transition:background .3s; -webkit-tap-highlight-color:transparent;
+    }
     .text-muted{color:var(--text-muted)!important;} .text-dark{color:var(--text-main)!important;}
     h1,h2,h3,h4,h5,h6{color:var(--text-main);}
-    .card-box{background:var(--bg-card); border-radius:16px; padding:20px; margin-bottom:16px; box-shadow:var(--shadow); border:none; transition:background .3s;}
+    .card-box{
+      background:var(--bg-card); border-radius:16px; padding:20px; margin-bottom:16px;
+      box-shadow:var(--shadow); border:none; transition:background .3s;
+    }
     .fw-black{font-weight:800;}
     .blur-sensitive{filter:blur(6px); user-select:none; transition:filter .3s;}
     .kpi-label{font-size:.75rem; text-transform:uppercase; letter-spacing:1px; color:var(--text-muted); font-weight:700;}
     .kpi-value{font-size:1.75rem; font-weight:800; letter-spacing:-1px;}
-    .smart-banner{background:linear-gradient(135deg,var(--primary),#1e40af); color:#fff; border-radius:16px; padding:20px; margin-bottom:24px; box-shadow:0 10px 15px -3px rgba(37,99,235,.3);}
-    .list-item{background:var(--bg-card); padding:16px; border-radius:12px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; border:1px solid var(--border-color);}
+    .smart-banner{
+      background:linear-gradient(135deg,var(--primary),#1e40af); color:#fff; border-radius:16px;
+      padding:20px; margin-bottom:24px; box-shadow:0 10px 15px -3px rgba(37,99,235,.3);
+    }
+    .list-item{
+      background:var(--bg-card); padding:16px; border-radius:12px; margin-bottom:10px;
+      display:flex; justify-content:space-between; align-items:center;
+      border:1px solid var(--border-color);
+    }
     .badge-status{padding:4px 8px; border-radius:6px; font-size:.7rem; font-weight:700; text-transform:uppercase;}
     .bg-danger-light{background:rgba(239,68,68,.15); color:var(--danger);}
     .bg-success-light{background:rgba(16,185,129,.15); color:var(--success);}
@@ -52,8 +65,12 @@
       z-index:100; padding-bottom:max(10px, env(safe-area-inset-bottom));
     }
     .nav-container-item{display:flex; justify-content:center; align-items:center; position:relative; height:100%;}
-    .nav-btn{background:none; border:none; color:var(--text-muted); font-size:.7rem; font-weight:600; display:flex; flex-direction:column; align-items:center; width:100%;}
-    .nav-btn i{font-size:1.4rem; margin-bottom:4px;}
+    .nav-btn{
+      background:none; border:none; color:var(--text-muted);
+      font-size:.7rem; font-weight:600;
+      display:flex; flex-direction:column; align-items:center; width:100%;
+    }
+    .nav-btn i{font-size:1.35rem; margin-bottom:4px;}
     .nav-btn.active{color:var(--primary);}
 
     .fab-main{
@@ -66,16 +83,34 @@
     }
     .fab-main:active{transform:translateY(-12px) scale(.95);}
 
-    .form-control,.form-select{background:var(--bg-body); border:1px solid var(--border-color); color:var(--text-main); padding:12px; border-radius:10px;}
-    .form-control:focus,.form-select:focus{background:var(--bg-card); border-color:var(--primary); box-shadow:none; color:var(--text-main);}
+    .form-control,.form-select{
+      background:var(--bg-body); border:1px solid var(--border-color);
+      color:var(--text-main); padding:12px; border-radius:10px;
+    }
+    .form-control:focus,.form-select:focus{
+      background:var(--bg-card); border-color:var(--primary);
+      box-shadow:none; color:var(--text-main);
+    }
     .btn-disabled{background:#6b7280!important; border-color:#6b7280!important; cursor:not-allowed; opacity:.7;}
 
     .view-section{display:none; animation:fadeIn .2s ease-out;}
     .view-section.active{display:block;}
     @keyframes fadeIn{from{opacity:0; transform:translateY(10px);} to{opacity:1; transform:translateY(0);}}
 
-    #loader{position:fixed; inset:0; background:var(--bg-card); z-index:2000; display:flex; justify-content:center; align-items:center; flex-direction:column;}
+    #loader{
+      position:fixed; inset:0; background:var(--bg-card); z-index:2000;
+      display:flex; justify-content:center; align-items:center; flex-direction:column;
+    }
     .owner-select{width:120px; padding:8px 10px; border-radius:12px; font-weight:800;}
+
+    /* MSI */
+    .msi-pill{
+      display:inline-flex; align-items:center; gap:8px;
+      padding:8px 12px; border-radius:999px;
+      border:1px solid var(--border-color);
+      background:var(--bg-body);
+      font-weight:800; font-size:.8rem;
+    }
   </style>
 </head>
 
@@ -86,6 +121,9 @@
     <div class="mt-2 small text-muted" id="loader-msg">Conectando a Firestore...</div>
   </div>
 
+  <!-- =======================
+        ✅ INICIO
+  ======================= -->
   <div id="view-home" class="view-section active p-3">
     <div class="d-flex justify-content-between align-items-center mb-4">
       <div>
@@ -99,7 +137,7 @@
           <option value="haru">Haru</option>
         </select>
 
-        <!-- 🔔 Push -->
+        <!-- 🔔 Push (por ahora solo placeholder) -->
         <button class="btn btn-sm btn-outline-secondary rounded-circle"
           onclick="enablePush()"
           title="Activar recordatorios"
@@ -132,7 +170,12 @@
     </div>
 
     <div class="card-box mb-3">
-      <h6 class="fw-bold mb-3"><i class="fas fa-clipboard-check me-2"></i>Monitor de Pagos (Mes Actual)</h6>
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h6 class="fw-bold m-0"><i class="fas fa-clipboard-check me-2"></i>Monitor de Pagos (Mes Actual)</h6>
+        <span class="msi-pill" onclick="nav('view-msi')" style="cursor:pointer;">
+          <i class="fas fa-layer-group"></i> MSI
+        </span>
+      </div>
       <div id="payment-monitor-list"><small class="text-muted">Cargando pagos...</small></div>
     </div>
 
@@ -177,6 +220,9 @@
     <div id="home-card-list"></div>
   </div>
 
+  <!-- =======================
+        ✅ TARJETAS
+  ======================= -->
   <div id="view-cards" class="view-section p-3">
     <h4 class="fw-black mb-4">Mis Tarjetas</h4>
     <div class="text-muted small mb-2">* Ya están precargadas. Aquí solo editas corte/pago/límite/deuda/meta.</div>
@@ -186,15 +232,19 @@
     </button>
   </div>
 
+  <!-- =======================
+        ✅ AGREGAR MOV
+  ======================= -->
   <div id="view-add" class="view-section p-3">
     <h4 class="fw-black mb-4">Registrar Movimiento</h4>
     <div class="card-box">
       <form id="form-trans">
         <input type="hidden" id="trans-id" />
+
         <div class="btn-group w-100 mb-4 p-1 rounded-3" role="group" style="background-color:var(--bg-body);">
-          <input type="radio" class="btn-check" name="ttype" id="t-exp" value="expense" checked onchange="uiUpdateCats()" />
+          <input type="radio" class="btn-check" name="ttype" id="t-exp" value="expense" checked onchange="uiUpdateCats(); uiToggleMsi();" />
           <label class="btn btn-outline-danger border-0 rounded-3" for="t-exp">Gasto (-)</label>
-          <input type="radio" class="btn-check" name="ttype" id="t-pay" value="payment" onchange="uiUpdateCats()" />
+          <input type="radio" class="btn-check" name="ttype" id="t-pay" value="payment" onchange="uiUpdateCats(); uiToggleMsi();" />
           <label class="btn btn-outline-success border-0 rounded-3" for="t-pay">Abono (+)</label>
         </div>
 
@@ -218,9 +268,47 @@
           <input type="text" id="t-concept" class="form-control" placeholder="Ej: Supermercado" required />
         </div>
 
-        <div class="mb-4">
+        <div class="mb-3">
           <label class="small fw-bold text-muted mb-1">Fecha</label>
           <input type="date" id="t-date" class="form-control" required />
+        </div>
+
+        <!-- ✅ MSI -->
+        <div id="msi-box" class="mb-4 p-3 rounded-3" style="background-color:var(--bg-body);border:1px dashed var(--border-color); display:none;">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <div class="fw-bold"><i class="fas fa-layer-group me-2"></i>Compra a MSI</div>
+            <div class="form-check form-switch m-0">
+              <input class="form-check-input" type="checkbox" id="t-msi" onchange="uiToggleMsiFields()">
+            </div>
+          </div>
+
+          <div id="msi-fields" style="display:none;">
+            <div class="row g-2">
+              <div class="col-6">
+                <label class="small fw-bold text-muted mb-1">Meses</label>
+                <select id="t-msi-months" class="form-select">
+                  <option value="3">3</option>
+                  <option value="6" selected>6</option>
+                  <option value="9">9</option>
+                  <option value="12">12</option>
+                  <option value="18">18</option>
+                  <option value="24">24</option>
+                </select>
+              </div>
+              <div class="col-6">
+                <label class="small fw-bold text-muted mb-1">Inicio MSI</label>
+                <input type="date" id="t-msi-start" class="form-control">
+              </div>
+            </div>
+
+            <div class="mt-3 d-flex justify-content-between align-items-center">
+              <small class="text-muted">Mensualidad estimada</small>
+              <div class="fw-black sensitive-data" id="msi-monthly">$0.00</div>
+            </div>
+            <small class="text-muted d-block mt-1" style="font-size:.75rem;">
+              * Esto es para “saber cuándo se libera”. No calcula intereses (MSI real suele ser sin intereses).
+            </small>
+          </div>
         </div>
 
         <button type="submit" id="btn-save-trans" class="btn btn-primary w-100 py-3 rounded-3 fw-bold shadow-sm">Guardar Transacción</button>
@@ -237,6 +325,9 @@
     </div>
   </div>
 
+  <!-- =======================
+        ✅ HISTORIAL
+  ======================= -->
   <div id="view-hist" class="view-section p-3">
     <div class="d-flex justify-content-between align-items-center mb-3">
       <h4 class="fw-black m-0">Historial</h4>
@@ -277,6 +368,49 @@
     <div id="hist-list"></div>
   </div>
 
+  <!-- =======================
+        ✅ MSI (NUEVO)
+  ======================= -->
+  <div id="view-msi" class="view-section p-3">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <div>
+        <h4 class="fw-black m-0">MSI</h4>
+        <div class="text-muted small">Compras a meses y cuánto falta para que “se liberen”.</div>
+      </div>
+      <button class="btn btn-sm btn-outline-secondary" style="border-color:var(--border-color);color:var(--text-muted);" onclick="nav('view-home')">
+        <i class="fas fa-arrow-left me-1"></i> Volver
+      </button>
+    </div>
+
+    <div class="card-box">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h6 class="fw-bold m-0">Meses restantes por compra</h6>
+        <select id="msi-filter" class="form-select form-select-sm w-auto py-1" onchange="renderMsi()">
+          <option value="active">Activas</option>
+          <option value="all">Todas</option>
+          <option value="done">Liquidadas</option>
+        </select>
+      </div>
+      <div style="position:relative;height:260px;">
+        <canvas id="msiChart"></canvas>
+        <div id="msi-no-data" class="text-muted small d-none" style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center;">
+          No hay compras MSI registradas.
+        </div>
+      </div>
+    </div>
+
+    <div class="card-box">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h6 class="fw-bold m-0">Detalle</h6>
+        <span class="text-muted small" id="msi-count">0</span>
+      </div>
+      <div id="msi-list"><small class="text-muted">Cargando...</small></div>
+    </div>
+  </div>
+
+  <!-- =======================
+        ✅ NAV
+  ======================= -->
   <div class="nav-bottom">
     <div class="nav-container-item">
       <button class="nav-btn active" onclick="nav('view-home')" id="nav-home"><i class="fas fa-chart-pie"></i> Inicio</button>
@@ -288,11 +422,16 @@
       <div class="fab-main" onclick="nav('view-add'); resetForm();"><i class="fas fa-plus"></i></div>
     </div>
     <div class="nav-container-item">
+      <button class="nav-btn" onclick="nav('view-msi')" id="nav-msi"><i class="fas fa-layer-group"></i> MSI</button>
+    </div>
+    <div class="nav-container-item">
       <button class="nav-btn" onclick="nav('view-hist')" id="nav-hist"><i class="fas fa-list-ul"></i> Historial</button>
     </div>
-    <div class="nav-container-item"></div>
   </div>
 
+  <!-- =======================
+        ✅ MODAL TARJETA
+  ======================= -->
   <div class="modal fade" id="modalCard" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
       <div class="modal-content card-box border-0">
@@ -347,11 +486,8 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
     import {
       getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc,
-      query, orderBy, writeBatch, Timestamp, enableIndexedDbPersistence, where, getDocs, setDoc
+      query, orderBy, writeBatch, Timestamp, enableIndexedDbPersistence, where, getDocs
     } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
-
-    // ✅ Push (FCM)
-    import { getMessaging, getToken, onMessage } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-messaging.js";
 
     // =========================
     // ✅ CONFIG SHEETS
@@ -421,76 +557,11 @@
     enableIndexedDbPersistence(db).catch((err)=>console.log("Persistence status:", err.code));
 
     // =========================
-    // 🔔 PUSH (FCM)
+    // 🔔 PUSH (por ahora placeholder)
     // =========================
-    const VAPID_PUBLIC_KEY = "BLLctcR6q6nf2ISMPYG_-MBPj-erDudltee2BVEBXOjTzj-ac8QpToDcK9mVcpCpzu6TYaa5Bu03ddbDJspVdi0";
-    let messaging = null;
-    try { messaging = getMessaging(app); } catch(e){ console.log("Messaging init error:", e); }
-
-    // Guardar token por owner (sin duplicados)
-    async function saveFcmToken(token, owner){
-      // Usamos token como id del documento (idempotente)
-      await setDoc(doc(db, "push_tokens", token), {
-        token,
-        owner,
-        userAgent: navigator.userAgent,
-        updatedAt: Timestamp.now()
-      }, { merge: true });
-    }
-
-    window.enablePush = async function enablePush(){
-      try{
-        if (!("serviceWorker" in navigator)) {
-          alert("Este dispositivo no soporta Service Worker.");
-          return;
-        }
-
-        const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
-        const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
-        if(isIOS && !isStandalone){
-          alert("En iPhone debes usarla INSTALADA como PWA:\nSafari → Compartir → Agregar a pantalla de inicio.\n\nLuego vuelve a picar la campana 🔔.");
-          return;
-        }
-
-        const perm = await Notification.requestPermission();
-        if (perm !== "granted") {
-          alert("Sin permiso no puedo enviarte recordatorios.");
-          return;
-        }
-
-        const reg = await navigator.serviceWorker.ready;
-
-        if(!messaging){
-          alert("FCM no pudo inicializarse. Revisa tu sw.js (compat) y que esté en raíz.");
-          return;
-        }
-
-        // ✅ Token FCM (esto es lo que necesitas para push automáticos reales)
-        const token = await getToken(messaging, {
-          vapidKey: VAPID_PUBLIC_KEY,
-          serviceWorkerRegistration: reg
-        });
-
-        if(!token){
-          alert("No se pudo obtener el token push. Tip: abre en HTTPS/GitHub Pages y recarga.");
-          return;
-        }
-
-        await saveFcmToken(token, OWNER);
-
-        alert("✅ Listo. Notificaciones activadas.\n\nSiguiente paso: configurar Cloud Function programada para avisos automáticos por fecha de pago.");
-      }catch(err){
-        console.error(err);
-        alert("No se pudo activar push:\n" + (err?.message || err));
-      }
-    }
-
-    // (Opcional) Si llega un push con la app abierta (foreground)
-    if(messaging){
-      onMessage(messaging, (payload) => {
-        console.log("🔔 Push foreground:", payload);
-      });
-    }
+    window.enablePush = () => {
+      alert("🔔 Push: lo armamos después.\n\nAhorita ya quedó MSI pro para saber cuándo se liberan compras 😌");
+    };
 
     // Presets
     const PRESET_CARDS = [
@@ -527,6 +598,9 @@
     let cardModal=null;
     let unsubCards=null, unsubTrans=null;
 
+    // MSI state
+    let msiChartInstance=null;
+
     const formatMoney = (v) => '$' + parseFloat(v||0).toLocaleString('en-US',{minimumFractionDigits:2});
 
     // Online/offline
@@ -544,9 +618,14 @@
       document.querySelectorAll('.view-section').forEach(e=>e.classList.remove('active'));
       document.querySelectorAll('.nav-btn').forEach(e=>e.classList.remove('active'));
       document.getElementById(vid).classList.add('active');
+
       if(vid.includes('home')) document.getElementById('nav-home').classList.add('active');
       if(vid.includes('cards')) document.getElementById('nav-cards').classList.add('active');
       if(vid.includes('hist')) document.getElementById('nav-hist').classList.add('active');
+      if(vid.includes('msi')) document.getElementById('nav-msi').classList.add('active');
+
+      // render MSI cuando entras
+      if(vid === 'view-msi') renderMsi();
     };
 
     window.toggleTheme=()=>{
@@ -554,6 +633,7 @@
       const isDark=body.getAttribute('data-theme')==='dark';
       body.setAttribute('data-theme', isDark?'light':'dark');
       updateChart();
+      renderMsi(); // actualiza colores labels
     };
 
     window.togglePrivacy=()=>{
@@ -592,7 +672,6 @@
       const prevCard = selCard.value || "all";
       const prevCat  = selCat.value || "all";
 
-      // Tarjetas (value = cardId)
       selCard.innerHTML = `<option value="all">Tarjeta: Todas</option>`;
       const sortedCards = [...cards].sort((a,b)=>(a.name||"").localeCompare(b.name||"","es"));
       sortedCards.forEach(c=>{
@@ -602,9 +681,9 @@
         selCard.appendChild(opt);
       });
 
-      // Categorías (desde trans)
       selCat.innerHTML = `<option value="all">Categoría: Todas</option>`;
-      const cats = [...new Set(trans.map(t => (t.category || '').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"es"));
+      const cats = [...new Set(trans.map(t => (t.category || '').trim()).filter(Boolean))]
+        .sort((a,b)=>a.localeCompare(b,"es"));
       cats.forEach(c=>{
         const opt=document.createElement('option');
         opt.value=c;
@@ -680,7 +759,6 @@
         const tempAll=[];
         snap.forEach(d=>{ const c=d.data(); c.id=d.id; tempAll.push(c); });
 
-        // Solo tarjetas visibles para el OWNER (y compartidas)
         const temp=tempAll.filter(c=>c.owner===OWNER || c.owner==="both");
 
         cards=[];
@@ -785,6 +863,8 @@
         renderHistory();
         updateChart();
         updatePaymentMonitor();
+        renderMsi();
+
         if(privacy) togglePrivacy();
       }, (err)=>{
         showLoaderError("Error leyendo movimientos (expenses): "+(err.message||err));
@@ -850,7 +930,144 @@
       }else area.classList.add('d-none');
     }
 
-    // Historial
+    // =========================
+    // ✅ MSI: helpers + render
+    // =========================
+    function monthsBetween(a, b){
+      // a,b = Date
+      const ay=a.getFullYear(), am=a.getMonth();
+      const by=b.getFullYear(), bm=b.getMonth();
+      let diff=(by-ay)*12 + (bm-am);
+
+      // si el día del mes aún no llega, no contamos el mes completo
+      if(b.getDate() < a.getDate()) diff -= 1;
+      return Math.max(0, diff);
+    }
+
+    function getMsiItems(){
+      const now=new Date();
+      const items = trans
+        .filter(t => t.type === "expense" && t.isMsi === true && t.msiMonths && t.msiStart)
+        .map(t => {
+          const start = t.msiStart?.toDate ? t.msiStart.toDate() : new Date(t.msiStart);
+          const totalMonths = parseInt(t.msiMonths, 10) || 0;
+          const passed = monthsBetween(start, now);
+          const remaining = Math.max(totalMonths - passed, 0);
+          const monthly = (Number(t.amount||0) / Math.max(totalMonths,1));
+
+          return {
+            ...t,
+            start,
+            totalMonths,
+            passed,
+            remaining,
+            monthly
+          };
+        })
+        .sort((a,b)=> b.remaining - a.remaining);
+
+      const mode = document.getElementById('msi-filter')?.value || 'active';
+
+      if(mode === 'active') return items.filter(x => x.remaining > 0);
+      if(mode === 'done') return items.filter(x => x.remaining === 0);
+      return items;
+    }
+
+    window.renderMsi = () => {
+      const list = document.getElementById('msi-list');
+      const count = document.getElementById('msi-count');
+      const canvas = document.getElementById('msiChart');
+      const noData = document.getElementById('msi-no-data');
+
+      if(!list || !canvas || !noData) return;
+
+      const items = getMsiItems();
+      count.textContent = `${items.length} compras`;
+
+      // List
+      if(items.length === 0){
+        list.innerHTML = '<div class="text-center text-muted small p-3">No hay compras MSI en este filtro.</div>';
+      }else{
+        list.innerHTML = '';
+        items.forEach(t => {
+          const pct = t.totalMonths > 0 ? Math.min((t.passed / t.totalMonths) * 100, 100) : 0;
+          const color = (t.remaining === 0) ? 'success' : (t.remaining <= 2 ? 'warning' : 'primary');
+
+          list.innerHTML += `
+            <div class="mb-3">
+              <div class="d-flex justify-content-between align-items-start">
+                <div>
+                  <div class="fw-bold">${t.concept || 'Compra MSI'}</div>
+                  <small class="text-muted">${t.cardName || ''} • Inicio: ${t.start.toLocaleDateString()} • ${t.totalMonths} MSI</small>
+                </div>
+                <div class="text-end">
+                  <div class="fw-black sensitive-data">${t.remaining === 0 ? '✅ Liquidada' : `${t.remaining} meses`}</div>
+                  <small class="text-muted sensitive-data">${formatMoney(t.monthly)}/mes</small>
+                </div>
+              </div>
+              <div class="progress mt-2" style="height:12px;background-color:var(--bg-body);">
+                <div class="progress-bar bg-${color}" role="progressbar" style="width:${pct}%"></div>
+              </div>
+            </div>
+          `;
+        });
+      }
+
+      // Chart (bar)
+      if(msiChartInstance) msiChartInstance.destroy();
+
+      if(items.length === 0){
+        canvas.style.display='none';
+        noData.classList.remove('d-none');
+        return;
+      }else{
+        canvas.style.display='block';
+        noData.classList.add('d-none');
+      }
+
+      const isDark=document.body.getAttribute('data-theme')==='dark';
+      const textColor=isDark ? '#f9fafb' : '#6b7280';
+
+      const labels = items.slice(0, 10).map(t => {
+        const name = (t.concept || 'MSI').trim();
+        return name.length > 16 ? name.slice(0, 16) + '…' : name;
+      });
+      const values = items.slice(0, 10).map(t => t.remaining);
+
+      msiChartInstance = new Chart(canvas, {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [{
+            label: 'Meses restantes',
+            data: values
+          }]
+        },
+        options: {
+          responsive:true,
+          maintainAspectRatio:false,
+          plugins:{
+            legend:{ display:false },
+            tooltip:{ enabled:true }
+          },
+          scales: {
+            x: {
+              ticks: { color:textColor }
+            },
+            y: {
+              beginAtZero:true,
+              ticks: { color:textColor, precision:0 }
+            }
+          }
+        }
+      });
+
+      if(privacy) togglePrivacy();
+    };
+
+    // =========================
+    // ✅ HISTORIAL
+    // =========================
     window.renderHistory = () => {
       const list = document.getElementById('hist-list');
       const term = (document.getElementById('search-input')?.value || "").toLowerCase();
@@ -891,12 +1108,13 @@
 
       filtered.forEach(t => {
         const isExp = t.type === 'expense';
+        const tagMsi = (isExp && t.isMsi) ? `<span class="badge-status bg-success-light ms-2">MSI</span>` : '';
         list.innerHTML += `
           <div class="list-item" onclick="editTrans('${t.id}')">
             <div class="d-flex align-items-center">
               <div class="me-3 text-muted"><i class="fas ${isExp ? 'fa-shopping-cart' : 'fa-hand-holding-usd'}"></i></div>
               <div>
-                <div class="fw-bold">${t.concept}</div>
+                <div class="fw-bold">${t.concept}${tagMsi}</div>
                 <small class="text-muted">${t.date.toDate().toLocaleDateString()} • ${t.cardName} • ${t.category}</small>
               </div>
             </div>
@@ -908,7 +1126,9 @@
       if (privacy) togglePrivacy();
     };
 
-    // Chart
+    // =========================
+    // ✅ CHART GASTOS
+    // =========================
     window.updateChart=()=>{
       const ctx=document.getElementById('expensesChart');
       const noDataMsg=document.getElementById('no-data-msg');
@@ -943,7 +1163,9 @@
       });
     };
 
-    // Categorías
+    // =========================
+    // ✅ CATEGORÍAS
+    // =========================
     window.uiUpdateCats=()=>{
       const type=document.querySelector('input[name="ttype"]:checked').value;
       const s=document.getElementById('t-cat');
@@ -954,7 +1176,55 @@
       opts.forEach(o=> s.innerHTML += `<option>${o}</option>`);
     };
 
-    // Helpers
+    // =========================
+    // ✅ UI MSI
+    // =========================
+    window.uiToggleMsi = () => {
+      const type=document.querySelector('input[name="ttype"]:checked').value;
+      const box = document.getElementById('msi-box');
+      if(type === 'expense'){
+        box.style.display = 'block';
+      }else{
+        box.style.display = 'none';
+        document.getElementById('t-msi').checked = false;
+        uiToggleMsiFields();
+      }
+      uiCalcMsiMonthly();
+    };
+
+    window.uiToggleMsiFields = () => {
+      const on = document.getElementById('t-msi').checked;
+      const fields = document.getElementById('msi-fields');
+      fields.style.display = on ? 'block' : 'none';
+
+      // si prenden MSI y no hay start, lo ponemos igual a fecha transacción
+      if(on){
+        const d = document.getElementById('t-date').value;
+        if(d) document.getElementById('t-msi-start').value = d;
+      }
+      uiCalcMsiMonthly();
+    };
+
+    function uiCalcMsiMonthly(){
+      const on = document.getElementById('t-msi').checked;
+      const monthlyEl = document.getElementById('msi-monthly');
+      if(!on){ monthlyEl.textContent = formatMoney(0); return; }
+      const amt = parseFloat(document.getElementById('t-amount').value || 0);
+      const months = parseInt(document.getElementById('t-msi-months').value || 1);
+      const monthly = months > 0 ? (amt / months) : 0;
+      monthlyEl.textContent = formatMoney(monthly);
+    }
+
+    document.getElementById('t-amount').addEventListener('input', uiCalcMsiMonthly);
+    document.getElementById('t-msi-months').addEventListener('change', uiCalcMsiMonthly);
+    document.getElementById('t-date').addEventListener('change', ()=>{
+      const on = document.getElementById('t-msi').checked;
+      if(on) document.getElementById('t-msi-start').value = document.getElementById('t-date').value;
+    });
+
+    // =========================
+    // Helpers plain
+    // =========================
     function txToPlain(t){
       return {
         id: t.id,
@@ -965,6 +1235,9 @@
         cardName: t.cardName,
         concept: t.concept,
         category: t.category,
+        isMsi: !!t.isMsi,
+        msiMonths: t.msiMonths || null,
+        msiStartISO: (t.msiStart?.toDate ? t.msiStart.toDate().toISOString() : null),
         dateISO: (t.date?.toDate ? t.date.toDate().toISOString() : null)
       };
     }
@@ -1041,7 +1314,9 @@
       }
     };
 
-    // Movimientos
+    // =========================
+    // ✅ MOVIMIENTOS (con MSI)
+    // =========================
     document.getElementById('form-trans').addEventListener('submit', async(e)=>{
       e.preventDefault();
       const btnSave=document.getElementById('btn-save-trans');
@@ -1058,6 +1333,7 @@
         let newBal=parseFloat(cObj.balance||0);
         const batch=writeBatch(db);
 
+        // Reversión si es edición
         if(tid){
           const oldTrans=trans.find(t=>t.id===tid);
           if(oldTrans && oldTrans.cardId===cid){
@@ -1068,6 +1344,12 @@
         if(type==='expense') newBal += amt;
         else newBal -= amt;
 
+        // MSI payload
+        const isMsi = (type === 'expense') && document.getElementById('t-msi').checked;
+        const msiMonths = isMsi ? parseInt(document.getElementById('t-msi-months').value || 0) : null;
+        const msiStartStr = isMsi ? (document.getElementById('t-msi-start').value || document.getElementById('t-date').value) : null;
+        const msiStart = (isMsi && msiStartStr) ? Timestamp.fromDate(new Date(msiStartStr + 'T12:00')) : null;
+
         const payload = {
           owner: OWNER,
           amount: amt,
@@ -1076,7 +1358,12 @@
           cardName: cObj.name,
           concept: document.getElementById('t-concept').value,
           category: document.getElementById('t-cat').value,
-          date: Timestamp.fromDate(new Date(document.getElementById('t-date').value + 'T12:00'))
+          date: Timestamp.fromDate(new Date(document.getElementById('t-date').value + 'T12:00')),
+
+          // MSI
+          isMsi: !!isMsi,
+          msiMonths: msiMonths,
+          msiStart: msiStart
         };
 
         const cardRef=doc(db,"cards",cid);
@@ -1117,15 +1404,33 @@
     window.editTrans=(id)=>{
       const t=trans.find(x=>x.id===id); if(!t) return;
       nav('view-add');
+
       document.getElementById('trans-id').value=id;
       document.getElementById('t-amount').value=t.amount;
       document.getElementById('t-card').value=t.cardId;
       document.getElementById('t-concept').value=t.concept;
       document.getElementById('t-date').value=t.date.toDate().toISOString().split('T')[0];
+
       if(t.type==='payment') document.getElementById('t-pay').checked=true;
       else document.getElementById('t-exp').checked=true;
+
       uiUpdateCats();
       document.getElementById('t-cat').value=t.category;
+
+      // MSI
+      uiToggleMsi();
+      const isMsi = !!t.isMsi;
+      document.getElementById('t-msi').checked = isMsi;
+
+      uiToggleMsiFields();
+      if(isMsi){
+        document.getElementById('t-msi-months').value = String(t.msiMonths || 6);
+        const s = t.msiStart?.toDate ? t.msiStart.toDate() : null;
+        document.getElementById('t-msi-start').value = s ? s.toISOString().split('T')[0] : document.getElementById('t-date').value;
+      }
+
+      uiCalcMsiMonthly();
+
       document.getElementById('edit-btns').style.display='flex';
     };
 
@@ -1165,15 +1470,27 @@
       document.getElementById('t-date').valueAsDate=new Date();
       document.getElementById('edit-btns').style.display='none';
       document.getElementById('t-exp').checked=true;
+
+      // MSI defaults
       uiUpdateCats();
+      uiToggleMsi();
+      document.getElementById('t-msi').checked=false;
+      document.getElementById('t-msi-months').value="6";
+      document.getElementById('t-msi-start').value = document.getElementById('t-date').value;
+      uiToggleMsiFields();
+      uiCalcMsiMonthly();
+
       const btn=document.getElementById('btn-save-trans');
       btn.disabled=false; btn.classList.remove('btn-disabled'); btn.innerText="Guardar Transacción";
     };
 
     window.exportCSV=()=>{
-      let csv="Fecha,Concepto,Categoria,Monto,Tipo,Tarjeta,Owner\n";
+      let csv="Fecha,Concepto,Categoria,Monto,Tipo,Tarjeta,Owner,MSI,MSI_Meses,MSI_Inicio\n";
       trans.forEach(t=>{
-        csv += `${t.date.toDate().toLocaleDateString()},${t.concept},${t.category},${t.amount},${t.type},${t.cardName},${t.owner}\n`;
+        const msi = t.isMsi ? "SI" : "NO";
+        const msiMonths = t.msiMonths || "";
+        const msiStart = t.msiStart?.toDate ? t.msiStart.toDate().toLocaleDateString() : "";
+        csv += `${t.date.toDate().toLocaleDateString()},${(t.concept||"").replaceAll(","," ")},${(t.category||"").replaceAll(","," ")},${t.amount},${t.type},${(t.cardName||"").replaceAll(","," ")},${t.owner},${msi},${msiMonths},${msiStart}\n`;
       });
       const a=document.createElement('a');
       a.href='data:text/csv;charset=utf-8,'+encodeURI(csv);
