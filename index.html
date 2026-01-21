@@ -619,6 +619,114 @@
 
     const formatMoney = (v) => '$' + parseFloat(v||0).toLocaleString('en-US',{minimumFractionDigits:2});
 
+    // ===== FASE 1: HELPERS BASE =====
+    const safeNumber = (n) => {
+      const v = Number(n);
+      return Number.isFinite(v) ? v : 0;
+    };
+
+    const toDate = (value) => {
+      if (value && typeof value.toDate === "function") return value.toDate();
+      if (value instanceof Date) return value;
+      const d = new Date(value);
+      return Number.isNaN(d.getTime()) ? new Date(0) : d;
+    };
+
+    const startOfMonth = (date = new Date()) => {
+      const d = toDate(date);
+      return new Date(d.getFullYear(), d.getMonth(), 1, 0, 0, 0, 0);
+    };
+
+    const endOfMonth = (date = new Date()) => {
+      const d = toDate(date);
+      return new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59, 999);
+    };
+
+    const previousMonth = (date = new Date()) => {
+      const d = toDate(date);
+      return new Date(d.getFullYear(), d.getMonth() - 1, 1, 0, 0, 0, 0);
+    };
+
+    const startOfYear = (date = new Date()) => {
+      const d = toDate(date);
+      return new Date(d.getFullYear(), 0, 1, 0, 0, 0, 0);
+    };
+
+    const endOfYear = (date = new Date()) => {
+      const d = toDate(date);
+      return new Date(d.getFullYear(), 11, 31, 23, 59, 59, 999);
+    };
+
+    const startOfWeek = (date = new Date()) => {
+      const d = toDate(date);
+      const day = d.getDay();
+      const diff = day === 0 ? -6 : 1 - day;
+      const monday = new Date(d);
+      monday.setDate(d.getDate() + diff);
+      monday.setHours(0, 0, 0, 0);
+      return monday;
+    };
+
+    const endOfWeek = (date = new Date()) => {
+      const monday = startOfWeek(date);
+      const sunday = new Date(monday);
+      sunday.setDate(monday.getDate() + 6);
+      sunday.setHours(23, 59, 59, 999);
+      return sunday;
+    };
+
+    const formatCurrency = (value) => new Intl.NumberFormat("es-MX", {
+      style: "currency",
+      currency: "MXN",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }).format(safeNumber(value));
+
+    const pctChange = (current, previous) => {
+      const curr = safeNumber(current);
+      const prev = safeNumber(previous);
+      if (prev === 0) {
+        if (curr > 0) return { kind: "new", value: "nuevo" };
+        return { kind: "pct", value: 0 };
+      }
+      const raw = ((curr - prev) / prev) * 100;
+      const rounded = Math.round(raw * 10) / 10;
+      return { kind: "pct", value: rounded };
+    };
+
+    const sumExpenses = (expenses = []) => expenses.reduce((acc, exp) => {
+      const amount = safeNumber(exp?.amount);
+      return acc + amount;
+    }, 0);
+
+    const groupByCategory = (expenses = []) => expenses.reduce((acc, exp) => {
+      const key = exp?.category ? exp.category : "Sin categoría";
+      acc[key] = safeNumber(acc[key]) + safeNumber(exp?.amount);
+      return acc;
+    }, {});
+
+    const groupByWeekday = (expenses = []) => {
+      const base = {
+        lunes: 0,
+        martes: 0,
+        miercoles: 0,
+        jueves: 0,
+        viernes: 0,
+        sabado: 0,
+        domingo: 0
+      };
+      const labels = ["domingo", "lunes", "martes", "miercoles", "jueves", "viernes", "sabado"];
+      expenses.forEach((exp) => {
+        const d = toDate(exp?.date);
+        if (Number.isNaN(d.getTime())) return;
+        const dayLabel = labels[d.getDay()];
+        base[dayLabel] = safeNumber(base[dayLabel]) + safeNumber(exp?.amount);
+      });
+      return base;
+    };
+
+    // FASE 1 - Helpers base listos
+
     // Online/offline
     window.addEventListener('online', updateStatus);
     window.addEventListener('offline', updateStatus);
