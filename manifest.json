@@ -3,7 +3,7 @@
   "name": "Finanzas Yayos 2026",
   "short_name": "Finanzas",
   "description": "Control financiero personal de Haru y Yair",
-  "start_url": "/index.html",
+  "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
