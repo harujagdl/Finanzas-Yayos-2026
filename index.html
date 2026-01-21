@@ -685,7 +685,7 @@
     const loaderRetryBtn = document.getElementById('loader-retry');
     let loaderTimeoutId = null;
     let loaderSoftTimeoutId = null;
-    let appReadyResolved = false;
+    let appReady = false;
 
     function clearLoaderTimers(){
       if(loaderSoftTimeoutId) clearTimeout(loaderSoftTimeoutId);
@@ -694,20 +694,29 @@
       loaderTimeoutId = null;
     }
 
-    function setLoaderMsg(msg){ if(loaderMsg) loaderMsg.textContent=msg; }
+    function setLoaderMsg(msg){
+      if(!loaderMsg){
+        console.warn("setLoaderMsg: elemento 'loader-msg' no encontrado.");
+        return;
+      }
+      loaderMsg.textContent=msg;
+    }
 
     function startLoader(){
-      appReadyResolved = false;
+      appReady = false;
       clearLoaderTimers();
       if(loaderEl) loaderEl.style.display='flex';
       if(loaderError) loaderError.classList.add('d-none');
       setLoaderMsg("Cargando...");
+      const isOffline = !navigator.onLine;
+      if(isOffline){
+        setLoaderMsg("Estás offline. Mostrando datos disponibles.");
+      }
 
       loaderSoftTimeoutId = setTimeout(() => {
-        if(appReadyResolved) return;
+        if(appReady) return;
         if(!navigator.onLine){
-          setLoaderMsg("Estás offline. Mostrando datos disponibles...");
-          showStartupError("Estás sin conexión. Puedes seguir usando los datos disponibles y reintentar cuando vuelvas a tener internet.", { canRetry: true });
+          setLoaderMsg("Estás offline. Mostrando datos disponibles.");
           return;
         }
         setLoaderMsg("Conectando con Firestore… puede tardar en datos móviles.");
@@ -715,7 +724,7 @@
 
       if(navigator.onLine){
         loaderTimeoutId = setTimeout(() => {
-          if(appReadyResolved) return;
+          if(appReady) return;
           showStartupError("No se pudo conectar a Firestore. Revisa tu internet y vuelve a intentar.", { canRetry: true });
         }, 25000);
       }
@@ -730,14 +739,26 @@
     function showStartupError(message, { canRetry = true } = {}){
       console.error(message);
       if(loaderEl) loaderEl.style.display='flex';
-      if(loaderErrorMsg) loaderErrorMsg.textContent = message;
-      if(loaderRetryBtn) loaderRetryBtn.classList.toggle('d-none', !canRetry);
-      if(loaderError) loaderError.classList.remove('d-none');
+      if(loaderErrorMsg){
+        loaderErrorMsg.textContent = message;
+      }else{
+        console.warn("showStartupError: elemento 'loader-error-msg' no encontrado.");
+      }
+      if(loaderRetryBtn){
+        loaderRetryBtn.classList.toggle('d-none', !canRetry);
+      }else{
+        console.warn("showStartupError: elemento 'loader-retry' no encontrado.");
+      }
+      if(loaderError){
+        loaderError.classList.remove('d-none');
+      }else{
+        console.warn("showStartupError: elemento 'loader-error' no encontrado.");
+      }
     }
 
     function markAppReady(source){
-      if(appReadyResolved) return;
-      appReadyResolved = true;
+      if(appReady) return;
+      appReady = true;
       stopLoader();
       console.info("App ready via", source);
     }
@@ -750,8 +771,21 @@
       return err?.message ? `Error inesperado: ${err.message}` : "Error inesperado de Firestore.";
     }
 
+    function unsubscribeAll(){
+      if(unsubCards){
+        unsubCards();
+        unsubCards = null;
+      }
+      if(unsubTrans){
+        unsubTrans();
+        unsubTrans = null;
+      }
+    }
+
     function retryStartup(){
+      unsubscribeAll();
       startLoader();
+      setLoaderMsg("Reintentando conexión...");
       resubscribeAll();
     }
 
@@ -1769,14 +1803,7 @@
 
     // Subscribe helpers
     function resubscribeAll(){
-      if(unsubCards){
-        unsubCards();
-        unsubCards = null;
-      }
-      if(unsubTrans){
-        unsubTrans();
-        unsubTrans = null;
-      }
+      unsubscribeAll();
       subscribeCards();
       subscribeTrans();
       resetForm();
