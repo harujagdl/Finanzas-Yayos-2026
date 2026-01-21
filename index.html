@@ -166,6 +166,12 @@
       position:fixed; inset:0; background:var(--bg-card); z-index:2000;
       display:flex; justify-content:center; align-items:center; flex-direction:column;
     }
+    .loader-error{
+      margin-top:16px; padding:12px 14px; border-radius:12px;
+      border:1px solid var(--border-color); background:var(--bg-body);
+      max-width:320px; text-align:center;
+    }
+    .loader-error p{margin:0 0 10px; font-size:.9rem; color:var(--text-muted);}
     .owner-select{width:120px; padding:8px 10px; border-radius:12px; font-weight:800;}
 
     /* MSI */
@@ -222,6 +228,10 @@
     <div class="spinner-border text-primary" role="status"></div>
     <div class="mt-3 fw-bold small text-muted">Cargando Sistema...</div>
     <div class="mt-2 small text-muted" id="loader-msg">Conectando a Firestore...</div>
+    <div id="loader-error" class="loader-error d-none">
+      <p id="loader-error-msg">No se pudo conectar. Revisa tu internet y vuelve a intentar.</p>
+      <button class="btn btn-outline-primary btn-sm" id="loader-retry" type="button">Reintentar</button>
+    </div>
   </div>
 
   <!-- =======================
@@ -669,22 +679,89 @@
     // Loader
     const loaderEl = document.getElementById('loader');
     const loaderMsg = document.getElementById('loader-msg');
-    function stopLoader(){ if(loaderEl) loaderEl.style.display='none'; }
-    function setLoaderMsg(msg){ if(loaderMsg) loaderMsg.textContent=msg; }
-    function showLoaderError(msg){
-      console.error(msg); stopLoader();
-      alert("No se pudo cargar el sistema:\n\n"+msg+"\n\nTip: revisa Firestore Rules / índices / conexión.");
+    const loaderError = document.getElementById('loader-error');
+    const loaderErrorMsg = document.getElementById('loader-error-msg');
+    const loaderRetryBtn = document.getElementById('loader-retry');
+    let loaderTimeoutId = null;
+    let loaderSoftTimeoutId = null;
+    let appReadyResolved = false;
+
+    function clearLoaderTimers(){
+      if(loaderSoftTimeoutId) clearTimeout(loaderSoftTimeoutId);
+      if(loaderTimeoutId) clearTimeout(loaderTimeoutId);
+      loaderSoftTimeoutId = null;
+      loaderTimeoutId = null;
     }
-    setTimeout(() => {
-      if(loaderEl && loaderEl.style.display !== 'none'){
-        showLoaderError("Firestore no respondió a tiempo (timeout).");
+
+    function setLoaderMsg(msg){ if(loaderMsg) loaderMsg.textContent=msg; }
+
+    function startLoader(){
+      appReadyResolved = false;
+      clearLoaderTimers();
+      if(loaderEl) loaderEl.style.display='flex';
+      if(loaderError) loaderError.classList.add('d-none');
+      setLoaderMsg("Cargando...");
+
+      loaderSoftTimeoutId = setTimeout(() => {
+        if(appReadyResolved) return;
+        if(!navigator.onLine){
+          setLoaderMsg("Estás offline. Mostrando datos disponibles...");
+          showStartupError("Estás sin conexión. Puedes seguir usando los datos disponibles y reintentar cuando vuelvas a tener internet.", { canRetry: true });
+          return;
+        }
+        setLoaderMsg("Conectando con Firestore… puede tardar en datos móviles.");
+      }, 8000);
+
+      if(navigator.onLine){
+        loaderTimeoutId = setTimeout(() => {
+          if(appReadyResolved) return;
+          showStartupError("No se pudo conectar a Firestore. Revisa tu internet y vuelve a intentar.", { canRetry: true });
+        }, 25000);
       }
-    }, 12000);
+    }
+
+    function stopLoader(){
+      clearLoaderTimers();
+      if(loaderEl) loaderEl.style.display='none';
+      if(loaderError) loaderError.classList.add('d-none');
+    }
+
+    function showStartupError(message, { canRetry = true } = {}){
+      console.error(message);
+      if(loaderEl) loaderEl.style.display='flex';
+      if(loaderErrorMsg) loaderErrorMsg.textContent = message;
+      if(loaderRetryBtn) loaderRetryBtn.classList.toggle('d-none', !canRetry);
+      if(loaderError) loaderError.classList.remove('d-none');
+    }
+
+    function markAppReady(source){
+      if(appReadyResolved) return;
+      appReadyResolved = true;
+      stopLoader();
+      console.info("App ready via", source);
+    }
+
+    function getFirestoreErrorMessage(err){
+      const code = err?.code || "";
+      if(code === "permission-denied") return "Permisos de Firestore: no tienes acceso a estos datos.";
+      if(code === "failed-precondition") return "Falta un índice requerido en Firestore.";
+      if(code === "unavailable") return "Conexión inestable o servicio no disponible.";
+      return err?.message ? `Error inesperado: ${err.message}` : "Error inesperado de Firestore.";
+    }
+
+    function retryStartup(){
+      startLoader();
+      resubscribeAll();
+    }
+
+    if(loaderRetryBtn){
+      loaderRetryBtn.addEventListener("click", retryStartup);
+    }
 
     // Firestore init
     let app, db;
     try { app = initializeApp(firebaseConfig); db = getFirestore(app); }
-    catch(e){ showLoaderError("Error inicializando Firebase: "+(e.message||e)); }
+    catch(e){ showStartupError("Error inicializando Firebase: "+(e.message||e), { canRetry: false }); }
     enableIndexedDbPersistence(db).catch((err)=>console.log("Persistence status:", err.code));
 
     // =========================
@@ -717,8 +794,8 @@
     ownerSelect.addEventListener("change", async ()=>{
       OWNER = ownerSelect.value;
       localStorage.setItem(OWNER_KEY, OWNER);
+      startLoader();
       setLoaderMsg("Cambiando usuario...");
-      loaderEl.style.display="flex";
       await seedPresetCards();
       resubscribeAll();
       updateDashboardSummary({ force: true });
@@ -1675,8 +1752,14 @@
 
     // Subscribe helpers
     function resubscribeAll(){
-      if(unsubCards) unsubCards();
-      if(unsubTrans) unsubTrans();
+      if(unsubCards){
+        unsubCards();
+        unsubCards = null;
+      }
+      if(unsubTrans){
+        unsubTrans();
+        unsubTrans = null;
+      }
       subscribeCards();
       subscribeTrans();
       resetForm();
@@ -1688,7 +1771,12 @@
     function subscribeCards(){
       setLoaderMsg("Cargando tarjetas...");
       const qCards=query(collection(db,"cards"), orderBy("name"));
+      let firstSnapshot = true;
       unsubCards = onSnapshot(qCards, (snap)=>{
+        if(firstSnapshot){
+          markAppReady("cards");
+          firstSnapshot = false;
+        }
         const tempAll=[];
         snap.forEach(d=>{ const c=d.data(); c.id=d.id; tempAll.push(c); });
 
@@ -1786,9 +1874,9 @@
         updateAlerts();
         fillHistFilters();
 
-        stopLoader();
       }, (err)=>{
-        showLoaderError("Error leyendo tarjetas (cards): "+(err.message||err));
+        console.error("Cards snapshot error:", err);
+        showStartupError(`Error leyendo tarjetas: ${getFirestoreErrorMessage(err)}`);
       });
     }
 
@@ -1796,7 +1884,12 @@
     function subscribeTrans(){
       setLoaderMsg("Cargando movimientos...");
       const qTrans=query(collection(db,"expenses"), where("owner","==",OWNER), orderBy("date","desc"));
+      let firstSnapshot = true;
       unsubTrans = onSnapshot(qTrans, { includeMetadataChanges: true }, (snap)=>{
+        if(firstSnapshot){
+          markAppReady("expenses");
+          firstSnapshot = false;
+        }
         trans=[];
         snap.forEach(d=>{ const t=d.data(); t.id=d.id; trans.push(t); });
 
@@ -1812,7 +1905,8 @@
 
         if(privacy) togglePrivacy();
       }, (err)=>{
-        showLoaderError("Error leyendo movimientos (expenses): "+(err.message||err));
+        console.error("Expenses snapshot error:", err);
+        showStartupError(`Error leyendo movimientos: ${getFirestoreErrorMessage(err)}`);
       });
     }
 
@@ -2765,9 +2859,9 @@
     // Init
     uiUpdateCats();
     resetForm();
+    startLoader();
     await seedPresetCards();
     resubscribeAll();
-    stopLoader();
   </script>
 </body>
 </html>
