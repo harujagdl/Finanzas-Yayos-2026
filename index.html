@@ -1189,6 +1189,7 @@
           }]
         },
         options: {
+          indexAxis: 'y',
           responsive:true,
           maintainAspectRatio:false,
           plugins:{
@@ -1197,10 +1198,10 @@
           },
           scales: {
             x: {
+              beginAtZero:true,
               ticks: { color:textColor }
             },
             y: {
-              beginAtZero:true,
               ticks: { color:textColor, precision:0 }
             }
           }
