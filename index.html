@@ -116,6 +116,8 @@
       background:var(--bg-card); border:1px solid var(--border-color);
       border-radius:12px; padding:12px 14px; margin-bottom:10px;
     }
+    .alert-content{flex:1;}
+    .alert-actions{margin-left:auto; display:flex; align-items:flex-start;}
     .alert-icon{
       font-size:1.1rem; line-height:1; margin-top:2px;
     }
@@ -1332,6 +1334,7 @@
         updatePaymentMonitor();
         renderMsi();
         updateDashboardSummary({ force: true });
+        updateAlerts({ force: true });
 
         if(privacy) togglePrivacy();
       }, (err)=>{
@@ -1482,21 +1485,136 @@
       return getCardAlerts(card, now).length > 0;
     }
 
-    function updateAlerts(){
+    function getMonthKey(date){
+      const d = toDate(date);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    }
+
+    function getDateKey(date){
+      const d = toDate(date);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    }
+
+    function isAlertDismissed(key){
+      if(!key) return false;
+      return localStorage.getItem(key) === "1";
+    }
+
+    async function loadExpensesMonthOffset(owner, offset, { force = false } = {}){
+      const now = new Date();
+      const target = new Date(now.getFullYear(), now.getMonth() - offset, 1);
+      return loadExpensesByPeriod(owner, {
+        start: startOfMonth(target),
+        end: endOfMonth(target),
+        periodKey: `month-offset-${offset}`,
+        force
+      });
+    }
+
+    function buildWeekFallback(expenses = [], now = new Date()){
+      const onlyExpenses = (expenses || [])
+        .filter((t) => t?.type === "expense")
+        .map((t) => ({ ...t, date: toDate(t?.date) }));
+      const start = startOfWeek(now);
+      const end = endOfWeek(now);
+      return onlyExpenses.filter((t) => t.date >= start && t.date <= end);
+    }
+
+    async function computeAlerts(owner, { force = false } = {}){
+      const o = getActiveOwner(owner);
+      const now = new Date();
+      const useLoader = typeof window.loadPeriodData === "function";
+      const periodData = useLoader
+        ? await window.loadPeriodData(o, { force })
+        : buildPeriodDataFallback(trans);
+
+      const monthCurrentTotal = sumExpenses(periodData?.month?.current || []);
+      const weekCurrentTotal = sumExpenses(
+        periodData?.week?.current || buildWeekFallback(trans, now)
+      );
+
+      const prevMonthsExpenses = await Promise.all(
+        [1, 2, 3].map((offset) => loadExpensesMonthOffset(o, offset, { force }))
+      );
+      const prevMonthsTotals = prevMonthsExpenses.map((list) => sumExpenses(list));
+      const avgPrevMonths = prevMonthsTotals.length
+        ? prevMonthsTotals.reduce((acc, val) => acc + val, 0) / prevMonthsTotals.length
+        : 0;
+
+      const startPrevWeeks = startOfWeek(now);
+      const endPrevWeeks = new Date(startPrevWeeks.getTime() - 1);
+      endPrevWeeks.setHours(23, 59, 59, 999);
+      const startPrevWeeksRange = new Date(endPrevWeeks);
+      startPrevWeeksRange.setDate(endPrevWeeks.getDate() - 27);
+      startPrevWeeksRange.setHours(0, 0, 0, 0);
+
+      const prevWeeksExpenses = await loadExpensesByPeriod(o, {
+        start: startPrevWeeksRange,
+        end: endPrevWeeks,
+        periodKey: "weeks-previous-4",
+        force
+      });
+      const avgPrevWeeks = sumExpenses(prevWeeksExpenses) / 4;
+
+      const alerts = [];
+
+      if(avgPrevMonths > 0 && monthCurrentTotal > avgPrevMonths * 1.2){
+        const diff = monthCurrentTotal - avgPrevMonths;
+        const pct = Math.round(((monthCurrentTotal - avgPrevMonths) / avgPrevMonths) * 100);
+        const periodKey = getMonthKey(now);
+        const dismissKey = `alert_gasto_alto_mes_${periodKey}`;
+        if(!isAlertDismissed(dismissKey)){
+          alerts.push({
+            id: `month-high-${periodKey}`,
+            kind: "monthly-high",
+            severity: "warning",
+            title: "Gasto alto este mes",
+            message: `Este mes van +${formatCurrency(diff)} arriba de lo normal (+${pct}%).`,
+            sortValue: 5,
+            periodKey,
+            dismissKey
+          });
+        }
+      }
+
+      if(avgPrevWeeks > 0 && weekCurrentTotal > avgPrevWeeks * 1.2){
+        const diff = weekCurrentTotal - avgPrevWeeks;
+        const pct = Math.round(((weekCurrentTotal - avgPrevWeeks) / avgPrevWeeks) * 100);
+        const weekKey = getDateKey(startOfWeek(now));
+        const dismissKey = `alert_gasto_alto_semana_${weekKey}`;
+        if(!isAlertDismissed(dismissKey)){
+          alerts.push({
+            id: `week-high-${weekKey}`,
+            kind: "weekly-high",
+            severity: "warning",
+            title: "Gasto alto esta semana",
+            message: `Esta semana van +${formatCurrency(diff)} arriba de lo normal (+${pct}%).`,
+            sortValue: 6,
+            periodKey: weekKey,
+            dismissKey
+          });
+        }
+      }
+
+      return alerts;
+    }
+
+    let activeAlerts = [];
+
+    window.dismissAlert = (id) => {
+      const alert = activeAlerts.find((item) => item.id === id);
+      if(!alert || !alert.dismissKey) return;
+      localStorage.setItem(alert.dismissKey, "1");
+      activeAlerts = activeAlerts.filter((item) => item.id !== id);
+      renderAlerts(activeAlerts);
+    };
+
+    function renderAlerts(alerts = []){
       const section = document.getElementById('alerts-section');
       const list = document.getElementById('alerts-list');
       if(!section || !list) return;
 
-      const now = new Date();
-      const alerts = [];
-
-      cards.forEach(card => {
-        const cardAlerts = getCardAlerts(card, now);
-        cardAlerts.forEach(alert => {
-          const typeLabel = alert.type === "pay" ? "Pago" : "Corte";
-          alerts.push({ ...alert, name: card.name, typeLabel });
-        });
-      });
+      activeAlerts = alerts;
 
       if(!alerts.length){
         section.classList.add('d-none');
@@ -1504,19 +1622,59 @@
         return;
       }
 
-      alerts.sort((a, b) => a.diff - b.diff || a.title.localeCompare(b.title, "es"));
       list.innerHTML = alerts.map(alert => `
         <div class="alert-item">
           <div class="alert-icon">⚠️</div>
-          <div>
+          <div class="alert-content">
             <div class="fw-bold">${alert.title}</div>
-            <div class="text-muted small">${alert.name} · ${alert.typeLabel}</div>
-            <div class="small">${alert.text}</div>
+            ${alert.meta ? `<div class="text-muted small">${alert.meta}</div>` : ""}
+            <div class="small">${alert.message}</div>
           </div>
+          ${alert.dismissKey ? `
+            <div class="alert-actions">
+              <button class="btn btn-light btn-sm" onclick="dismissAlert('${alert.id}')">Entendido</button>
+            </div>
+          ` : ""}
         </div>
       `).join('');
 
       section.classList.remove('d-none');
+    }
+
+    async function updateAlerts({ force = false } = {}){
+      const section = document.getElementById('alerts-section');
+      const list = document.getElementById('alerts-list');
+      if(!section || !list) return;
+
+      const now = new Date();
+      const alerts = await computeAlerts(getActiveOwner(), { force });
+
+      cards.forEach(card => {
+        const cardAlerts = getCardAlerts(card, now);
+        cardAlerts.forEach(alert => {
+          const typeLabel = alert.type === "pay" ? "Pago" : "Corte";
+          alerts.push({
+            id: `card-${card.id}-${alert.type}-${alert.diff}`,
+            kind: "card",
+            severity: "info",
+            title: alert.title,
+            message: alert.text,
+            meta: `${card.name} · ${typeLabel}`,
+            sortValue: alert.diff
+          });
+        });
+      });
+
+      const cardAlertCount = alerts.filter(alert => alert.kind === "card").length;
+      alerts.sort((a, b) => {
+        const sortA = Number.isFinite(a.sortValue) ? a.sortValue : 99;
+        const sortB = Number.isFinite(b.sortValue) ? b.sortValue : 99;
+        if(sortA !== sortB) return sortA - sortB;
+        return a.title.localeCompare(b.title, "es");
+      });
+      const badge = section.querySelector('.badge-status');
+      if(badge) badge.textContent = cardAlertCount ? "0-2 días" : "Avisos";
+      renderAlerts(alerts);
     }
 
     // =========================
@@ -1984,6 +2142,7 @@
 
         invalidateCacheForOwner(OWNER);
         updateDashboardSummary({ force: true });
+        updateAlerts({ force: true });
         resetForm();
         nav('view-home');
       }catch(e){
@@ -2054,6 +2213,7 @@
 
       invalidateCacheForOwner(OWNER);
       updateDashboardSummary({ force: true });
+      updateAlerts({ force: true });
       resetForm();
       nav('view-hist');
     };
