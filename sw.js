@@ -1,23 +1,39 @@
-const CACHE_NAME = "fyayos-v10";
-const ASSETS = [
-  "/",
-  "/index.html",
+const CACHE_VERSION = "v1.0.0"; // actualizar en cada deploy
+const STATIC_CACHE = `static-${CACHE_VERSION}`;
+const STATIC_ASSETS = [
   "/manifest.json",
   "/icons/icon-192.png",
   "/icons/icon-512.png"
 ];
 
+const isIndexRequest = (request) => {
+  if (request.mode === "navigate") return true;
+  const url = new URL(request.url);
+  return url.origin === self.location.origin && (url.pathname === "/" || url.pathname === "/index.html");
+};
+
+const isCacheableStaticAsset = (request) => {
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin) return false;
+  if (STATIC_ASSETS.includes(url.pathname)) return true;
+  return /\.(?:css|js|png|jpg|jpeg|svg|webp|ico|woff2?|ttf)$/.test(url.pathname);
+};
+
 // Install
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS)));
+  event.waitUntil(
+    caches.open(STATIC_CACHE).then((cache) => cache.addAll(STATIC_ASSETS))
+  );
   self.skipWaiting();
 });
 
 // Activate
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.map(k => (k !== CACHE_NAME ? caches.delete(k) : null)))
+    caches.keys().then((keys) =>
+      Promise.all(
+        keys.map((key) => (key !== STATIC_CACHE ? caches.delete(key) : null))
+      )
     )
   );
   self.clients.claim();
@@ -26,19 +42,43 @@ self.addEventListener("activate", (event) => {
 // Fetch
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
-  const url = new URL(event.request.url);
-  const isShellAsset = url.origin === self.location.origin && ASSETS.includes(url.pathname);
 
-  if (isShellAsset) {
+  if (isIndexRequest(event.request)) {
     event.respondWith(
-      caches.match(event.request).then((cached) => cached || fetch(event.request))
+      (async () => {
+        try {
+          const networkResponse = await fetch(event.request);
+          if (networkResponse && networkResponse.ok) {
+            const cache = await caches.open(STATIC_CACHE);
+            cache.put("/index.html", networkResponse.clone());
+          }
+          return networkResponse;
+        } catch (error) {
+          const cachedResponse = await caches.match("/index.html");
+          if (cachedResponse) return cachedResponse;
+          return caches.match(event.request);
+        }
+      })()
     );
     return;
   }
 
-  event.respondWith(
-    fetch(event.request).catch(() => caches.match(event.request))
-  );
+  if (isCacheableStaticAsset(event.request)) {
+    event.respondWith(
+      caches.match(event.request).then((cached) => {
+        if (cached) return cached;
+        return fetch(event.request)
+          .then((response) => {
+            if (response && response.ok) {
+              const responseClone = response.clone();
+              caches.open(STATIC_CACHE).then((cache) => cache.put(event.request, responseClone));
+            }
+            return response;
+          })
+          .catch(() => cached);
+      })
+    );
+  }
 });
 
 // =========================
@@ -87,3 +127,14 @@ self.addEventListener("notificationclick", (event) => {
     })
   );
 });
+
+// =========================
+// 📌 Documentación rápida
+// =========================
+// CACHE_VERSION: v1.0.0
+// Static cache: /manifest.json, /icons/icon-192.png, /icons/icon-512.png
+// Validación:
+// 1) Abrir PWA instalada
+// 2) Hacer deploy con cambio visible y subir CACHE_VERSION
+// 3) Recargar: ver cambio sin reinstalar
+// 4) Activar modo avión: la app sigue abriendo si ya cargó antes
