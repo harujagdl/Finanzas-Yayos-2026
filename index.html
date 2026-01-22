@@ -104,6 +104,13 @@
     .fade-in{opacity:0; transform:translateY(6px); transition:opacity .2s ease, transform .2s ease;}
     .fade-in.is-visible{opacity:1; transform:translateY(0);}
     .is-loading{opacity:.7; pointer-events:none;}
+    .missing-index-banner{
+      border:1px solid rgba(245,158,11,.3);
+      background:rgba(245,158,11,.12);
+      color:var(--text-main);
+    }
+    .missing-index-banner .banner-title{font-weight:700;}
+    .missing-index-banner .banner-link{color:inherit; font-weight:600;}
     .btn-loading{
       display:inline-flex; align-items:center; justify-content:center; gap:8px;
     }
@@ -392,6 +399,16 @@
         </div>
         <h2 class="fw-black mb-1" id="smart-name">...</h2>
         <p class="mb-0 small" id="smart-msg" style="opacity:.9;">...</p>
+      </div>
+    </div>
+
+    <div id="missing-index-banner" class="card-box missing-index-banner d-none">
+      <div class="d-flex align-items-start gap-2">
+        <div class="banner-title">⚠️ Falta un índice de Firestore para cargar resúmenes.</div>
+      </div>
+      <div class="small mt-2">
+        Abre consola para el link o ve a Firestore → Índices y crea owner+type+date.
+        <a id="missing-index-link" class="banner-link ms-1 d-none" target="_blank" rel="noopener noreferrer">Abrir índice</a>
       </div>
     </div>
 
@@ -1067,7 +1084,8 @@
       lastGoodMetrics: null,
       lastGoodInsights: [],
       lastGoodPrediction: null,
-      lastGoodCounts: null
+      lastGoodCounts: null,
+      error: null
     };
     const simulationState = { active: false, amount: 0, category: "", result: null };
 
@@ -1575,6 +1593,42 @@
       }
     };
 
+    const extractIndexLink = (message = "") => {
+      const match = message.match(/https?:\/\/[^\s]+/);
+      return match ? match[0] : null;
+    };
+
+    const isMissingIndexError = (err) => {
+      const message = (err?.message || "").toLowerCase();
+      return err?.code === "failed-precondition" || message.includes("requires an index");
+    };
+
+    const renderPeriodErrorBanner = () => {
+      const banner = document.getElementById("missing-index-banner");
+      if(!banner) return;
+      const error = dataState.error;
+      if(error?.type === "missing_index"){
+        banner.classList.remove("d-none");
+        const link = banner.querySelector("#missing-index-link");
+        if(link){
+          if(error.link){
+            link.href = error.link;
+            link.classList.remove("d-none");
+          } else {
+            link.removeAttribute("href");
+            link.classList.add("d-none");
+          }
+        }
+      } else {
+        banner.classList.add("d-none");
+      }
+    };
+
+    const setPeriodError = (error = null) => {
+      dataState.error = error;
+      renderPeriodErrorBanner();
+    };
+
     const resolvePeriodDataForRender = (periodData) => {
       if (periodData && isPeriodDataValid(periodData)) return periodData;
       if (dataState.loading && dataState.lastGoodPeriodData) return dataState.lastGoodPeriodData;
@@ -1669,7 +1723,9 @@
       const periodData = useLoader
         ? await window.loadPeriodData(o, { force })
         : buildPeriodDataFallback(trans);
-      const scopedData = applyScopeFilterToPeriodData(periodData, scopeFilter);
+      const scopedData = periodData
+        ? applyScopeFilterToPeriodData(periodData, scopeFilter)
+        : periodData;
       periodDataCache = { owner: o, scope: scopeFilter, data: scopedData };
       return scopedData;
     }
@@ -2612,16 +2668,21 @@
         return results;
       } catch (err) {
         const baseMsg = "Error consultando expenses por rango.";
-        const needsIndex = (err?.message || "").toLowerCase().includes("index");
+        const needsIndex = isMissingIndexError(err);
         if (needsIndex) {
+          const link = extractIndexLink(err?.message || "");
           console.error(
             `${baseMsg} Falta índice compuesto: owner + type + date (asc).`,
             err
           );
-        } else {
-          console.error(baseMsg, err);
+          const missingIndexError = new Error(baseMsg);
+          missingIndexError.type = "missing_index";
+          missingIndexError.link = link;
+          missingIndexError.original = err;
+          throw missingIndexError;
         }
-        return [];
+        console.error(baseMsg, err);
+        throw err;
       }
     }
 
@@ -2691,20 +2752,34 @@
 
     window.loadPeriodData = async (owner, { force = false } = {}) => {
       const o = getActiveOwner(owner);
-      const [monthCurrent, monthPrevious, yearCurrent, yearPrevious, weekCurrent] = await Promise.all([
-        loadExpensesMonthCurrent(o, { force }),
-        loadExpensesMonthPrevious(o, { force }),
-        loadExpensesYearCurrent(o, { force }),
-        loadExpensesYearPrevious(o, { force }),
-        loadExpensesWeekCurrent(o, { force })
-      ]);
-      return {
-        owner: o,
-        now: new Date(),
-        month: { current: monthCurrent, previous: monthPrevious },
-        year: { current: yearCurrent, previous: yearPrevious },
-        week: { current: weekCurrent }
-      };
+      try {
+        const [monthCurrent, monthPrevious, yearCurrent, yearPrevious, weekCurrent] = await Promise.all([
+          loadExpensesMonthCurrent(o, { force }),
+          loadExpensesMonthPrevious(o, { force }),
+          loadExpensesYearCurrent(o, { force }),
+          loadExpensesYearPrevious(o, { force }),
+          loadExpensesWeekCurrent(o, { force })
+        ]);
+        setPeriodError(null);
+        return {
+          owner: o,
+          now: new Date(),
+          month: { current: monthCurrent, previous: monthPrevious },
+          year: { current: yearCurrent, previous: yearPrevious },
+          week: { current: weekCurrent }
+        };
+      } catch (err) {
+        if (err?.type === "missing_index" || isMissingIndexError(err?.original)) {
+          setPeriodError({
+            type: "missing_index",
+            message: err.message,
+            link: err.link
+          });
+          console.warn("loadPeriodData: missing index, se reutiliza periodData previo.", err);
+          return dataState.periodData || dataState.lastGoodPeriodData || null;
+        }
+        throw err;
+      }
     };
 
     window.loadExpensesMonthCurrent = loadExpensesMonthCurrent;
