@@ -140,6 +140,14 @@
     .skeleton-line.tall{height:22px;}
     .skeleton-card{padding:12px; border-radius:12px; border:1px solid var(--border-color);}
     .skeleton-grid{display:grid; gap:12px; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));}
+    .chart-skeleton{
+      width:100%; height:100%;
+      display:flex; flex-direction:column; align-items:center; justify-content:center;
+      gap:10px; text-align:center;
+    }
+    .chart-skeleton .skeleton-pie{width:120px; height:120px; border-radius:50%;}
+    .chart-skeleton .skeleton-text{width:140px; height:12px;}
+    .chart-message{font-size:.85rem; text-align:center;}
     @keyframes spin{to{transform:rotate(360deg);}}
     @keyframes shimmer{to{transform:translateX(100%);}}
 
@@ -535,7 +543,13 @@
       </div>
       <div style="position:relative;height:200px;display:flex;justify-content:center;align-items:center;" id="chart-container">
         <canvas id="expensesChart"></canvas>
-        <div id="no-data-msg" class="text-muted small d-none">Sin gastos en este periodo</div>
+        <div id="chart-skeleton" class="chart-skeleton d-none">
+          <div class="skeleton skeleton-pie"></div>
+          <div class="skeleton skeleton-text"></div>
+          <div class="text-muted small">Cargando gráfica...</div>
+        </div>
+        <div id="no-data-msg" class="text-muted chart-message d-none">Aún no hay gastos para graficar este mes.</div>
+        <div id="chart-error-msg" class="text-danger chart-message d-none">No se pudo renderizar la gráfica. Reintenta.</div>
       </div>
     </div>
 
@@ -1056,6 +1070,7 @@
       localStorage.setItem(OWNER_KEY, OWNER);
       setState({ owner: OWNER });
       dataState.owner = OWNER;
+      invalidateCategoryAggCacheForOwner(OWNER);
       startLoader();
       setLoaderMsg("Cambiando usuario...");
       await seedPresetCards();
@@ -2970,6 +2985,7 @@
     window.handleScopeFilterChange = (value) => {
       if(!FEATURES.coupleMode) return;
       setActiveScopeFilter(value);
+      invalidateCategoryAggCacheForOwner(OWNER);
       updateAlerts({ force: true });
       updateMonthlyFootprint({ force: true });
       renderHistory();
@@ -3940,39 +3956,204 @@
     // =========================
     // ✅ CHART GASTOS
     // =========================
-    window.updateChart=()=>{
-      const ctx=document.getElementById('expensesChart');
-      const noDataMsg=document.getElementById('no-data-msg');
+    const categoryAggCache = new Map();
+    const chartRenderState = { scheduled: false };
 
-      const filterVal=document.getElementById('chart-month-filter').value;
-      const [selYear, selMonth]=filterVal.split('-').map(Number);
+    const getCategoryAggCacheKey = ({ owner, periodKey, scopeFilter }) =>
+      `${owner}|${periodKey}|${scopeFilter}`;
 
-      const totals={};
-      const scopeFilter = getActiveScopeFilter();
-      applyScopeFilter(trans, scopeFilter).filter(t=>{
-        const d=t.date.toDate();
-        return t.type==='expense' && d.getMonth()===selMonth && d.getFullYear()===selYear;
-      }).forEach(t=>{ totals[t.category]=(totals[t.category]||0)+t.amount; });
+    const getPeriodKeyFromDate = (dateValue) => {
+      const d = dateValue instanceof Date ? dateValue : new Date(dateValue);
+      return `${d.getFullYear()}-${d.getMonth()}`;
+    };
 
-      if(Object.keys(totals).length===0){ ctx.style.display='none'; noDataMsg.classList.remove('d-none'); }
-      else{ ctx.style.display='block'; noDataMsg.classList.add('d-none'); }
-
-      if(chartInstance) chartInstance.destroy();
-
-      const isDark = isDarkMode();
-      const textColor=isDark ? '#f9fafb' : '#6b7280';
-
-      chartInstance = new Chart(ctx, {
-        type:'doughnut',
-        data:{
-          labels:Object.keys(totals),
-          datasets:[{ data:Object.values(totals), backgroundColor:['#2563eb','#ef4444','#10b981','#f59e0b','#8b5cf6','#ec4899','#6366f1'], borderWidth:0 }]
-        },
-        options:{
-          responsive:true, maintainAspectRatio:false,
-          plugins:{ legend:{ position:'right', labels:{ boxWidth:10, font:{size:10}, color:textColor } } }
-        }
+    const invalidateCategoryAggCacheForOwner = (owner) => {
+      const prefix = `${owner}|`;
+      Array.from(categoryAggCache.keys()).forEach((key) => {
+        if (key.startsWith(prefix)) categoryAggCache.delete(key);
       });
+    };
+
+    const invalidateCategoryAggCacheForPeriod = (owner, periodKey) => {
+      const prefix = `${owner}|${periodKey}|`;
+      Array.from(categoryAggCache.keys()).forEach((key) => {
+        if (key.startsWith(prefix)) categoryAggCache.delete(key);
+      });
+    };
+
+    const setChartUiState = ({ showCanvas, showSkeleton, showNoData, showError }) => {
+      const canvas = document.getElementById("expensesChart");
+      const noDataMsg = document.getElementById("no-data-msg");
+      const skeleton = document.getElementById("chart-skeleton");
+      const errorMsg = document.getElementById("chart-error-msg");
+      if (canvas) canvas.style.display = showCanvas ? "block" : "none";
+      if (noDataMsg) noDataMsg.classList.toggle("d-none", !showNoData);
+      if (skeleton) skeleton.classList.toggle("d-none", !showSkeleton);
+      if (errorMsg) errorMsg.classList.toggle("d-none", !showError);
+    };
+
+    const computeCategoryAgg = (items, selYear, selMonth) => {
+      const totals = new Map();
+      let expensesCount = 0;
+      items.forEach((t) => {
+        if (t.type !== "expense") return;
+        const rawDate = t.date?.toDate ? t.date.toDate() : t.date;
+        if (!rawDate) return;
+        const d = rawDate instanceof Date ? rawDate : new Date(rawDate);
+        if (d.getMonth() !== selMonth || d.getFullYear() !== selYear) return;
+        expensesCount += 1;
+        const category = (t.category || "Sin categoría").trim() || "Sin categoría";
+        totals.set(category, (totals.get(category) || 0) + t.amount);
+      });
+
+      const sorted = Array.from(totals.entries()).sort((a, b) => b[1] - a[1]);
+      const top = sorted.slice(0, 6);
+      const others = sorted.slice(6).reduce((sum, [, amount]) => sum + amount, 0);
+      if (others > 0) top.push(["Otros", others]);
+
+      return {
+        labels: top.map(([label]) => label),
+        data: top.map(([, amount]) => amount),
+        expensesCount,
+        categoryCount: top.length
+      };
+    };
+
+    const computeCategoryAggAsync = (items, selYear, selMonth) => {
+      const shouldDefer = items.length > 1500;
+      if (shouldDefer && typeof requestIdleCallback === "function") {
+        return new Promise((resolve) => {
+          requestIdleCallback(() => resolve(computeCategoryAgg(items, selYear, selMonth)), { timeout: 200 });
+        });
+      }
+      if (shouldDefer) {
+        return new Promise((resolve) => {
+          setTimeout(() => resolve(computeCategoryAgg(items, selYear, selMonth)), 0);
+        });
+      }
+      return Promise.resolve(computeCategoryAgg(items, selYear, selMonth));
+    };
+
+    const attemptChartRender = async ({ attempt = 0 } = {}) => {
+      const container = document.getElementById("chart-container");
+      const canvas = document.getElementById("expensesChart");
+      if (!container || !canvas) return;
+
+      if (dataState.loading) {
+        setChartUiState({ showCanvas: false, showSkeleton: true, showNoData: false, showError: false });
+        return;
+      }
+
+      if (!trans.length) {
+        if (chartInstance) {
+          chartInstance.destroy();
+          chartInstance = null;
+        }
+        setChartUiState({ showCanvas: false, showSkeleton: false, showNoData: true, showError: false });
+        return;
+      }
+
+      const rect = container.getBoundingClientRect();
+      const width = rect.width;
+      const height = rect.height;
+      if (width < 50 || height < 50) {
+        setChartUiState({ showCanvas: false, showSkeleton: true, showNoData: false, showError: false });
+        if (attempt < 5) {
+          setTimeout(() => attemptChartRender({ attempt: attempt + 1 }), 0);
+        } else {
+          if (chartInstance) {
+            chartInstance.destroy();
+            chartInstance = null;
+          }
+          setChartUiState({ showCanvas: false, showSkeleton: false, showNoData: false, showError: true });
+        }
+        return;
+      }
+
+      const filterEl = document.getElementById("chart-month-filter");
+      if (!filterEl || !filterEl.value) return;
+      const filterVal = filterEl.value;
+      const [selYear, selMonth] = filterVal.split("-").map(Number);
+      const scopeFilter = getActiveScopeFilter();
+      const owner = getActiveOwner();
+      const periodKey = `${selYear}-${selMonth}`;
+      const cacheKey = getCategoryAggCacheKey({ owner, periodKey, scopeFilter });
+      const startCompute = performance.now();
+      let cached = true;
+      let agg = categoryAggCache.get(cacheKey);
+
+      try {
+        if (!agg) {
+          cached = false;
+          setChartUiState({ showCanvas: false, showSkeleton: true, showNoData: false, showError: false });
+          const scopedTrans = applyScopeFilter(trans, scopeFilter);
+          agg = await computeCategoryAggAsync(scopedTrans, selYear, selMonth);
+          categoryAggCache.set(cacheKey, agg);
+        }
+
+        const computeMs = cached ? 0 : performance.now() - startCompute;
+        console.info("[chart:pie]", {
+          expensesCount: agg.expensesCount,
+          categoryCount: agg.categoryCount,
+          width: Math.round(width),
+          height: Math.round(height),
+          computeMs: Math.round(computeMs),
+          cached
+        });
+
+        if (!agg.labels.length) {
+          if (chartInstance) {
+            chartInstance.destroy();
+            chartInstance = null;
+          }
+          setChartUiState({ showCanvas: false, showSkeleton: false, showNoData: true, showError: false });
+          return;
+        }
+
+        if (chartInstance) chartInstance.destroy();
+
+        const isDark = isDarkMode();
+        const textColor = isDark ? "#f9fafb" : "#6b7280";
+
+        chartInstance = new Chart(canvas, {
+          type: "doughnut",
+          data: {
+            labels: agg.labels,
+            datasets: [{
+              data: agg.data,
+              backgroundColor: ["#2563eb", "#ef4444", "#10b981", "#f59e0b", "#8b5cf6", "#ec4899", "#6366f1"],
+              borderWidth: 0
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { position: "right", labels: { boxWidth: 10, font: { size: 10 }, color: textColor } } }
+          }
+        });
+
+        setChartUiState({ showCanvas: true, showSkeleton: false, showNoData: false, showError: false });
+      } catch (err) {
+        console.error("[chart:pie] render error", err);
+        if (chartInstance) {
+          chartInstance.destroy();
+          chartInstance = null;
+        }
+        setChartUiState({ showCanvas: false, showSkeleton: false, showNoData: false, showError: true });
+      }
+    };
+
+    const scheduleChartRender = () => {
+      if (chartRenderState.scheduled) return;
+      chartRenderState.scheduled = true;
+      requestAnimationFrame(() => {
+        chartRenderState.scheduled = false;
+        attemptChartRender({ attempt: 0 });
+      });
+    };
+
+    window.updateChart = () => {
+      scheduleChartRender();
     };
 
     // =========================
@@ -4172,16 +4353,16 @@
         const tid=document.getElementById('trans-id').value;
         const cObj=cards.find(c=>c.id===cid);
         if(!cObj) throw new Error("Tarjeta no encontrada");
+        const previousTrans = tid ? trans.find(t=>t.id===tid) : null;
 
         let newBal=parseFloat(cObj.balance||0);
         const batch=writeBatch(db);
 
         // Reversión si es edición
         if(tid){
-          const oldTrans=trans.find(t=>t.id===tid);
-          if(oldTrans && oldTrans.cardId===cid){
-            if(oldTrans.type==='expense') newBal -= oldTrans.amount;
-            else newBal += oldTrans.amount;
+          if(previousTrans && previousTrans.cardId===cid){
+            if(previousTrans.type==='expense') newBal -= previousTrans.amount;
+            else newBal += previousTrans.amount;
           }
         }
         if(type==='expense') newBal += amt;
@@ -4240,6 +4421,14 @@
             data: txToPlain({ ...payload, id: createdRef.id })
           });
           emit("EXPENSE_ADDED", { id: createdRef.id, data: payload });
+        }
+
+        if(previousTrans?.type === "expense" && previousTrans?.date){
+          const prevDate = previousTrans.date?.toDate ? previousTrans.date.toDate() : previousTrans.date;
+          invalidateCategoryAggCacheForPeriod(OWNER, getPeriodKeyFromDate(prevDate));
+        }
+        if(type === "expense" && dateValue){
+          invalidateCategoryAggCacheForPeriod(OWNER, getPeriodKeyFromDate(new Date(dateValue + "T12:00")));
         }
 
         if(!navigator.onLine){
@@ -4340,6 +4529,10 @@
         data: { id }
       });
       emit("EXPENSE_DELETED", { id });
+      if(t.type === "expense" && t.date){
+        const prevDate = t.date?.toDate ? t.date.toDate() : t.date;
+        invalidateCategoryAggCacheForPeriod(OWNER, getPeriodKeyFromDate(prevDate));
+      }
 
       invalidateCacheForOwner(OWNER);
       refreshAll({ owner: OWNER, force: true, source: "delete-expense" });
@@ -4387,6 +4580,7 @@
     };
 
     on("DATA_LOADED", () => {
+      invalidateCategoryAggCacheForOwner(OWNER);
       refreshAll({ owner: OWNER, force: true, source: "snapshot" });
       updateAlerts({ force: true });
       updateMonthlyFootprint({ force: true });
@@ -4399,6 +4593,7 @@
     });
 
     on("FILTER_CHANGED", () => {
+      invalidateCategoryAggCacheForOwner(OWNER);
       refreshAll({ owner: OWNER, force: true, source: "filter-change" });
       updateAlerts({ force: true });
       updateMonthlyFootprint({ force: true });
