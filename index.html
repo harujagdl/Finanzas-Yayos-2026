@@ -1038,15 +1038,14 @@
       OWNER = ownerSelect.value;
       localStorage.setItem(OWNER_KEY, OWNER);
       setState({ owner: OWNER });
+      dataState.owner = OWNER;
       startLoader();
       setLoaderMsg("Cambiando usuario...");
       await seedPresetCards();
       resubscribeAll();
       periodDataCache = { owner: null, scope: null, data: null };
       cancelSimulation();
-      updateDashboardSummary({ force: true });
-      updateInsights({ force: true });
-      updatePrediction({ force: true });
+      refreshAll({ owner: OWNER, force: true, source: "owner-change" });
       updateMonthlyFootprint({ force: true });
     });
 
@@ -1057,6 +1056,19 @@
     let unsubCards=null, unsubTrans=null;
 
     let periodDataCache = { owner: null, scope: null, data: null };
+    let dataRequestId = 0;
+    const DEBUG_RENDER = true;
+    const dataState = {
+      loading: false,
+      owner: OWNER,
+      scopeFilter: getActiveScopeFilter(),
+      periodData: null,
+      lastGoodPeriodData: null,
+      lastGoodMetrics: null,
+      lastGoodInsights: [],
+      lastGoodPrediction: null,
+      lastGoodCounts: null
+    };
     const simulationState = { active: false, amount: 0, category: "", result: null };
 
     // MSI state
@@ -1268,15 +1280,8 @@
     }
 
     async function refreshAfterReconnect(){
-      try{
-        await getPeriodData(OWNER, { force: true });
-      }catch(e){
-        console.log("Refresh after reconnect error:", e?.message || e);
-      }
-      updateDashboardSummary({ force: true });
+      await refreshAll({ owner: OWNER, force: true, source: "reconnect" });
       updateAlerts({ force: true });
-      updateInsights({ force: true });
-      updatePrediction({ force: true });
       updateMonthlyFootprint({ force: true });
       renderHistory();
       updateChart();
@@ -1348,6 +1353,7 @@
     const setActiveScopeFilter = (value) => {
       const next = value === "shared" || value === "personal" ? value : "all";
       localStorage.setItem(SCOPE_FILTER_KEY, next);
+      dataState.scopeFilter = next;
       setState({ activeScopeFilter: next });
       syncScopeFilterUI();
       periodDataCache = { owner: null, scope: null, data: null };
@@ -1533,6 +1539,48 @@
       };
     };
 
+    const getPeriodCounts = (periodData = {}) => {
+      const monthCurrent = periodData?.month?.current?.length || 0;
+      const monthPrevious = periodData?.month?.previous?.length || 0;
+      const yearCurrent = periodData?.year?.current?.length || 0;
+      const yearPrevious = periodData?.year?.previous?.length || 0;
+      return {
+        monthCurrent,
+        monthPrevious,
+        yearCurrent,
+        yearPrevious,
+        total: monthCurrent + monthPrevious + yearCurrent + yearPrevious
+      };
+    };
+
+    const isPeriodDataValid = (periodData) => getPeriodCounts(periodData).total > 0;
+
+    const logRenderDebug = (source, periodData, { owner, scopeFilter, loading } = {}) => {
+      if(!DEBUG_RENDER) return;
+      const counts = getPeriodCounts(periodData);
+      console.debug(`[render:${source}]`, {
+        owner: owner || getActiveOwner(),
+        scopeFilter: scopeFilter || getActiveScopeFilter(),
+        loading: typeof loading === "boolean" ? loading : dataState.loading,
+        counts,
+        requestId: dataRequestId
+      });
+    };
+
+    const setDataLoading = (isLoading, source = "loading") => {
+      dataState.loading = isLoading;
+      setState({ ui: { loading: isLoading } });
+      if(DEBUG_RENDER){
+        console.debug(`[loading:${source}]`, { loading: isLoading, requestId: dataRequestId });
+      }
+    };
+
+    const resolvePeriodDataForRender = (periodData) => {
+      if (periodData && isPeriodDataValid(periodData)) return periodData;
+      if (dataState.loading && dataState.lastGoodPeriodData) return dataState.lastGoodPeriodData;
+      return periodData;
+    };
+
     const buildDelta = (current, previous) => {
       const curr = safeNumber(current);
       const prev = safeNumber(previous);
@@ -1683,17 +1731,25 @@
       if (privacy) togglePrivacy();
     }
 
-    async function updateDashboardSummary({ force = false } = {}) {
+    async function updateDashboardSummary({ force = false, periodData = null, source = "dashboard" } = {}) {
       const section = document.getElementById("dashboard-summary");
       if(!FEATURES.dashboard){
         section?.classList.add("d-none");
         return;
       }
       section?.classList.remove("d-none");
-      renderDashboardSummary(null);
+      if(!dataState.loading){
+        renderDashboardSummary(null);
+      }
       const owner = getActiveOwner();
-      const periodData = await getPeriodData(owner, { force });
-      const metrics = computePeriodTotals(periodData);
+      const resolvedData = periodData || await getPeriodData(owner, { force });
+      const renderData = resolvePeriodDataForRender(resolvedData);
+      logRenderDebug(`dashboard:${source}`, renderData, { owner });
+      if (!renderData) {
+        renderDashboardSummary(null);
+        return;
+      }
+      const metrics = computePeriodTotals(renderData);
       renderDashboardSummary(metrics);
     }
 
@@ -1841,6 +1897,26 @@
 
       if (!insights.length) {
         section.classList.remove("d-none");
+        if (dataState.loading) {
+          list.classList.add("is-loading");
+          list.innerHTML = `
+            <div class="insight-item">
+              <div class="insight-icon">💡</div>
+              <div class="insight-content" style="flex:1;">
+                <div class="skeleton skeleton-line" style="width:55%;"></div>
+                <div class="skeleton skeleton-line" style="width:85%;"></div>
+              </div>
+            </div>
+            <div class="insight-item">
+              <div class="insight-icon">✨</div>
+              <div class="insight-content" style="flex:1;">
+                <div class="skeleton skeleton-line" style="width:45%;"></div>
+                <div class="skeleton skeleton-line" style="width:70%;"></div>
+              </div>
+            </div>
+          `;
+          return;
+        }
         list.classList.remove("is-loading");
         list.innerHTML = '<small class="text-muted">Aún no hay suficientes movimientos para generar insights de este mes.</small>';
         animateIn(section);
@@ -1863,7 +1939,7 @@
       if (privacy) togglePrivacy();
     }
 
-    async function updateInsights({ force = false } = {}) {
+    async function updateInsights({ force = false, periodData = null, source = "insights" } = {}) {
       const section = document.getElementById("insights-section");
       const list = document.getElementById("insights-list");
       if(!FEATURES.insights){
@@ -1872,27 +1948,31 @@
       }
       if (section && list) {
         section.classList.remove("d-none");
-        list.classList.add("is-loading");
-        list.innerHTML = `
-          <div class="insight-item">
-            <div class="insight-icon">💡</div>
-            <div class="insight-content" style="flex:1;">
-              <div class="skeleton skeleton-line" style="width:55%;"></div>
-              <div class="skeleton skeleton-line" style="width:85%;"></div>
+        if(!dataState.loading){
+          list.classList.add("is-loading");
+          list.innerHTML = `
+            <div class="insight-item">
+              <div class="insight-icon">💡</div>
+              <div class="insight-content" style="flex:1;">
+                <div class="skeleton skeleton-line" style="width:55%;"></div>
+                <div class="skeleton skeleton-line" style="width:85%;"></div>
+              </div>
             </div>
-          </div>
-          <div class="insight-item">
-            <div class="insight-icon">✨</div>
-            <div class="insight-content" style="flex:1;">
-              <div class="skeleton skeleton-line" style="width:45%;"></div>
-              <div class="skeleton skeleton-line" style="width:70%;"></div>
+            <div class="insight-item">
+              <div class="insight-icon">✨</div>
+              <div class="insight-content" style="flex:1;">
+                <div class="skeleton skeleton-line" style="width:45%;"></div>
+                <div class="skeleton skeleton-line" style="width:70%;"></div>
+              </div>
             </div>
-          </div>
-        `;
+          `;
+        }
       }
       const owner = getActiveOwner();
-      const periodData = await getPeriodData(owner, { force });
-      const insights = computeInsights(owner, periodData);
+      const resolvedData = periodData || await getPeriodData(owner, { force });
+      const renderData = resolvePeriodDataForRender(resolvedData);
+      logRenderDebug(`insights:${source}`, renderData, { owner });
+      const insights = renderData ? computeInsights(owner, renderData) : [];
       renderInsights(insights);
     }
 
@@ -1983,6 +2063,15 @@
       }
 
       if (!prediction.show) {
+        if (dataState.loading) {
+          body.innerHTML = `
+            <div class="skeleton skeleton-line" style="width:55%;"></div>
+            <div class="skeleton skeleton-line" style="width:80%;"></div>
+          `;
+          statusEl.textContent = "Calculando";
+          statusEl.className = "badge-status bg-neutral-light";
+          return;
+        }
         statusEl.textContent = "Pocos datos";
         statusEl.className = "badge-status bg-neutral-light";
         body.innerHTML = `
@@ -2066,21 +2155,121 @@
       if (privacy) togglePrivacy();
     };
 
-    async function updatePrediction({ force = false } = {}) {
+    async function updatePrediction({ force = false, periodData = null, source = "prediction" } = {}) {
       const section = document.getElementById("prediction-section");
       if(!FEATURES.prediction){
         section?.classList.add("d-none");
         return;
       }
       section?.classList.remove("d-none");
-      renderPrediction(null);
+      if(!dataState.loading){
+        renderPrediction(null);
+      }
       const owner = getActiveOwner();
-      const periodData = await getPeriodData(owner, { force });
-      const prediction = computeMonthlyPrediction(periodData);
+      const resolvedData = periodData || await getPeriodData(owner, { force });
+      const renderData = resolvePeriodDataForRender(resolvedData);
+      logRenderDebug(`prediction:${source}`, renderData, { owner });
+      const prediction = renderData ? computeMonthlyPrediction(renderData) : null;
       renderPrediction(prediction);
       if (simulationState.active) {
-        simulationState.result = computeSimulationImpact(simulationState.amount, periodData);
+        simulationState.result = computeSimulationImpact(simulationState.amount, renderData || resolvedData);
         renderSimulationResult(simulationState.result);
+      }
+    }
+
+    async function refreshAll({ owner, force = false, source = "refreshAll" } = {}) {
+      const resolvedOwner = getActiveOwner(owner || dataState.owner);
+      if(!resolvedOwner){
+        console.warn("refreshAll: owner indefinido, se mantiene último owner válido.");
+        return;
+      }
+      dataState.owner = resolvedOwner;
+      dataState.scopeFilter = getActiveScopeFilter();
+      const requestId = ++dataRequestId;
+      setDataLoading(true, `${source}:start`);
+
+      if (dataState.lastGoodPeriodData && isPeriodDataValid(dataState.lastGoodPeriodData)) {
+        const metrics = dataState.lastGoodMetrics || computePeriodTotals(dataState.lastGoodPeriodData);
+        const insights = dataState.lastGoodInsights.length
+          ? dataState.lastGoodInsights
+          : computeInsights(resolvedOwner, dataState.lastGoodPeriodData);
+        const prediction = dataState.lastGoodPrediction || computeMonthlyPrediction(dataState.lastGoodPeriodData);
+        renderDashboardSummary(metrics);
+        renderInsights(insights);
+        renderPrediction(prediction);
+        if (simulationState.active) {
+          simulationState.result = computeSimulationImpact(simulationState.amount, dataState.lastGoodPeriodData);
+          renderSimulationResult(simulationState.result);
+        }
+        logRenderDebug(`${source}:last-good`, dataState.lastGoodPeriodData, {
+          owner: resolvedOwner,
+          scopeFilter: dataState.scopeFilter,
+          loading: true
+        });
+      } else {
+        renderDashboardSummary(null);
+        renderInsights([]);
+        renderPrediction(null);
+        logRenderDebug(`${source}:loading`, null, {
+          owner: resolvedOwner,
+          scopeFilter: dataState.scopeFilter,
+          loading: true
+        });
+      }
+
+      let periodData = null;
+      try {
+        periodData = await getPeriodData(resolvedOwner, { force });
+      } catch (err) {
+        console.warn("refreshAll: error cargando periodData", err);
+      }
+
+      if (requestId !== dataRequestId) {
+        if(DEBUG_RENDER){
+          console.debug(`[refreshAll:${source}] Resultado descartado`, { requestId, latest: dataRequestId });
+        }
+        return;
+      }
+
+      dataState.periodData = periodData;
+      setDataLoading(false, `${source}:done`);
+      const renderData = resolvePeriodDataForRender(periodData);
+      if (!renderData) {
+        renderDashboardSummary(null);
+        renderInsights([]);
+        renderPrediction(null);
+        logRenderDebug(`${source}:empty`, periodData, {
+          owner: resolvedOwner,
+          scopeFilter: dataState.scopeFilter,
+          loading: false
+        });
+        return;
+      }
+
+      const metrics = computePeriodTotals(renderData);
+      const insights = computeInsights(resolvedOwner, renderData);
+      const prediction = computeMonthlyPrediction(renderData);
+      renderDashboardSummary(metrics);
+      renderInsights(insights);
+      renderPrediction(prediction);
+
+      if (simulationState.active) {
+        simulationState.result = computeSimulationImpact(simulationState.amount, renderData);
+        renderSimulationResult(simulationState.result);
+      }
+
+      logRenderDebug(`${source}:render`, renderData, {
+        owner: resolvedOwner,
+        scopeFilter: dataState.scopeFilter,
+        loading: false
+      });
+
+      if (isPeriodDataValid(renderData)) {
+        dataState.lastGoodPeriodData = renderData;
+        dataState.lastGoodMetrics = metrics;
+        dataState.lastGoodInsights = insights;
+        dataState.lastGoodPrediction = prediction;
+        dataState.lastGoodCounts = getPeriodCounts(renderData);
       }
     }
 
@@ -2370,7 +2559,8 @@
     // ===== FASE 2: RANGOS + CACHE (sesión) =====
     const expensesCache = new Map();
 
-    const getActiveOwner = (owner) => owner || OWNER || localStorage.getItem(OWNER_KEY) || "yair";
+    const getActiveOwner = (owner) =>
+      owner || OWNER || dataState.owner || localStorage.getItem(OWNER_KEY) || "yair";
 
     const getCacheKey = ({ owner, periodKey, start, end }) => {
       const s = toDate(start).getTime();
@@ -2705,10 +2895,7 @@
     window.handleScopeFilterChange = (value) => {
       if(!FEATURES.coupleMode) return;
       setActiveScopeFilter(value);
-      updateDashboardSummary({ force: true });
       updateAlerts({ force: true });
-      updateInsights({ force: true });
-      updatePrediction({ force: true });
       updateMonthlyFootprint({ force: true });
       renderHistory();
       updateChart();
@@ -2819,9 +3006,7 @@
       subscribeCards();
       subscribeTrans();
       resetForm();
-      updateDashboardSummary({ force: true });
-      updateInsights({ force: true });
-      updatePrediction({ force: true });
+      refreshAll({ owner: OWNER, force: true, source: "resubscribe" });
       updateMonthlyFootprint({ force: true });
     }
 
@@ -3996,10 +4181,8 @@
         }
 
         invalidateCacheForOwner(OWNER);
-        updateDashboardSummary({ force: true });
+        refreshAll({ owner: OWNER, force: true, source: "save-expense" });
         updateAlerts({ force: true });
-        updateInsights({ force: true });
-        updatePrediction({ force: true });
         cancelSimulation();
         resetForm();
         nav('view-home');
@@ -4084,10 +4267,8 @@
       emit("EXPENSE_DELETED", { id });
 
       invalidateCacheForOwner(OWNER);
-      updateDashboardSummary({ force: true });
+      refreshAll({ owner: OWNER, force: true, source: "delete-expense" });
       updateAlerts({ force: true });
-      updateInsights({ force: true });
-      updatePrediction({ force: true });
       cancelSimulation();
       resetForm();
       nav('view-hist');
@@ -4131,10 +4312,8 @@
     };
 
     on("DATA_LOADED", () => {
-      updateDashboardSummary({ force: true });
+      refreshAll({ owner: OWNER, force: true, source: "snapshot" });
       updateAlerts({ force: true });
-      updateInsights({ force: true });
-      updatePrediction({ force: true });
       updateMonthlyFootprint({ force: true });
       if(FEATURES.timeline){
         renderHistory();
@@ -4145,10 +4324,8 @@
     });
 
     on("FILTER_CHANGED", () => {
-      updateDashboardSummary({ force: true });
+      refreshAll({ owner: OWNER, force: true, source: "filter-change" });
       updateAlerts({ force: true });
-      updateInsights({ force: true });
-      updatePrediction({ force: true });
       updateMonthlyFootprint({ force: true });
       if(FEATURES.timeline){
         renderHistory();
