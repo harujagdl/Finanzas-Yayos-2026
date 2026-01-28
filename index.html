@@ -342,6 +342,14 @@
       background:var(--bg-card); border:1px solid var(--border-color);
       border-radius:14px; padding:14px; margin-bottom:12px;
     }
+    .goal-metrics{display:flex; flex-wrap:wrap; gap:8px; font-size:.82rem; color:var(--text-muted);}
+    .goal-actions{display:flex; gap:8px; flex-wrap:wrap;}
+    .goal-actions .btn{flex:1;}
+    .goal-detail-meta{display:flex; flex-wrap:wrap; gap:12px; font-size:.85rem; color:var(--text-muted);}
+    .goal-contrib-item{
+      border:1px solid var(--border-color); border-radius:12px; padding:10px 12px;
+      background:var(--bg-body);
+    }
     .goal-card.dragging{
       box-shadow:0 12px 24px rgba(15,23,42,.15);
       border-color:rgba(37,99,235,.4);
@@ -766,6 +774,15 @@
         <i class="fas fa-plus me-1"></i> Nueva meta
       </button>
     </div>
+    <div id="missing-index-goals-banner" class="card-box missing-index-banner d-none">
+      <div class="d-flex align-items-start gap-2">
+        <div class="banner-title">⚠️ Falta un índice de Firestore para cargar Metas.</div>
+      </div>
+      <div class="small mt-2">
+        No se pudieron cargar metas por índice faltante.
+        <a id="missing-index-goals-link" class="banner-link ms-1 d-none" target="_blank" rel="noopener noreferrer">Abrir índice</a>
+      </div>
+    </div>
     <div id="goals-list"><small class="text-muted">Cargando...</small></div>
   </div>
 
@@ -942,6 +959,64 @@
     </div>
   </div>
 
+  <!-- =======================
+        ✅ MODAL APORTAR META
+  ======================= -->
+  <div class="modal fade" id="modalGoalContribution" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content card-box border-0">
+        <div class="modal-body">
+          <h5 class="fw-black mb-3">Aportar a meta</h5>
+          <form id="form-goal-contribution">
+            <input type="hidden" id="goal-contribution-id" />
+            <div class="mb-3">
+              <label class="small text-muted fw-bold">Monto</label>
+              <input type="number" id="goal-contribution-amount" class="form-control" placeholder="0" min="0" step="0.01" required />
+            </div>
+            <div class="mb-3">
+              <label class="small text-muted fw-bold">Owner</label>
+              <select id="goal-contribution-owner" class="form-select">
+                <option value="yair">Yair</option>
+                <option value="haru">Haru</option>
+              </select>
+            </div>
+            <div class="mb-3">
+              <label class="small text-muted fw-bold">Fecha</label>
+              <input type="date" id="goal-contribution-date" class="form-control" required />
+            </div>
+            <div class="mb-3">
+              <label class="small text-muted fw-bold">Nota (opcional)</label>
+              <input type="text" id="goal-contribution-note" class="form-control" placeholder="Ej: Aguinaldo" />
+            </div>
+            <div class="d-flex gap-2">
+              <button type="button" class="btn btn-light flex-fill" data-bs-dismiss="modal">Cancelar</button>
+              <button type="submit" class="btn btn-primary flex-fill">Guardar</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =======================
+        ✅ MODAL DETALLE META
+  ======================= -->
+  <div class="modal fade" id="modalGoalDetail" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+      <div class="modal-content card-box border-0">
+        <div class="modal-body">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="fw-black m-0" id="goal-detail-title">Detalle de meta</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+          </div>
+          <div id="goal-detail-body">
+            <div class="text-muted small">Cargando meta...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div id="toast-container" aria-live="polite" aria-atomic="true"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
@@ -950,7 +1025,8 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
     import {
       getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc,
-      query, orderBy, writeBatch, Timestamp, enableIndexedDbPersistence, where, getDocs, getDoc, setDoc
+      query, orderBy, writeBatch, Timestamp, enableIndexedDbPersistence, where, getDocs, getDoc, setDoc,
+      serverTimestamp, increment, limit
     } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
 
     // =========================
@@ -1121,9 +1197,18 @@
 
     // Firestore init
     let app, db;
+    let hasLoggedProjectId = false;
+    const logProjectIdOnce = () => {
+      if(hasLoggedProjectId) return;
+      if(firebaseConfig?.projectId){
+        console.info("Firestore projectId:", firebaseConfig.projectId);
+      }
+      hasLoggedProjectId = true;
+    };
     try { app = initializeApp(firebaseConfig); db = getFirestore(app); }
     catch(e){ showStartupError("Error inicializando Firebase: "+(e.message||e), { canRetry: false }); }
     enableIndexedDbPersistence(db).catch((err)=>console.log("Persistence status:", err.code));
+    logProjectIdOnce();
 
     // =========================
     // 🔔 PUSH (por ahora placeholder)
@@ -1181,7 +1266,13 @@
     let privacy=false, chartInstance=null;
     let cardModal=null;
     let goalModal=null;
+    let goalDetailModal=null;
+    let goalContributionModal=null;
     let unsubCards=null, unsubTrans=null, unsubGoals=null;
+    let goalsLoading = true;
+    let goalsError = null;
+    let goalsLastErrorToastAt = 0;
+    let activeGoalDetailId = null;
 
     let periodDataCache = { owner: null, scope: null, data: null };
     let dataRequestId = 0;
@@ -1733,6 +1824,33 @@
       } else {
         banner.classList.add("d-none");
       }
+    };
+
+    const renderMissingIndexBanner = ({ module, link, bannerId, linkId } = {}) => {
+      const targetBannerId = bannerId || "missing-index-goals-banner";
+      const targetLinkId = linkId || "missing-index-goals-link";
+      const banner = document.getElementById(targetBannerId);
+      if(!banner) return;
+      const title = banner.querySelector(".banner-title");
+      if(title && module){
+        title.textContent = `⚠️ Falta un índice de Firestore para cargar ${module}.`;
+      }
+      const linkEl = banner.querySelector(`#${targetLinkId}`);
+      if(linkEl){
+        if(link){
+          linkEl.href = link;
+          linkEl.classList.remove("d-none");
+        }else{
+          linkEl.removeAttribute("href");
+          linkEl.classList.add("d-none");
+        }
+      }
+      banner.classList.remove("d-none");
+    };
+
+    const hideMissingIndexBanner = (bannerId = "missing-index-goals-banner") => {
+      const banner = document.getElementById(bannerId);
+      if(banner) banner.classList.add("d-none");
     };
 
     const setPeriodError = (error = null) => {
@@ -3372,7 +3490,17 @@
       return uB - uA;
     });
 
+    const getLocalDateInputValue = (date = new Date()) => {
+      const tzOffset = date.getTimezoneOffset() * 60000;
+      return new Date(date.getTime() - tzOffset).toISOString().split("T")[0];
+    };
+
+    const formatGoalOwner = (owner) => owner === "haru" ? "Haru" : "Yair";
+
     function subscribeGoals(){
+      goalsLoading = true;
+      goalsError = null;
+      renderGoals();
       const qGoals = query(
         collection(db,"goals"),
         where("status","==","active"),
@@ -3388,6 +3516,9 @@
           temp.push(g);
         });
 
+        goalsLoading = false;
+        goalsError = null;
+        hideMissingIndexBanner();
         let sorted = sortGoalsList(temp);
         const batch = writeBatch(db);
         let needsUpdate = false;
@@ -3396,7 +3527,7 @@
           if(!Number.isFinite(goal.sortOrder)){
             const newOrder = index * GOAL_SORT_STEP;
             goal.sortOrder = newOrder;
-            batch.update(doc(db,"goals",goal.id), { sortOrder: newOrder, updatedAt: Timestamp.fromDate(new Date()) });
+            batch.update(doc(db,"goals",goal.id), { sortOrder: newOrder, updatedAt: serverTimestamp() });
             needsUpdate = true;
           }
         });
@@ -3413,14 +3544,43 @@
         }
       }, (err)=>{
         console.error("Goals snapshot error:", err);
-        const listEl = document.getElementById('goals-list');
-        if(listEl) listEl.innerHTML = '<div class="text-muted small">No se pudieron cargar las metas.</div>';
+        goalsLoading = false;
+        const isMissing = isMissingIndexError(err);
+        const link = extractIndexLink(err?.message || "");
+        goalsError = {
+          type: isMissing ? "missing_index" : "generic",
+          link,
+          message: err?.message || ""
+        };
+        if(isMissing){
+          renderMissingIndexBanner({ module: "Metas", link });
+        }else{
+          hideMissingIndexBanner();
+          const now = Date.now();
+          if(now - goalsLastErrorToastAt > 4000){
+            showToast("No se pudieron cargar las metas. Intenta más tarde.", { tone: "warning", duration: 2600 });
+            goalsLastErrorToastAt = now;
+          }
+        }
+        renderGoals();
       });
     }
 
     function renderGoals(){
       const listEl = document.getElementById('goals-list');
       if(!listEl) return;
+      if(goalsLoading){
+        listEl.innerHTML = '<div class="text-muted small p-3">Cargando metas...</div>';
+        return;
+      }
+      if(goalsError?.type === "missing_index"){
+        listEl.innerHTML = '<div class="text-muted small p-3">No se pudieron cargar metas por índice faltante.</div>';
+        return;
+      }
+      if(goalsError){
+        listEl.innerHTML = '<div class="text-muted small p-3">No se pudieron cargar las metas.</div>';
+        return;
+      }
       if(!goals.length){
         listEl.innerHTML = '<div class="text-center text-muted small p-3">No hay metas activas.</div>';
         return;
@@ -3428,7 +3588,7 @@
       const sorted = sortGoalsList(goals);
       listEl.innerHTML = '';
       sorted.forEach((goal)=>{
-        const current = Number(goal.currentAmount ?? goal.savedAmount ?? 0);
+        const current = Number(goal.savedAmount ?? goal.currentAmount ?? 0);
         const target = Number(goal.targetAmount ?? 0);
         const progress = target > 0 ? Math.min((current / target) * 100, 100) : 0;
         const remaining = Math.max(target - current, 0);
@@ -3451,11 +3611,12 @@
             <div class="progress mb-2" style="height:10px;background-color:var(--bg-body);">
               <div class="progress-bar bg-success" role="progressbar" style="width:${progress}%"></div>
             </div>
-            <div class="d-flex justify-content-between small mb-2">
-              <span class="text-muted">Llevan ${formatMoney(current)} de ${formatMoney(target)}</span>
-              <span class="text-muted">Faltan ${formatMoney(remaining)}</span>
+            <div class="goal-metrics mb-2">
+              <span>Ahorrado <strong>${formatMoney(current)}</strong></span>
+              <span>Objetivo <strong>${formatMoney(target)}</strong></span>
+              <span>Faltan <strong>${formatMoney(remaining)}</strong></span>
             </div>
-            <div class="d-flex justify-content-between align-items-center">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
               <div class="small text-muted">Prioridad</div>
               <select class="form-select form-select-sm w-auto goal-priority-select" data-id="${goal.id}">
                 <option value="" ${priorityValue === "" ? "selected" : ""}>—</option>
@@ -3464,9 +3625,169 @@
                 <option value="3" ${priorityValue === "3" ? "selected" : ""}>3</option>
               </select>
             </div>
+            <div class="goal-actions">
+              <button class="btn btn-outline-primary btn-sm goal-action-add" type="button" data-id="${goal.id}">
+                <i class="fas fa-piggy-bank me-1"></i> Aportar
+              </button>
+              <button class="btn btn-light btn-sm goal-action-view" type="button" data-id="${goal.id}">
+                <i class="fas fa-eye me-1"></i> Ver
+              </button>
+            </div>
           </div>
         `;
       });
+    }
+
+    async function loadGoalContributions(goalId){
+      const listEl = document.getElementById("goal-contrib-list");
+      if(listEl) listEl.innerHTML = '<div class="text-muted small">Cargando aportes...</div>';
+      try{
+        const qContrib = query(
+          collection(db, "goal_contributions"),
+          where("goalId", "==", goalId),
+          orderBy("date", "desc"),
+          limit(20)
+        );
+        const snap = await getDocs(qContrib);
+        if(!listEl) return;
+        if(snap.empty){
+          listEl.innerHTML = '<div class="text-muted small">No hay aportes todavía.</div>';
+          return;
+        }
+        listEl.innerHTML = "";
+        snap.forEach((docSnap)=>{
+          const contrib = docSnap.data();
+          const amount = Number(contrib.amount || 0);
+          const date = contrib.date?.toDate ? contrib.date.toDate() : null;
+          const dateLabel = date ? date.toLocaleDateString() : "Sin fecha";
+          const ownerLabel = formatGoalOwner(contrib.owner);
+          const note = contrib.note ? ` · ${contrib.note}` : "";
+          listEl.innerHTML += `
+            <div class="goal-contrib-item mb-2">
+              <div class="d-flex justify-content-between align-items-center">
+                <div class="fw-bold">${formatMoney(amount)}</div>
+                <div class="text-muted small">${dateLabel}</div>
+              </div>
+              <div class="text-muted small">${ownerLabel}${note}</div>
+            </div>
+          `;
+        });
+      }catch(err){
+        console.error("Goal contributions error:", err);
+        const isMissing = isMissingIndexError(err);
+        const link = extractIndexLink(err?.message || "");
+        if(isMissing){
+          renderMissingIndexBanner({ module: "Metas", link });
+          if(listEl){
+            listEl.innerHTML = '<div class="text-muted small">No se pudieron cargar aportes por índice faltante.</div>';
+          }
+        }else if(listEl){
+          listEl.innerHTML = '<div class="text-muted small">No se pudieron cargar los aportes.</div>';
+        }
+      }
+    }
+
+    async function renderGoalDetail(goalId){
+      const detailEl = document.getElementById("goal-detail-body");
+      if(!detailEl) return;
+      let goal = goals.find(g=>g.id===goalId) || null;
+      if(!goal){
+        const goalSnap = await getDoc(doc(db, "goals", goalId));
+        if(goalSnap.exists()) goal = goalSnap.data();
+      }
+      if(!goal){
+        detailEl.innerHTML = '<div class="text-muted small">No se encontró la meta.</div>';
+        return;
+      }
+      const titleEl = document.getElementById("goal-detail-title");
+      if(titleEl){
+        titleEl.textContent = goal?.name ? `Meta: ${goal.name}` : "Detalle de meta";
+      }
+      const current = Number(goal.savedAmount ?? goal.currentAmount ?? 0);
+      const target = Number(goal.targetAmount ?? 0);
+      const progress = target > 0 ? Math.min((current / target) * 100, 100) : 0;
+      const remaining = Math.max(target - current, 0);
+      const priorityLabel = goal.priority ? `Prioridad ${goal.priority}` : "Sin prioridad";
+
+      detailEl.innerHTML = `
+        <div class="mb-3">
+          <div class="goal-detail-meta mb-2">
+            <span>${priorityLabel}</span>
+            <span>Ahorrado <strong>${formatMoney(current)}</strong></span>
+            <span>Objetivo <strong>${formatMoney(target)}</strong></span>
+            <span>Faltan <strong>${formatMoney(remaining)}</strong></span>
+          </div>
+          <div class="progress" style="height:10px;background-color:var(--bg-body);">
+            <div class="progress-bar bg-success" role="progressbar" style="width:${progress}%"></div>
+          </div>
+        </div>
+        <div class="d-flex gap-2 mb-3">
+          <button class="btn btn-outline-primary flex-fill" type="button" id="goal-detail-add" data-id="${goalId}">
+            <i class="fas fa-piggy-bank me-1"></i> Aportar
+          </button>
+          <button class="btn btn-outline-secondary flex-fill" type="button" id="goal-detail-archive" data-id="${goalId}">
+            <i class="fas fa-box-archive me-1"></i> Archivar meta
+          </button>
+        </div>
+        <div class="mb-2 fw-bold">Aportes recientes</div>
+        <div id="goal-contrib-list"></div>
+      `;
+
+      const addBtn = document.getElementById("goal-detail-add");
+      if(addBtn){
+        addBtn.addEventListener("click", ()=>{
+          openGoalContribution(goalId);
+        });
+      }
+      const archiveBtn = document.getElementById("goal-detail-archive");
+      if(archiveBtn){
+        archiveBtn.addEventListener("click", async()=>{
+          if(!confirm("¿Archivar esta meta?")) return;
+          try{
+            await updateDoc(doc(db,"goals", goalId), { status: "archived", updatedAt: serverTimestamp() });
+            showToast("Meta archivada.", { tone: "info", duration: 2200 });
+            if(goalDetailModal) goalDetailModal.hide();
+          }catch(err){
+            console.error("Archive goal error:", err);
+            showToast("No se pudo archivar la meta.", { tone: "warning", duration: 2400 });
+          }
+        });
+      }
+
+      await loadGoalContributions(goalId);
+    }
+
+    function openGoalDetail(goalId){
+      activeGoalDetailId = goalId;
+      if(!goalDetailModal){
+        goalDetailModal = new bootstrap.Modal(document.getElementById('modalGoalDetail'));
+      }
+      const titleEl = document.getElementById("goal-detail-title");
+      if(titleEl){
+        const goal = goals.find(g=>g.id===goalId);
+        titleEl.textContent = goal?.name ? `Meta: ${goal.name}` : "Detalle de meta";
+      }
+      const detailEl = document.getElementById("goal-detail-body");
+      if(detailEl) detailEl.innerHTML = '<div class="text-muted small">Cargando meta...</div>';
+      goalDetailModal.show();
+      renderGoalDetail(goalId);
+    }
+
+    function openGoalContribution(goalId){
+      const idInput = document.getElementById("goal-contribution-id");
+      const amountInput = document.getElementById("goal-contribution-amount");
+      const ownerInput = document.getElementById("goal-contribution-owner");
+      const dateInput = document.getElementById("goal-contribution-date");
+      const noteInput = document.getElementById("goal-contribution-note");
+      if(idInput) idInput.value = goalId;
+      if(amountInput) amountInput.value = "";
+      if(ownerInput) ownerInput.value = OWNER || "yair";
+      if(dateInput) dateInput.value = getLocalDateInputValue();
+      if(noteInput) noteInput.value = "";
+      if(!goalContributionModal){
+        goalContributionModal = new bootstrap.Modal(document.getElementById('modalGoalContribution'));
+      }
+      goalContributionModal.show();
     }
 
     async function persistGoalOrder(orderedGoals){
@@ -3476,7 +3797,7 @@
         goal.sortOrder = newOrder;
         batch.update(doc(db,"goals", goal.id), {
           sortOrder: newOrder,
-          updatedAt: Timestamp.fromDate(new Date())
+          updatedAt: serverTimestamp()
         });
       });
       try{
@@ -3524,7 +3845,7 @@
         if(goal) goal.priority = value;
         renderGoals();
         try{
-          await updateDoc(doc(db,"goals", id), { priority: value, updatedAt: Timestamp.fromDate(new Date()) });
+          await updateDoc(doc(db,"goals", id), { priority: value, updatedAt: serverTimestamp() });
         }catch(err){
           console.error("Update priority error:", err);
           showToast("No se pudo actualizar la prioridad.", { tone: "warning", duration: 2400 });
@@ -3537,6 +3858,20 @@
         const id = btn.getAttribute('data-id');
         const direction = btn.getAttribute('data-move');
         moveGoalByStep(id, direction);
+      });
+
+      listEl.addEventListener('click', (e)=>{
+        const addBtn = e.target.closest('.goal-action-add');
+        if(addBtn){
+          const id = addBtn.getAttribute('data-id');
+          openGoalContribution(id);
+          return;
+        }
+        const viewBtn = e.target.closest('.goal-action-view');
+        if(viewBtn){
+          const id = viewBtn.getAttribute('data-id');
+          openGoalDetail(id);
+        }
       });
 
       let dragState = null;
@@ -4654,6 +4989,13 @@
       goalModal.show();
     };
 
+    const goalDetailEl = document.getElementById('modalGoalDetail');
+    if(goalDetailEl){
+      goalDetailEl.addEventListener('hidden.bs.modal', ()=>{
+        activeGoalDetailId = null;
+      });
+    }
+
     window.editCard=(id)=>{
       const c=cards.find(x=>x.id===id); if(!c) return;
       document.getElementById('c-id').value=id;
@@ -4717,13 +5059,56 @@
           status: "active",
           priority,
           sortOrder: nextSortOrder,
-          updatedAt: Timestamp.fromDate(new Date())
+          savedAmount: 0,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
         });
         if(goalModal) goalModal.hide();
         showToast("Meta creada", { tone: "success", duration: 2000 });
       }catch(err){
         console.error("Create goal error:", err);
         showToast("No se pudo crear la meta.", { tone: "warning", duration: 2400 });
+      }
+    });
+
+    document.getElementById('form-goal-contribution').addEventListener('submit', async(e)=>{
+      e.preventDefault();
+      const goalId = document.getElementById('goal-contribution-id').value;
+      const amount = parseFloat(document.getElementById('goal-contribution-amount').value || 0);
+      const owner = document.getElementById('goal-contribution-owner').value || OWNER;
+      const noteRaw = document.getElementById('goal-contribution-note').value.trim();
+      const dateValue = document.getElementById('goal-contribution-date').value;
+      if(!goalId || !Number.isFinite(amount) || amount <= 0){
+        showToast("Ingresa un monto válido.", { tone: "warning", duration: 2200 });
+        return;
+      }
+      const date = dateValue ? new Date(`${dateValue}T00:00:00`) : new Date();
+      try{
+        await addDoc(collection(db,"goal_contributions"), {
+          goalId,
+          amount,
+          owner,
+          note: noteRaw || null,
+          date: Timestamp.fromDate(date),
+          createdAt: serverTimestamp()
+        });
+        await updateDoc(doc(db,"goals", goalId), {
+          savedAmount: increment(amount),
+          updatedAt: serverTimestamp()
+        });
+        const goal = goals.find(g=>g.id===goalId);
+        if(goal){
+          goal.savedAmount = Number(goal.savedAmount || 0) + amount;
+        }
+        renderGoals();
+        if(activeGoalDetailId === goalId){
+          renderGoalDetail(goalId);
+        }
+        if(goalContributionModal) goalContributionModal.hide();
+        showToast("Aportación guardada.", { tone: "success", duration: 2000 });
+      }catch(err){
+        console.error("Save goal contribution error:", err);
+        showToast("No se pudo guardar la aportación.", { tone: "warning", duration: 2400 });
       }
     });
 
