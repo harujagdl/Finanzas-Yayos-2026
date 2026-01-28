@@ -154,7 +154,7 @@
     .nav-bottom{
       position:fixed; bottom:0; width:100%;
       background:var(--bg-card);
-      display:grid; grid-template-columns:1fr 1fr 1fr 1fr 1fr;
+      display:grid; grid-template-columns:repeat(6, 1fr);
       padding:10px 0; border-top:1px solid var(--border-color);
       z-index:100; padding-bottom:max(10px, env(safe-area-inset-bottom));
     }
@@ -166,6 +166,12 @@
     }
     .nav-btn i{font-size:1.35rem; margin-bottom:4px;}
     .nav-btn.active{color:var(--primary);}
+    .nav-emoji{
+      font-size:1.35rem;
+      line-height:1;
+      margin-bottom:4px;
+    }
+    .trophy-icon{color:#f5c542;}
 
     .fab-main{
       background:var(--primary); color:#fff; width:56px; height:56px; border-radius:50%;
@@ -329,6 +335,37 @@
       color:var(--text-muted); font-weight:700;
     }
     .simulation-value{font-weight:800;}
+    .goals-header{
+      display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;
+    }
+    .goal-card{
+      background:var(--bg-card); border:1px solid var(--border-color);
+      border-radius:14px; padding:14px; margin-bottom:12px;
+    }
+    .goal-card.dragging{
+      box-shadow:0 12px 24px rgba(15,23,42,.15);
+      border-color:rgba(37,99,235,.4);
+    }
+    .goal-placeholder{
+      border:2px dashed var(--border-color);
+      border-radius:14px;
+      margin-bottom:12px;
+      background:transparent;
+    }
+    .goal-handle{
+      cursor:grab; display:inline-flex; align-items:center; justify-content:center;
+      width:32px; height:32px; border-radius:8px;
+      border:1px dashed var(--border-color); color:var(--text-muted);
+      touch-action:none;
+    }
+    .goal-handle:active{cursor:grabbing;}
+    .goal-move-btn{
+      border:1px solid var(--border-color); background:var(--bg-body);
+      color:var(--text-muted); width:28px; height:28px; border-radius:8px;
+      display:inline-flex; align-items:center; justify-content:center;
+    }
+    .goal-move-controls{display:none; gap:6px;}
+    body.ios-fallback .goal-move-controls{display:inline-flex;}
     @media (prefers-reduced-motion: reduce){
       .fade-in, .toast-message{transition:none;}
       .btn-loading .spinner, .skeleton::after{animation:none;}
@@ -717,6 +754,22 @@
   </div>
 
   <!-- =======================
+        ✅ METAS
+  ======================= -->
+  <div id="view-goals" class="view-section p-3">
+    <div class="goals-header">
+      <div>
+        <h4 class="fw-black m-0">Metas</h4>
+        <div class="text-muted small">Prioriza y ordena tus metas activas.</div>
+      </div>
+      <button class="btn btn-sm btn-outline-secondary" style="border-color:var(--border-color);color:var(--text-muted);" onclick="openGoalModal()">
+        <i class="fas fa-plus me-1"></i> Nueva meta
+      </button>
+    </div>
+    <div id="goals-list"><small class="text-muted">Cargando...</small></div>
+  </div>
+
+  <!-- =======================
         ✅ MSI (NUEVO)
   ======================= -->
   <div id="view-msi" class="view-section p-3">
@@ -798,6 +851,11 @@
     <div class="nav-container-item">
       <button class="nav-btn" onclick="nav('view-hist')" id="nav-hist"><i class="fas fa-list-ul"></i> Historial</button>
     </div>
+    <div class="nav-container-item">
+      <button class="nav-btn" onclick="nav('view-goals')" id="nav-goals">
+        <span class="nav-emoji trophy-icon">🏆</span> Metas
+      </button>
+    </div>
   </div>
 
   <!-- =======================
@@ -845,6 +903,39 @@
 
             <button type="submit" class="btn btn-primary w-100 py-2 rounded-3 fw-bold">Guardar</button>
             <button type="button" id="btn-del-card" class="btn btn-link text-danger w-100 mt-2 text-decoration-none" onclick="deleteCard()">Eliminar</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =======================
+        ✅ MODAL META
+  ======================= -->
+  <div class="modal fade" id="modalGoal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content card-box border-0">
+        <div class="modal-body">
+          <h5 class="fw-black mb-3">Nueva meta</h5>
+          <form id="form-goal">
+            <div class="mb-3">
+              <label class="small text-muted fw-bold">Nombre</label>
+              <input type="text" id="goal-name" class="form-control" placeholder="Ej: Viaje" required />
+            </div>
+            <div class="mb-3">
+              <label class="small text-muted fw-bold">Monto objetivo</label>
+              <input type="number" id="goal-target" class="form-control" placeholder="0" min="0" step="0.01" required />
+            </div>
+            <div class="mb-3">
+              <label class="small text-muted fw-bold">Prioridad</label>
+              <select id="goal-priority" class="form-select">
+                <option value="">—</option>
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+              </select>
+            </div>
+            <button type="submit" class="btn btn-primary w-100 py-2 rounded-3 fw-bold">Guardar meta</button>
           </form>
         </div>
       </div>
@@ -1011,6 +1102,10 @@
         unsubTrans();
         unsubTrans = null;
       }
+      if(unsubGoals){
+        unsubGoals();
+        unsubGoals = null;
+      }
     }
 
     function retryStartup(){
@@ -1082,10 +1177,11 @@
     });
 
     // State
-    let cards=[], trans=[];
+    let cards=[], trans=[], goals=[];
     let privacy=false, chartInstance=null;
     let cardModal=null;
-    let unsubCards=null, unsubTrans=null;
+    let goalModal=null;
+    let unsubCards=null, unsubTrans=null, unsubGoals=null;
 
     let periodDataCache = { owner: null, scope: null, data: null };
     let dataRequestId = 0;
@@ -2837,9 +2933,11 @@
       if(vid.includes('cards')) document.getElementById('nav-cards').classList.add('active');
       if(vid.includes('hist')) document.getElementById('nav-hist').classList.add('active');
       if(vid.includes('msi')) document.getElementById('nav-msi').classList.add('active');
+      if(vid.includes('goals')) document.getElementById('nav-goals').classList.add('active');
 
       // render MSI cuando entras
       if(vid === 'view-msi') renderMsi();
+      if(vid === 'view-goals') renderGoals();
     };
 
     const THEME_KEY = "themeMode";
@@ -2869,6 +2967,11 @@
       }
       updateChart();
       renderMsi();
+    };
+
+    const isProbablyIOS = () => {
+      const ua = navigator.userAgent || "";
+      return /iPad|iPhone|iPod/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
     };
 
     window.toggleThemeMode = () => {
@@ -3096,6 +3199,7 @@
       unsubscribeAll();
       subscribeCards();
       subscribeTrans();
+      subscribeGoals();
       resetForm();
       refreshAll({ owner: OWNER, force: true, source: "resubscribe" });
       updateMonthlyFootprint({ force: true });
@@ -3241,6 +3345,275 @@
         console.error("Expenses snapshot error:", err);
         showStartupError(`Error leyendo movimientos: ${getFirestoreErrorMessage(err)}`);
       });
+    }
+
+    // Goals subscribe + render
+    const GOAL_SORT_STEP = 10;
+    const getGoalPriorityValue = (priority) =>
+      (priority === null || priority === undefined || priority === "") ? 99 : Number(priority);
+    const getGoalSortOrderValue = (sortOrder) =>
+      Number.isFinite(sortOrder) ? sortOrder : Number.POSITIVE_INFINITY;
+    const getGoalUpdatedAtValue = (updatedAt) => {
+      if(!updatedAt) return 0;
+      if(updatedAt.toDate) return updatedAt.toDate().getTime();
+      const parsed = new Date(updatedAt);
+      return Number.isFinite(parsed.getTime()) ? parsed.getTime() : 0;
+    };
+
+    const sortGoalsList = (list) => [...list].sort((a,b)=>{
+      const pA = getGoalPriorityValue(a.priority);
+      const pB = getGoalPriorityValue(b.priority);
+      if(pA !== pB) return pA - pB;
+      const sA = getGoalSortOrderValue(a.sortOrder);
+      const sB = getGoalSortOrderValue(b.sortOrder);
+      if(sA !== sB) return sA - sB;
+      const uA = getGoalUpdatedAtValue(a.updatedAt);
+      const uB = getGoalUpdatedAtValue(b.updatedAt);
+      return uB - uA;
+    });
+
+    function subscribeGoals(){
+      const qGoals = query(
+        collection(db,"goals"),
+        where("status","==","active"),
+        orderBy("priority","asc"),
+        orderBy("sortOrder","asc"),
+        orderBy("updatedAt","desc")
+      );
+      unsubGoals = onSnapshot(qGoals, async(snap)=>{
+        const temp=[];
+        snap.forEach(d=>{
+          const g=d.data();
+          g.id=d.id;
+          temp.push(g);
+        });
+
+        let sorted = sortGoalsList(temp);
+        const batch = writeBatch(db);
+        let needsUpdate = false;
+
+        sorted.forEach((goal, index)=>{
+          if(!Number.isFinite(goal.sortOrder)){
+            const newOrder = index * GOAL_SORT_STEP;
+            goal.sortOrder = newOrder;
+            batch.update(doc(db,"goals",goal.id), { sortOrder: newOrder, updatedAt: Timestamp.fromDate(new Date()) });
+            needsUpdate = true;
+          }
+        });
+
+        goals = sortGoalsList(sorted);
+        renderGoals();
+
+        if(needsUpdate){
+          try{
+            await batch.commit();
+          }catch(e){
+            console.error("Goals sortOrder update error:", e);
+          }
+        }
+      }, (err)=>{
+        console.error("Goals snapshot error:", err);
+        const listEl = document.getElementById('goals-list');
+        if(listEl) listEl.innerHTML = '<div class="text-muted small">No se pudieron cargar las metas.</div>';
+      });
+    }
+
+    function renderGoals(){
+      const listEl = document.getElementById('goals-list');
+      if(!listEl) return;
+      if(!goals.length){
+        listEl.innerHTML = '<div class="text-center text-muted small p-3">No hay metas activas.</div>';
+        return;
+      }
+      const sorted = sortGoalsList(goals);
+      listEl.innerHTML = '';
+      sorted.forEach((goal)=>{
+        const current = Number(goal.currentAmount ?? goal.savedAmount ?? 0);
+        const target = Number(goal.targetAmount ?? 0);
+        const progress = target > 0 ? Math.min((current / target) * 100, 100) : 0;
+        const remaining = Math.max(target - current, 0);
+        const priorityValue = (goal.priority === null || goal.priority === undefined || goal.priority === "")
+          ? ""
+          : String(goal.priority);
+
+        listEl.innerHTML += `
+          <div class="goal-card" data-goal-id="${goal.id}">
+            <div class="d-flex justify-content-between align-items-start mb-2">
+              <div class="fw-bold">${goal.name || "Meta sin nombre"}</div>
+              <div class="d-flex align-items-center gap-2">
+                <div class="goal-move-controls">
+                  <button class="goal-move-btn" type="button" data-move="up" data-id="${goal.id}" aria-label="Mover arriba">↑</button>
+                  <button class="goal-move-btn" type="button" data-move="down" data-id="${goal.id}" aria-label="Mover abajo">↓</button>
+                </div>
+                <div class="goal-handle" role="button" aria-label="Reordenar meta" data-id="${goal.id}">≡</div>
+              </div>
+            </div>
+            <div class="progress mb-2" style="height:10px;background-color:var(--bg-body);">
+              <div class="progress-bar bg-success" role="progressbar" style="width:${progress}%"></div>
+            </div>
+            <div class="d-flex justify-content-between small mb-2">
+              <span class="text-muted">Llevan ${formatMoney(current)} de ${formatMoney(target)}</span>
+              <span class="text-muted">Faltan ${formatMoney(remaining)}</span>
+            </div>
+            <div class="d-flex justify-content-between align-items-center">
+              <div class="small text-muted">Prioridad</div>
+              <select class="form-select form-select-sm w-auto goal-priority-select" data-id="${goal.id}">
+                <option value="" ${priorityValue === "" ? "selected" : ""}>—</option>
+                <option value="1" ${priorityValue === "1" ? "selected" : ""}>1</option>
+                <option value="2" ${priorityValue === "2" ? "selected" : ""}>2</option>
+                <option value="3" ${priorityValue === "3" ? "selected" : ""}>3</option>
+              </select>
+            </div>
+          </div>
+        `;
+      });
+    }
+
+    async function persistGoalOrder(orderedGoals){
+      const batch = writeBatch(db);
+      orderedGoals.forEach((goal, index)=>{
+        const newOrder = index * GOAL_SORT_STEP;
+        goal.sortOrder = newOrder;
+        batch.update(doc(db,"goals", goal.id), {
+          sortOrder: newOrder,
+          updatedAt: Timestamp.fromDate(new Date())
+        });
+      });
+      try{
+        await batch.commit();
+      }catch(e){
+        console.error("Goals reorder error:", e);
+        showToast("No se pudo guardar el orden de metas.", { tone: "warning", duration: 2600 });
+      }
+    }
+
+    function getGoalsFromDom(){
+      const listEl = document.getElementById('goals-list');
+      if(!listEl) return [];
+      return Array.from(listEl.querySelectorAll('.goal-card')).map((card)=>{
+        const id = card.getAttribute('data-goal-id');
+        return goals.find(g=>g.id===id);
+      }).filter(Boolean);
+    }
+
+    function moveGoalByStep(goalId, direction){
+      const ordered = sortGoalsList(goals);
+      const index = ordered.findIndex(g=>g.id===goalId);
+      if(index === -1) return;
+      const targetIndex = direction === "up" ? index - 1 : index + 1;
+      if(targetIndex < 0 || targetIndex >= ordered.length) return;
+      const temp = ordered[index];
+      ordered[index] = ordered[targetIndex];
+      ordered[targetIndex] = temp;
+      goals = ordered;
+      renderGoals();
+      persistGoalOrder(ordered);
+    }
+
+    function setupGoalEvents(){
+      const listEl = document.getElementById('goals-list');
+      if(!listEl) return;
+
+      listEl.addEventListener('change', async(e)=>{
+        const target = e.target;
+        if(!(target instanceof HTMLSelectElement)) return;
+        if(!target.classList.contains('goal-priority-select')) return;
+        const id = target.getAttribute('data-id');
+        const value = target.value === "" ? null : Number(target.value);
+        const goal = goals.find(g=>g.id===id);
+        if(goal) goal.priority = value;
+        renderGoals();
+        try{
+          await updateDoc(doc(db,"goals", id), { priority: value, updatedAt: Timestamp.fromDate(new Date()) });
+        }catch(err){
+          console.error("Update priority error:", err);
+          showToast("No se pudo actualizar la prioridad.", { tone: "warning", duration: 2400 });
+        }
+      });
+
+      listEl.addEventListener('click', (e)=>{
+        const btn = e.target.closest('.goal-move-btn');
+        if(!btn) return;
+        const id = btn.getAttribute('data-id');
+        const direction = btn.getAttribute('data-move');
+        moveGoalByStep(id, direction);
+      });
+
+      let dragState = null;
+
+      listEl.addEventListener('pointerdown', (e)=>{
+        const handle = e.target.closest('.goal-handle');
+        if(!handle) return;
+        if(!window.PointerEvent) return;
+        const id = handle.getAttribute('data-id');
+        const item = listEl.querySelector(`.goal-card[data-goal-id="${id}"]`);
+        if(!item) return;
+
+        const rect = item.getBoundingClientRect();
+        const placeholder = document.createElement('div');
+        placeholder.className = 'goal-placeholder';
+        placeholder.style.height = `${rect.height}px`;
+        item.parentNode.insertBefore(placeholder, item.nextSibling);
+
+        dragState = {
+          item,
+          placeholder,
+          offsetY: e.clientY - rect.top,
+          pointerId: e.pointerId
+        };
+
+        item.classList.add('dragging');
+        item.style.width = `${rect.width}px`;
+        item.style.position = 'absolute';
+        item.style.left = `${rect.left}px`;
+        item.style.top = `${rect.top + window.scrollY}px`;
+        item.style.zIndex = 2000;
+        document.body.appendChild(item);
+        document.body.style.userSelect = 'none';
+        handle.setPointerCapture(e.pointerId);
+      });
+
+      listEl.addEventListener('pointermove', (e)=>{
+        if(!dragState) return;
+        const { item, placeholder, offsetY } = dragState;
+        item.style.top = `${e.clientY + window.scrollY - offsetY}px`;
+
+        const target = document.elementFromPoint(e.clientX, e.clientY);
+        const card = target?.closest('.goal-card');
+        if(card && card !== item){
+          const cardRect = card.getBoundingClientRect();
+          const after = e.clientY > cardRect.top + cardRect.height / 2;
+          if(after){
+            card.parentNode.insertBefore(placeholder, card.nextSibling);
+          }else{
+            card.parentNode.insertBefore(placeholder, card);
+          }
+        }
+      });
+
+      const finishDrag = async()=>{
+        if(!dragState) return;
+        const { item, placeholder } = dragState;
+        item.classList.remove('dragging');
+        item.style.position = '';
+        item.style.left = '';
+        item.style.top = '';
+        item.style.width = '';
+        item.style.zIndex = '';
+        document.body.style.userSelect = '';
+
+        placeholder.parentNode.insertBefore(item, placeholder);
+        placeholder.remove();
+
+        const ordered = getGoalsFromDom();
+        goals = ordered;
+        await persistGoalOrder(ordered);
+        renderGoals();
+        dragState = null;
+      };
+
+      listEl.addEventListener('pointerup', finishDrag);
+      listEl.addEventListener('pointercancel', finishDrag);
     }
 
     // Monitor pagos + smart pick
@@ -4269,6 +4642,18 @@
       });
     };
 
+    // Metas
+    window.openGoalModal = () => {
+      const nameInput = document.getElementById('goal-name');
+      const targetInput = document.getElementById('goal-target');
+      const priorityInput = document.getElementById('goal-priority');
+      if(nameInput) nameInput.value = '';
+      if(targetInput) targetInput.value = '';
+      if(priorityInput) priorityInput.value = '';
+      goalModal = new bootstrap.Modal(document.getElementById('modalGoal'));
+      goalModal.show();
+    };
+
     window.editCard=(id)=>{
       const c=cards.find(x=>x.id===id); if(!c) return;
       document.getElementById('c-id').value=id;
@@ -4306,6 +4691,40 @@
         owner: OWNER,
         data: cardToPlain({ ...(updated||{}), ...payload, id })
       });
+    });
+
+    document.getElementById('form-goal').addEventListener('submit', async(e)=>{
+      e.preventDefault();
+      const name = document.getElementById('goal-name').value.trim();
+      const targetAmount = parseFloat(document.getElementById('goal-target').value || 0);
+      const priorityRaw = document.getElementById('goal-priority').value;
+      const priority = priorityRaw === "" ? null : Number(priorityRaw);
+      if(!name || !Number.isFinite(targetAmount)){
+        showToast("Completa el nombre y el monto objetivo.", { tone: "warning", duration: 2400 });
+        return;
+      }
+
+      const samePriority = goals.filter(g=>getGoalPriorityValue(g.priority) === getGoalPriorityValue(priority));
+      const maxSort = samePriority.length
+        ? Math.max(...samePriority.map(g=>Number.isFinite(g.sortOrder) ? g.sortOrder : 0))
+        : -GOAL_SORT_STEP;
+      const nextSortOrder = maxSort + GOAL_SORT_STEP;
+
+      try{
+        await addDoc(collection(db,"goals"), {
+          name,
+          targetAmount,
+          status: "active",
+          priority,
+          sortOrder: nextSortOrder,
+          updatedAt: Timestamp.fromDate(new Date())
+        });
+        if(goalModal) goalModal.hide();
+        showToast("Meta creada", { tone: "success", duration: 2000 });
+      }catch(err){
+        console.error("Create goal error:", err);
+        showToast("No se pudo crear la meta.", { tone: "warning", duration: 2400 });
+      }
     });
 
     window.deleteCard=async()=>{
@@ -4611,6 +5030,8 @@
     uiToggleScope();
     applyFeatureVisibility();
     syncScopeFilterUI();
+    setupGoalEvents();
+    document.body.classList.toggle('ios-fallback', isProbablyIOS() || !window.PointerEvent);
     startLoader();
     await seedPresetCards();
     resubscribeAll();
