@@ -782,6 +782,12 @@
         No se pudieron cargar metas por índice faltante.
         <a id="missing-index-goals-link" class="banner-link ms-1 d-none" target="_blank" rel="noopener noreferrer">Abrir índice</a>
       </div>
+      <div class="d-flex flex-wrap gap-2 mt-3">
+        <button id="missing-index-goals-retry" class="btn btn-sm btn-warning" type="button" onclick="retryGoalsSubscription()">
+          Reintentar
+        </button>
+      </div>
+      <div id="missing-index-goals-debug" class="small text-muted mt-2"></div>
     </div>
     <div id="goals-list"><small class="text-muted">Cargando...</small></div>
   </div>
@@ -1803,6 +1809,28 @@
     const isMissingIndexError = (err) => {
       const message = (err?.message || "").toLowerCase();
       return err?.code === "failed-precondition" || message.includes("requires an index");
+    };
+
+    const formatGoalsQueryDebugInfo = (debugInfo = {}) => {
+      const whereText = (debugInfo.whereFields || [])
+        .map((w) => `${w.field}${w.op}${JSON.stringify(w.value)}`)
+        .join(" && ");
+      const orderText = (debugInfo.orderByFields || [])
+        .map((o) => `${o.field} ${o.direction}`)
+        .join(", ");
+      const parts = [];
+      if(whereText) parts.push(whereText);
+      if(orderText) parts.push(`orderBy ${orderText}`);
+      return parts.join(" + ");
+    };
+
+    const renderGoalsMissingIndexBanner = ({ link, debugInfo } = {}) => {
+      renderMissingIndexBanner({ module: "Metas", link });
+      const debugEl = document.getElementById("missing-index-goals-debug");
+      if(debugEl){
+        const summary = formatGoalsQueryDebugInfo(debugInfo);
+        debugEl.textContent = summary ? `Query requerido: ${summary}` : "Query requerido: (sin detalles).";
+      }
     };
 
     const renderPeriodErrorBanner = () => {
@@ -3497,17 +3525,41 @@
 
     const formatGoalOwner = (owner) => owner === "haru" ? "Haru" : "Yair";
 
-    function subscribeGoals(){
-      goalsLoading = true;
-      goalsError = null;
-      renderGoals();
-      const qGoals = query(
+    const buildGoalsQuery = () => {
+      const whereFields = [
+        { field: "status", op: "==", value: "active" }
+      ];
+      const orderByFields = [
+        { field: "priority", direction: "asc" },
+        { field: "sortOrder", direction: "asc" },
+        { field: "updatedAt", direction: "desc" }
+      ];
+      const q = query(
         collection(db,"goals"),
         where("status","==","active"),
         orderBy("priority","asc"),
         orderBy("sortOrder","asc"),
         orderBy("updatedAt","desc")
       );
+      const debugInfo = { whereFields, orderByFields };
+      console.info("[goals query]", debugInfo);
+      return { q, debugInfo };
+    };
+
+    function retryGoalsSubscription(){
+      subscribeGoals({ source: "retry" });
+    }
+
+    function subscribeGoals({ source = "initial" } = {}){
+      if(unsubGoals){
+        unsubGoals();
+        unsubGoals = null;
+      }
+      goalsLoading = true;
+      goalsError = null;
+      renderGoals();
+      hideMissingIndexBanner();
+      const { q: qGoals, debugInfo } = buildGoalsQuery();
       unsubGoals = onSnapshot(qGoals, async(snap)=>{
         const temp=[];
         snap.forEach(d=>{
@@ -3550,10 +3602,11 @@
         goalsError = {
           type: isMissing ? "missing_index" : "generic",
           link,
-          message: err?.message || ""
+          message: err?.message || "",
+          debugInfo
         };
         if(isMissing){
-          renderMissingIndexBanner({ module: "Metas", link });
+          renderGoalsMissingIndexBanner({ link, debugInfo });
         }else{
           hideMissingIndexBanner();
           const now = Date.now();
