@@ -2862,7 +2862,7 @@
       if (!document.getElementById("t-concept").value) {
         document.getElementById("t-concept").value = "Simulación";
       }
-      document.getElementById("t-date").valueAsDate = new Date();
+      document.getElementById("t-date").value = toLocalYYYYMMDD(new Date());
       cancelSimulation();
       showToast("Simulación cargada en el formulario. Solo falta guardar 😉", { tone: "info", duration: 2600 });
     };
@@ -3226,7 +3226,7 @@
         catSelect.value = catValue;
       }
       document.getElementById('t-concept').value = catValue ? `Gasto rápido: ${catValue}` : "Gasto rápido";
-      document.getElementById('t-date').valueAsDate = new Date();
+      document.getElementById('t-date').value = toLocalYYYYMMDD(new Date());
       quickAddPending = true;
       form.requestSubmit();
     };
@@ -3518,10 +3518,21 @@
       return uB - uA;
     });
 
-    const getLocalDateInputValue = (date = new Date()) => {
-      const tzOffset = date.getTimezoneOffset() * 60000;
-      return new Date(date.getTime() - tzOffset).toISOString().split("T")[0];
+    const toLocalYYYYMMDD = (date = new Date()) => {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const day = String(date.getDate()).padStart(2, "0");
+      return `${year}-${month}-${day}`;
     };
+
+    const parseLocalYYYYMMDDToDate = (value, { hour = 12 } = {}) => {
+      if(!value) return null;
+      const [year, month, day] = value.split("-").map(Number);
+      if(!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
+      return new Date(year, month - 1, day, hour, 0, 0, 0);
+    };
+
+    const getLocalDateInputValue = (date = new Date()) => toLocalYYYYMMDD(date);
 
     const formatGoalOwner = (owner) => owner === "haru" ? "Haru" : "Yair";
 
@@ -5135,7 +5146,7 @@
         showToast("Ingresa un monto válido.", { tone: "warning", duration: 2200 });
         return;
       }
-      const date = dateValue ? new Date(`${dateValue}T00:00:00`) : new Date();
+      const date = dateValue ? (parseLocalYYYYMMDDToDate(dateValue) || new Date()) : new Date();
       try{
         await addDoc(collection(db,"goal_contributions"), {
           goalId,
@@ -5229,7 +5240,8 @@
         const isMsi = (type === 'expense') && document.getElementById('t-msi').checked;
         const msiMonths = isMsi ? parseInt(document.getElementById('t-msi-months').value || 0) : null;
         const msiStartStr = isMsi ? (document.getElementById('t-msi-start').value || document.getElementById('t-date').value) : null;
-        const msiStart = (isMsi && msiStartStr) ? Timestamp.fromDate(new Date(msiStartStr + 'T12:00')) : null;
+        const msiStartDate = isMsi && msiStartStr ? parseLocalYYYYMMDDToDate(msiStartStr) : null;
+        const msiStart = msiStartDate ? Timestamp.fromDate(msiStartDate) : null;
 
         const scopeValue = type === "expense"
           ? normalizeScope(document.querySelector('input[name="tscope"]:checked')?.value)
@@ -5243,7 +5255,7 @@
           cardName: cObj.name,
           concept: document.getElementById('t-concept').value,
           category: document.getElementById('t-cat').value,
-          date: Timestamp.fromDate(new Date(document.getElementById('t-date').value + 'T12:00')),
+          date: Timestamp.fromDate(parseLocalYYYYMMDDToDate(document.getElementById('t-date').value) || new Date()),
           scope: scopeValue,
 
           // MSI
@@ -5285,7 +5297,10 @@
           invalidateCategoryAggCacheForPeriod(OWNER, getPeriodKeyFromDate(prevDate));
         }
         if(type === "expense" && dateValue){
-          invalidateCategoryAggCacheForPeriod(OWNER, getPeriodKeyFromDate(new Date(dateValue + "T12:00")));
+          const cacheDate = parseLocalYYYYMMDDToDate(dateValue);
+          if(cacheDate){
+            invalidateCategoryAggCacheForPeriod(OWNER, getPeriodKeyFromDate(cacheDate));
+          }
         }
 
         if(!navigator.onLine){
@@ -5325,7 +5340,8 @@
       document.getElementById('t-amount').value=t.amount;
       document.getElementById('t-card').value=t.cardId;
       document.getElementById('t-concept').value=t.concept;
-      document.getElementById('t-date').value=t.date.toDate().toISOString().split('T')[0];
+      const transDate = t.date?.toDate ? t.date.toDate() : t.date;
+      document.getElementById('t-date').value = toLocalYYYYMMDD(transDate);
 
       if(t.type==='payment') document.getElementById('t-pay').checked=true;
       else document.getElementById('t-exp').checked=true;
@@ -5349,7 +5365,7 @@
       if(isMsi){
         document.getElementById('t-msi-months').value = String(t.msiMonths || 6);
         const s = t.msiStart?.toDate ? t.msiStart.toDate() : null;
-        document.getElementById('t-msi-start').value = s ? s.toISOString().split('T')[0] : document.getElementById('t-date').value;
+        document.getElementById('t-msi-start').value = s ? toLocalYYYYMMDD(s) : document.getElementById('t-date').value;
       }
 
       uiCalcMsiMonthly();
@@ -5402,7 +5418,7 @@
     window.resetForm=()=>{
       document.getElementById('form-trans').reset();
       document.getElementById('trans-id').value='';
-      document.getElementById('t-date').valueAsDate=new Date();
+      document.getElementById('t-date').value = toLocalYYYYMMDD(new Date());
       document.getElementById('edit-btns').style.display='none';
       document.getElementById('t-exp').checked=true;
 
