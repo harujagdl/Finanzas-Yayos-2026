@@ -4923,9 +4923,32 @@
         <div class="timeline-items">
           ${group.items.map((t) => {
             const isExp = t.type === "expense";
-            const tagMsi = (isExp && t.isMsi) ? `<span class="badge-status bg-success-light ms-2">MSI</span>` : "";
+            const isMsiExpense = isExp && t.isMsi === true;
+            const tagMsi = isMsiExpense ? `<span class="badge-status bg-success-light ms-2">MSI</span>` : "";
             const d = toDate(t.date);
             const reviewedClass = isTransactionReviewed(t.id) ? "reviewed" : "";
+            let displayAmount = t.amount;
+            let msiSecondary = "";
+
+            if(isMsiExpense){
+              const months = Number(t.msiMonths || 0);
+              const isLegacy = t.msiTotal == null && months > 0;
+
+              if(isLegacy){
+                const monthlyLegacy = months > 0 ? round2(Number(t.amount || 0) / months) : Number(t.amount || 0);
+                displayAmount = monthlyLegacy;
+                msiSecondary = `MSI ${months} • Total ${formatMoney(t.amount)}`;
+              }else{
+                displayAmount = Number(t.amount || 0);
+                const total = t.msiTotal ?? t.amount ?? 0;
+                if(t.msiInstallmentNumber){
+                  msiSecondary = `MSI ${months} • Pago ${t.msiInstallmentNumber}/${months} • Total ${formatMoney(total)}`;
+                }else{
+                  msiSecondary = `MSI ${months} • Total ${formatMoney(total)}`;
+                }
+              }
+            }
+
             return `
               <div class="list-item swipe-item ${reviewedClass}" data-trans-id="${t.id}">
                 <div class="d-flex align-items-center">
@@ -4933,10 +4956,11 @@
                   <div>
                     <div class="fw-bold">${t.concept}${tagMsi}</div>
                     <small class="text-muted">${d.toLocaleDateString()} • ${t.cardName} • ${t.category}</small>
+                    ${msiSecondary ? `<div class="text-muted small">${msiSecondary}</div>` : ""}
                   </div>
                 </div>
                 <div class="d-flex align-items-center gap-2">
-                  <div class="fw-bold ${isExp ? "text-danger" : "text-success"} sensitive-data">${isExp ? "-" : "+"}${formatMoney(t.amount)}</div>
+                  <div class="fw-bold ${isExp ? "text-danger" : "text-success"} sensitive-data">${isExp ? "-" : "+"}${formatMoney(displayAmount)}</div>
                   <div class="item-actions">
                     <button class="action-kebab" type="button" onclick="toggleTransMenu('${t.id}', event)" aria-label="Acciones">
                       <i class="fas fa-ellipsis-v"></i>
