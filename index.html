@@ -752,6 +752,14 @@
       </div>
 
       <div class="col-6">
+        <select id="hist-msi-filter" class="form-select" onchange="renderHistory()">
+          <option value="all">MSI: Todo</option>
+          <option value="only">Solo MSI</option>
+          <option value="exclude">Sin MSI</option>
+        </select>
+      </div>
+
+      <div class="col-6">
         <input type="text" id="search-input" class="form-control" placeholder="🔍 Buscar..." onkeyup="renderHistory()" />
       </div>
 
@@ -1303,6 +1311,7 @@
 
     // MSI state
     let msiChartInstance=null;
+    let historyMsiFilter = "all";
 
     const FEATURES = {
       dashboard: true,
@@ -3301,12 +3310,15 @@
       const m = document.getElementById('hist-month-filter');
       const c = document.getElementById('hist-card-filter');
       const g = document.getElementById('hist-cat-filter');
+      const f = document.getElementById('hist-msi-filter');
       const s = document.getElementById('search-input');
 
       if(m) m.value="all";
       if(c) c.value="all";
       if(g) g.value="all";
+      if(f) f.value="all";
       if(s) s.value="";
+      historyMsiFilter = "all";
 
       renderHistory();
     };
@@ -4586,19 +4598,31 @@
       </div>
     `).join("");
 
-    window.renderHistory = () => {
-      const list = document.getElementById('hist-list');
+    const getHistoryMsiFilter = () => {
+      const filterEl = document.getElementById("hist-msi-filter");
+      historyMsiFilter = filterEl?.value || historyMsiFilter || "all";
+      return historyMsiFilter;
+    };
+
+    const matchesHistoryMsiFilter = (transaction, filter) => {
+      if(filter === "all") return true;
+      const isExpense = transaction?.type === "expense";
+      const isMsi = isExpense && transaction?.isMsi === true;
+      if(filter === "only") return isMsi;
+      if(filter === "exclude") return !isMsi;
+      return true;
+    };
+
+    const getHistoryFilteredTransactions = () => {
       const term = (document.getElementById('search-input')?.value || "").toLowerCase();
 
       const dateFilter = document.getElementById('hist-month-filter')?.value || "all";
       const cardFilter = document.getElementById('hist-card-filter')?.value || "all";
       const catFilter  = document.getElementById('hist-cat-filter')?.value || "all";
-
-      if(!list) return;
-      list.innerHTML = '';
+      const msiFilter = getHistoryMsiFilter();
 
       const scopedTrans = FEATURES.coupleMode ? applyScopeFilter(trans, getActiveScopeFilter()) : trans;
-      const filtered = scopedTrans.filter(t => {
+      return scopedTrans.filter(t => {
         const matchesText =
           (t.concept || "").toLowerCase().includes(term) ||
           (t.cardName || "").toLowerCase().includes(term) ||
@@ -4617,8 +4641,19 @@
         let matchesCat = true;
         if (catFilter !== 'all') matchesCat = (t.category === catFilter);
 
-        return matchesText && matchesDate && matchesCard && matchesCat;
+        const matchesMsi = matchesHistoryMsiFilter(t, msiFilter);
+
+        return matchesText && matchesDate && matchesCard && matchesCat && matchesMsi;
       });
+    };
+
+    window.renderHistory = () => {
+      const list = document.getElementById('hist-list');
+
+      if(!list) return;
+      list.innerHTML = '';
+
+      const filtered = getHistoryFilteredTransactions();
 
       if (filtered.length === 0) {
         list.innerHTML = '<div class="text-center text-muted mt-3">No se encontraron resultados</div>';
@@ -5493,7 +5528,8 @@
 
     window.exportCSV=()=>{
       let csv="Fecha,Concepto,Categoria,Monto,Tipo,Tarjeta,Owner,Scope,MSI,MSI_Meses,MSI_Inicio\n";
-      trans.forEach(t=>{
+      const filteredTrans = getHistoryFilteredTransactions();
+      filteredTrans.forEach(t=>{
         const msi = t.isMsi ? "SI" : "NO";
         const msiMonths = t.msiMonths || "";
         const msiStart = t.msiStart?.toDate ? t.msiStart.toDate().toLocaleDateString() : "";
