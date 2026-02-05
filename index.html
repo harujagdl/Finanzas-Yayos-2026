@@ -154,7 +154,7 @@
     .nav-bottom{
       position:fixed; bottom:0; width:100%;
       background:var(--bg-card);
-      display:grid; grid-template-columns:repeat(6, 1fr);
+      display:grid; grid-template-columns:repeat(7, 1fr);
       padding:10px 0; border-top:1px solid var(--border-color);
       z-index:100; padding-bottom:max(10px, env(safe-area-inset-bottom));
     }
@@ -374,6 +374,20 @@
     }
     .goal-move-controls{display:none; gap:6px;}
     body.ios-fallback .goal-move-controls{display:inline-flex;}
+    .summary-kpis{
+      display:grid; gap:12px;
+      grid-template-columns:repeat(auto-fit, minmax(160px, 1fr));
+    }
+    .summary-kpi{
+      background:var(--bg-body); border:1px solid var(--border-color);
+      border-radius:12px; padding:12px;
+    }
+    .summary-kpi-label{
+      font-size:.7rem; text-transform:uppercase; letter-spacing:1px;
+      color:var(--text-muted); font-weight:700;
+    }
+    .summary-kpi-value{font-size:1.25rem; font-weight:800;}
+    .summary-card-item{flex-direction:column; align-items:stretch; gap:6px;}
     @media (prefers-reduced-motion: reduce){
       .fade-in, .toast-message{transition:none;}
       .btn-loading .spinner, .skeleton::after{animation:none;}
@@ -600,6 +614,40 @@
 
     <h6 class="fw-bold text-muted mb-3 mt-4">ESTADO DE TARJETAS</h6>
     <div id="home-card-list"></div>
+  </div>
+
+  <!-- =======================
+        ✅ RESUMEN
+  ======================= -->
+  <div id="view-summary" class="view-section p-3">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h4 class="fw-black m-0">Resumen</h4>
+      <span id="summary-status" class="text-muted small"></span>
+    </div>
+
+    <div class="card-box">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <span class="kpi-label">Mes</span>
+        <span class="text-muted small" id="summary-period-label">--</span>
+      </div>
+      <select id="summary-month-select" class="form-select" onchange="handleSummaryMonthChange()"></select>
+    </div>
+
+    <div class="card-box">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h6 class="fw-bold m-0">Totales del mes</h6>
+      </div>
+      <div id="summary-kpis" class="summary-kpis"></div>
+      <div id="summary-empty" class="text-center text-muted small mt-3 d-none">Sin movimientos en este mes.</div>
+    </div>
+
+    <div class="card-box">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h6 class="fw-bold m-0">Desglose por tarjeta</h6>
+        <span class="text-muted small" id="summary-card-count">0 tarjetas</span>
+      </div>
+      <div id="summary-cards-list"></div>
+    </div>
   </div>
 
   <!-- =======================
@@ -873,6 +921,9 @@
   <div class="nav-bottom">
     <div class="nav-container-item">
       <button class="nav-btn active" onclick="nav('view-home')" id="nav-home"><i class="fas fa-chart-pie"></i> Inicio</button>
+    </div>
+    <div class="nav-container-item">
+      <button class="nav-btn" onclick="nav('view-summary')" id="nav-summary"><i class="fas fa-calendar-days"></i> Resumen</button>
     </div>
     <div class="nav-container-item">
       <button class="nav-btn" onclick="nav('view-cards')" id="nav-cards"><i class="fas fa-wallet"></i> Tarjetas</button>
@@ -1269,6 +1320,8 @@
       setState({ owner: OWNER });
       dataState.owner = OWNER;
       invalidateCategoryAggCacheForOwner(OWNER);
+      invalidateMonthlyCardSummaryCacheForOwner(OWNER);
+      summaryPendingRecalc.clear();
       startLoader();
       setLoaderMsg("Cambiando usuario...");
       await seedPresetCards();
@@ -1277,6 +1330,7 @@
       cancelSimulation();
       refreshAll({ owner: OWNER, force: true, source: "owner-change" });
       updateMonthlyFootprint({ force: true });
+      renderSummaryView({ force: true });
     });
 
     // State
@@ -2822,6 +2876,289 @@
       showToast("Resumen mensual actualizado.", { tone: "success", duration: 2000 });
     };
 
+    // =========================
+    // ✅ RESUMEN POR MES (UI + DATA)
+    // =========================
+    const summaryState = {
+      owner: OWNER,
+      periodKeys: [],
+      selectedPeriodKey: null,
+      cache: new Map()
+    };
+    const summaryPendingRecalc = new Set();
+
+    const buildMonthlyCardSummaryId = (owner, periodKey) => `${owner}_${periodKey}`;
+
+    const getSummaryCacheKey = (owner, periodKey) => `${owner}::${periodKey}`;
+
+    const queueSummaryRecalc = (periodKey) => {
+      if(periodKey) summaryPendingRecalc.add(periodKey);
+    };
+
+    const formatPeriodLabel = (periodKey) => {
+      if(!periodKey) return "";
+      const [year, month] = String(periodKey).split("-").map(Number);
+      const date = new Date(year, (month || 1) - 1, 1);
+      const label = date.toLocaleDateString("es-MX", { month: "long", year: "numeric" });
+      return label.charAt(0).toUpperCase() + label.slice(1);
+    };
+
+    const loadSummaryPeriodKeys = async (owner) => {
+      const o = getActiveOwner(owner);
+      const keys = new Set();
+      try{
+        const snap = await getDocs(query(collection(db, MONTHLY_SUMMARY_COLLECTION), where("owner", "==", o)));
+        snap.forEach((docSnap) => {
+          const data = docSnap.data();
+          if(data?.periodKey) keys.add(data.periodKey);
+        });
+      }catch(err){
+        console.warn("No se pudo leer monthly_summaries para lista de meses.", err);
+      }
+
+      trans.forEach((t) => {
+        if(t?.owner && t.owner !== o) return;
+        const date = toDate(t?.date);
+        if(Number.isNaN(date.getTime())) return;
+        keys.add(getPeriodKeyFromDate(date));
+      });
+
+      keys.add(getPeriodKeyFromDate(new Date()));
+      return Array.from(keys).sort((a, b) => b.localeCompare(a));
+    };
+
+    const filterTransactionsByPeriod = (items = [], periodKey) => {
+      const { startDate, endDateExclusive } = getMonthRange(periodKey);
+      return items.filter((item) => {
+        const d = toDate(item?.date);
+        return d >= startDate && d < endDateExclusive;
+      });
+    };
+
+    const buildMonthlyCardSummary = (items = [], { owner, periodKey } = {}) => {
+      const totals = { expense: 0, income: 0, net: 0 };
+      const byCard = {};
+      items.forEach((item) => {
+        const amount = safeNumber(item?.amount);
+        const type = item?.type;
+        const isIncome = type === "income" || type === "payment";
+        if(isIncome) totals.income += amount;
+        else totals.expense += amount;
+
+        const cardId = item?.cardId || "sin-tarjeta";
+        if(!byCard[cardId]){
+          byCard[cardId] = {
+            cardName: item?.cardName || "Sin tarjeta",
+            expense: 0,
+            income: 0,
+            net: 0
+          };
+        }
+        if(isIncome) byCard[cardId].income += amount;
+        else byCard[cardId].expense += amount;
+      });
+
+      Object.values(byCard).forEach((card) => {
+        card.net = safeNumber(card.income) - safeNumber(card.expense);
+      });
+
+      totals.net = totals.income - totals.expense;
+
+      return {
+        owner,
+        periodKey,
+        totals,
+        byCard,
+        counts: { txCount: items.length }
+      };
+    };
+
+    const fetchMonthlyCardSummaryDoc = async (owner, periodKey) => {
+      const o = getActiveOwner(owner);
+      const docRef = doc(db, MONTHLY_SUMMARY_COLLECTION, buildMonthlyCardSummaryId(o, periodKey));
+      const snap = await getDoc(docRef);
+      if(!snap.exists()) return null;
+      const data = snap.data();
+      if(!data?.totals || !data?.byCard) return null;
+      return data;
+    };
+
+    const saveMonthlyCardSummary = async (summary) => {
+      if(!summary) return null;
+      const id = buildMonthlyCardSummaryId(summary.owner, summary.periodKey);
+      await setDoc(doc(db, MONTHLY_SUMMARY_COLLECTION, id), {
+        ...summary,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+      return summary;
+    };
+
+    const renderSummaryTotals = (summary) => {
+      const kpis = document.getElementById("summary-kpis");
+      if(!kpis) return;
+      const totals = summary?.totals || { expense: 0, income: 0, net: 0 };
+      const netClass = totals.net >= 0 ? "text-success" : "text-danger";
+      kpis.innerHTML = `
+        <div class="summary-kpi">
+          <div class="summary-kpi-label">Gastos</div>
+          <div class="summary-kpi-value text-danger sensitive-data">-${formatMoney(totals.expense)}</div>
+        </div>
+        <div class="summary-kpi">
+          <div class="summary-kpi-label">Abonos / Ingresos</div>
+          <div class="summary-kpi-value text-success sensitive-data">+${formatMoney(totals.income)}</div>
+        </div>
+        <div class="summary-kpi">
+          <div class="summary-kpi-label">Neto</div>
+          <div class="summary-kpi-value ${netClass} sensitive-data">${totals.net >= 0 ? "+" : "-"}${formatMoney(Math.abs(totals.net))}</div>
+        </div>
+      `;
+    };
+
+    const renderSummaryCards = (summary) => {
+      const list = document.getElementById("summary-cards-list");
+      const count = document.getElementById("summary-card-count");
+      const empty = document.getElementById("summary-empty");
+      if(!list || !count || !empty) return;
+
+      const txCount = summary?.counts?.txCount || 0;
+      const hasMovements = txCount > 0;
+      empty.classList.toggle("d-none", hasMovements);
+
+      if(!hasMovements){
+        list.innerHTML = '<div class="text-muted small">Sin movimientos en este mes.</div>';
+        count.textContent = "0 tarjetas";
+        return;
+      }
+
+      const cards = Object.values(summary?.byCard || {})
+        .map((card) => ({
+          ...card,
+          expense: safeNumber(card.expense),
+          income: safeNumber(card.income),
+          net: safeNumber(card.net)
+        }))
+        .sort((a, b) => b.expense - a.expense);
+
+      count.textContent = `${cards.length} ${cards.length === 1 ? "tarjeta" : "tarjetas"}`;
+
+      list.innerHTML = cards.map((card) => {
+        const netClass = card.net >= 0 ? "text-success" : "text-danger";
+        return `
+          <div class="list-item summary-card-item">
+            <div class="d-flex justify-content-between align-items-center">
+              <div class="fw-bold">${card.cardName}</div>
+              <div class="small ${netClass}">
+                Neto: <span class="sensitive-data">${card.net >= 0 ? "+" : "-"}${formatMoney(Math.abs(card.net))}</span>
+              </div>
+            </div>
+            <div class="d-flex justify-content-between small text-muted">
+              <span>Gastos: <span class="text-danger sensitive-data">-${formatMoney(card.expense)}</span></span>
+              <span>Abonos: <span class="text-success sensitive-data">+${formatMoney(card.income)}</span></span>
+            </div>
+          </div>
+        `;
+      }).join("");
+    };
+
+    const renderSummaryView = async ({ force = false, periodKey } = {}) => {
+      const select = document.getElementById("summary-month-select");
+      const status = document.getElementById("summary-status");
+      const periodLabel = document.getElementById("summary-period-label");
+      if(!select || !status || !periodLabel) return;
+
+      status.textContent = "Cargando...";
+      status.className = "text-muted small";
+
+      const owner = getActiveOwner();
+      const shouldReload = force || summaryState.owner !== owner || !summaryState.periodKeys.length;
+      if(shouldReload){
+        summaryState.periodKeys = await loadSummaryPeriodKeys(owner);
+        summaryState.owner = owner;
+      }
+
+      if(!summaryState.periodKeys.length){
+        summaryState.periodKeys = [getPeriodKeyFromDate(new Date())];
+      }
+
+      if(periodKey && !summaryState.periodKeys.includes(periodKey)){
+        summaryState.periodKeys.unshift(periodKey);
+      }
+
+      const currentSelected = periodKey || summaryState.selectedPeriodKey || summaryState.periodKeys[0];
+      summaryState.selectedPeriodKey = currentSelected;
+
+      select.innerHTML = "";
+      summaryState.periodKeys.forEach((key) => {
+        const opt = document.createElement("option");
+        opt.value = key;
+        opt.textContent = formatPeriodLabel(key);
+        select.appendChild(opt);
+      });
+      select.value = currentSelected;
+      periodLabel.textContent = formatPeriodLabel(currentSelected);
+
+      const cacheKey = getSummaryCacheKey(owner, currentSelected);
+      let summary = !force ? summaryState.cache.get(cacheKey) : null;
+      if(!summary){
+        try{
+          summary = await fetchMonthlyCardSummaryDoc(owner, currentSelected);
+        }catch(err){
+          console.warn("No se pudo leer resumen mensual cacheado.", err);
+        }
+      }
+
+      if(!summary){
+        const monthItems = filterTransactionsByPeriod(trans, currentSelected);
+        summary = buildMonthlyCardSummary(monthItems, { owner, periodKey: currentSelected });
+        if(summary?.counts?.txCount){
+          saveMonthlyCardSummary(summary).catch((err) => {
+            console.warn("No se pudo guardar resumen mensual.", err);
+          });
+        }
+      }
+
+      summaryState.cache.set(cacheKey, summary);
+      renderSummaryTotals(summary);
+      renderSummaryCards(summary);
+      if(privacy) togglePrivacy();
+
+      status.textContent = "";
+    };
+
+    window.handleSummaryMonthChange = () => {
+      const select = document.getElementById("summary-month-select");
+      if(!select) return;
+      summaryState.selectedPeriodKey = select.value;
+      renderSummaryView({ periodKey: select.value });
+    };
+
+    const invalidateMonthlyCardSummaryCacheForOwner = (owner) => {
+      const prefix = `${owner}::`;
+      Array.from(summaryState.cache.keys()).forEach((key) => {
+        if(key.startsWith(prefix)) summaryState.cache.delete(key);
+      });
+    };
+
+    const invalidateMonthlyCardSummaryCacheForPeriod = (owner, periodKey) => {
+      const cacheKey = getSummaryCacheKey(owner, periodKey);
+      summaryState.cache.delete(cacheKey);
+    };
+
+    const recalcSummaryForPeriod = async (owner, periodKey) => {
+      const o = getActiveOwner(owner);
+      const monthItems = filterTransactionsByPeriod(trans, periodKey);
+      const summary = buildMonthlyCardSummary(monthItems, { owner: o, periodKey });
+      if(summary?.counts?.txCount){
+        await saveMonthlyCardSummary(summary);
+      }
+      summaryState.cache.set(getSummaryCacheKey(o, periodKey), summary);
+      if(document.getElementById("view-summary")?.classList.contains("active")){
+        renderSummaryTotals(summary);
+        renderSummaryCards(summary);
+      }
+      return summary;
+    };
+
     window.runSimulation = async () => {
       const amountInput = document.getElementById("sim-amount");
       const categoryInput = document.getElementById("sim-category");
@@ -3090,6 +3427,7 @@
       document.getElementById(vid).classList.add('active');
 
       if(vid.includes('home')) document.getElementById('nav-home').classList.add('active');
+      if(vid.includes('summary')) document.getElementById('nav-summary').classList.add('active');
       if(vid.includes('cards')) document.getElementById('nav-cards').classList.add('active');
       if(vid.includes('hist')) document.getElementById('nav-hist').classList.add('active');
       if(vid.includes('msi')) document.getElementById('nav-msi').classList.add('active');
@@ -3098,6 +3436,7 @@
       // render MSI cuando entras
       if(vid === 'view-msi') renderMsi();
       if(vid === 'view-goals') renderGoals();
+      if(vid === 'view-summary') renderSummaryView();
     };
 
     const THEME_KEY = "themeMode";
@@ -3171,6 +3510,7 @@
       await refreshAfterReconnect();
       setSyncStatus("synced", { silent: true });
       updateMonthlyFootprint({ force: true });
+      renderSummaryView({ force: true });
     };
 
     const quickSheet = document.getElementById("quick-sheet");
@@ -3264,7 +3604,7 @@
       const monthNames=["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
       for(let i=0;i<12;i++){
         const d=new Date(now.getFullYear(), now.getMonth()-i, 1);
-        const val=`${d.getFullYear()}-${d.getMonth()}`;
+        const val=`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
         const txt=`${monthNames[d.getMonth()]} ${d.getFullYear()}`;
         const optC=document.createElement('option'); optC.value=val; optC.text=txt; chartSel.appendChild(optC);
         const optH=document.createElement('option'); optH.value=val; optH.text=txt; histSel.appendChild(optH);
@@ -4180,6 +4520,20 @@
       return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
     }
 
+    function getMonthRange(periodKey){
+      if(!periodKey){
+        const now = new Date();
+        return {
+          startDate: startOfMonth(now),
+          endDateExclusive: new Date(now.getFullYear(), now.getMonth() + 1, 1, 0, 0, 0, 0)
+        };
+      }
+      const [year, month] = String(periodKey).split("-").map(Number);
+      const startDate = new Date(year, (month || 1) - 1, 1, 0, 0, 0, 0);
+      const endDateExclusive = new Date(year, month || 1, 1, 0, 0, 0, 0);
+      return { startDate, endDateExclusive };
+    }
+
     function getDateKey(date){
       const d = toDate(date);
       return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -4632,7 +4986,7 @@
         if (dateFilter !== 'all') {
           const [y, m] = dateFilter.split('-').map(Number);
           const d = toDate(t.date);
-          matchesDate = (d.getMonth() === m && d.getFullYear() === y);
+          matchesDate = (d.getMonth() + 1 === m && d.getFullYear() === y);
         }
 
         let matchesCard = true;
@@ -4777,8 +5131,8 @@
       `${owner}|${periodKey}|${scopeFilter}`;
 
     const getPeriodKeyFromDate = (dateValue) => {
-      const d = dateValue instanceof Date ? dateValue : new Date(dateValue);
-      return `${d.getFullYear()}-${d.getMonth()}`;
+      const d = toDate(dateValue);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
     };
 
     const invalidateCategoryAggCacheForOwner = (owner) => {
@@ -4814,7 +5168,7 @@
         const rawDate = t.date?.toDate ? t.date.toDate() : t.date;
         if (!rawDate) return;
         const d = rawDate instanceof Date ? rawDate : new Date(rawDate);
-        if (d.getMonth() !== selMonth || d.getFullYear() !== selYear) return;
+        if (d.getMonth() + 1 !== selMonth || d.getFullYear() !== selYear) return;
         expensesCount += 1;
         const category = (t.category || "Sin categoría").trim() || "Sin categoría";
         totals.set(category, (totals.get(category) || 0) + t.amount);
@@ -4890,7 +5244,7 @@
       const [selYear, selMonth] = filterVal.split("-").map(Number);
       const scopeFilter = getActiveScopeFilter();
       const owner = getActiveOwner();
-      const periodKey = `${selYear}-${selMonth}`;
+      const periodKey = `${selYear}-${String(selMonth).padStart(2, "0")}`;
       const cacheKey = getCategoryAggCacheKey({ owner, periodKey, scopeFilter });
       const startCompute = performance.now();
       let cached = true;
@@ -5385,6 +5739,19 @@
             invalidateCategoryAggCacheForPeriod(OWNER, getPeriodKeyFromDate(cacheDate));
           }
         }
+        const summaryPeriodKeys = new Set();
+        if(previousTrans?.date){
+          const prevDate = previousTrans.date?.toDate ? previousTrans.date.toDate() : previousTrans.date;
+          summaryPeriodKeys.add(getPeriodKeyFromDate(prevDate));
+        }
+        if(dateValue){
+          const cacheDate = parseLocalYYYYMMDDToDate(dateValue);
+          if(cacheDate) summaryPeriodKeys.add(getPeriodKeyFromDate(cacheDate));
+        }
+        summaryPeriodKeys.forEach((periodKey) => {
+          invalidateMonthlyCardSummaryCacheForPeriod(OWNER, periodKey);
+          queueSummaryRecalc(periodKey);
+        });
 
         if(!navigator.onLine){
           showToast("Guardado (offline). Se sincroniza al reconectar.", { tone: "warning", duration: 3600 });
@@ -5494,6 +5861,12 @@
         const prevDate = t.date?.toDate ? t.date.toDate() : t.date;
         invalidateCategoryAggCacheForPeriod(OWNER, getPeriodKeyFromDate(prevDate));
       }
+      if(t?.date){
+        const prevDate = t.date?.toDate ? t.date.toDate() : t.date;
+        const periodKey = getPeriodKeyFromDate(prevDate);
+        invalidateMonthlyCardSummaryCacheForPeriod(OWNER, periodKey);
+        queueSummaryRecalc(periodKey);
+      }
 
       invalidateCacheForOwner(OWNER);
       refreshAll({ owner: OWNER, force: true, source: "delete-expense" });
@@ -5544,9 +5917,17 @@
 
     on("DATA_LOADED", () => {
       invalidateCategoryAggCacheForOwner(OWNER);
+      invalidateMonthlyCardSummaryCacheForOwner(OWNER);
       refreshAll({ owner: OWNER, force: true, source: "snapshot" });
       updateAlerts({ force: true });
       updateMonthlyFootprint({ force: true });
+      renderSummaryView({ force: true });
+      summaryPendingRecalc.forEach((periodKey) => {
+        recalcSummaryForPeriod(OWNER, periodKey).catch((err) => {
+          console.warn("No se pudo recalcular resumen mensual.", err);
+        });
+      });
+      summaryPendingRecalc.clear();
       if(FEATURES.timeline){
         renderHistory();
       }
