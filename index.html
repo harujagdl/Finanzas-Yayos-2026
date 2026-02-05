@@ -631,7 +631,7 @@
         </div>
 
         <div class="mb-3">
-          <label class="small fw-bold text-muted mb-1">Monto</label>
+          <label class="small fw-bold text-muted mb-1" id="t-amount-label">Monto</label>
           <input type="number" id="t-amount" class="form-control fw-bold" style="font-size:1.5rem;" placeholder="0.00" step="0.01" required />
         </div>
 
@@ -676,6 +676,10 @@
           </div>
 
           <div id="msi-fields" style="display:none;">
+            <div class="mb-2">
+              <label class="small fw-bold text-muted mb-1">Monto de la compra (total)</label>
+              <input type="number" id="t-msi-total" class="form-control" placeholder="0.00" step="0.01" />
+            </div>
             <div class="row g-2">
               <div class="col-6">
                 <label class="small fw-bold text-muted mb-1">Meses</label>
@@ -1537,6 +1541,7 @@
     setSyncStatus(appState.isOnline ? "synced" : "local", { silent: true });
 
     const formatMoney = (v) => '$' + parseFloat(v||0).toLocaleString('en-US',{minimumFractionDigits:2});
+    const round2 = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
 
     // ===== FASE 1: HELPERS BASE =====
     const safeNumber = (n) => {
@@ -4393,7 +4398,8 @@
           const totalMonths = parseInt(t.msiMonths, 10) || 0;
           const passed = monthsBetween(start, now);
           const remaining = Math.max(totalMonths - passed, 0);
-          const monthly = (Number(t.amount||0) / Math.max(totalMonths,1));
+          const total = Number(t.msiTotal ?? t.amount ?? 0);
+          const monthly = (total / Math.max(totalMonths,1));
 
           return {
             ...t,
@@ -4401,7 +4407,8 @@
             totalMonths,
             passed,
             remaining,
-            monthly
+            monthly,
+            msiTotalComputed: total
           };
         })
         .sort((a,b)=> b.remaining - a.remaining);
@@ -4973,7 +4980,16 @@
     window.uiToggleMsiFields = () => {
       const on = document.getElementById('t-msi').checked;
       const fields = document.getElementById('msi-fields');
+      const amountInput = document.getElementById('t-amount');
+      const amountLabel = document.getElementById('t-amount-label');
       fields.style.display = on ? 'block' : 'none';
+      if(amountLabel){
+        amountLabel.textContent = on ? 'Mensualidad de este mes' : 'Monto';
+      }
+      if(amountInput){
+        amountInput.readOnly = on;
+        amountInput.classList.toggle('bg-light', on);
+      }
 
       // si prenden MSI y no hay start, lo ponemos igual a fecha transacción
       if(on){
@@ -4986,14 +5002,18 @@
     function uiCalcMsiMonthly(){
       const on = document.getElementById('t-msi').checked;
       const monthlyEl = document.getElementById('msi-monthly');
-      if(!on){ monthlyEl.textContent = formatMoney(0); return; }
-      const amt = parseFloat(document.getElementById('t-amount').value || 0);
+      if(!on){
+        monthlyEl.textContent = formatMoney(0);
+        return;
+      }
+      const total = parseFloat(document.getElementById('t-msi-total').value || 0);
       const months = parseInt(document.getElementById('t-msi-months').value || 1);
-      const monthly = months > 0 ? (amt / months) : 0;
+      const monthly = months > 0 ? round2(total / months) : 0;
       monthlyEl.textContent = formatMoney(monthly);
+      document.getElementById('t-amount').value = monthly ? monthly.toFixed(2) : "";
     }
 
-    document.getElementById('t-amount').addEventListener('input', uiCalcMsiMonthly);
+    document.getElementById('t-msi-total').addEventListener('input', uiCalcMsiMonthly);
     document.getElementById('t-msi-months').addEventListener('change', uiCalcMsiMonthly);
     document.getElementById('t-date').addEventListener('change', ()=>{
       const on = document.getElementById('t-msi').checked;
@@ -5017,6 +5037,9 @@
         isMsi: !!t.isMsi,
         msiMonths: t.msiMonths || null,
         msiStartISO: (t.msiStart?.toDate ? t.msiStart.toDate().toISOString() : null),
+        msiTotal: t.msiTotal ?? null,
+        msiMonthly: t.msiMonthly ?? null,
+        msiInstallmentNumber: t.msiInstallmentNumber ?? null,
         dateISO: (t.date?.toDate ? t.date.toDate().toISOString() : null)
       };
     }
@@ -5206,10 +5229,28 @@
       let saveSuccess = false;
 
       const type=document.querySelector('input[name="ttype"]:checked')?.value;
-      const amt=parseFloat(document.getElementById('t-amount').value);
       const cid=document.getElementById('t-card').value;
       const dateValue = document.getElementById('t-date').value;
-      if(!type || !cid || !dateValue || !Number.isFinite(amt) || amt <= 0){
+      const isMsi = (type === 'expense') && document.getElementById('t-msi').checked;
+      const msiTotal = isMsi ? parseFloat(document.getElementById('t-msi-total').value || 0) : null;
+      const msiMonths = isMsi ? parseInt(document.getElementById('t-msi-months').value || 0) : null;
+      const msiStartStr = isMsi ? (document.getElementById('t-msi-start').value || document.getElementById('t-date').value) : null;
+      const msiStartDate = isMsi && msiStartStr ? parseLocalYYYYMMDDToDate(msiStartStr) : null;
+      const msiStart = msiStartDate ? Timestamp.fromDate(msiStartDate) : null;
+      const amountInput = parseFloat(document.getElementById('t-amount').value);
+      let amountApplied = amountInput;
+
+      if(isMsi){
+        if(!Number.isFinite(msiTotal) || msiTotal <= 0 || !Number.isFinite(msiMonths) || msiMonths <= 0){
+          showToast("Completa el total y los meses de MSI para guardar.", { tone: "warning", duration: 2400 });
+          haptic("error");
+          return;
+        }
+        amountApplied = round2(msiTotal / msiMonths);
+        document.getElementById('t-amount').value = amountApplied ? amountApplied.toFixed(2) : "";
+      }
+
+      if(!type || !cid || !dateValue || !Number.isFinite(amountApplied) || amountApplied <= 0){
         showToast("Completa los datos requeridos para guardar.", { tone: "warning", duration: 2400 });
         haptic("error");
         return;
@@ -5233,15 +5274,19 @@
             else newBal += previousTrans.amount;
           }
         }
-        if(type==='expense') newBal += amt;
-        else newBal -= amt;
+        if(type==='expense') newBal += amountApplied;
+        else newBal -= amountApplied;
 
         // MSI payload
-        const isMsi = (type === 'expense') && document.getElementById('t-msi').checked;
-        const msiMonths = isMsi ? parseInt(document.getElementById('t-msi-months').value || 0) : null;
-        const msiStartStr = isMsi ? (document.getElementById('t-msi-start').value || document.getElementById('t-date').value) : null;
-        const msiStartDate = isMsi && msiStartStr ? parseLocalYYYYMMDDToDate(msiStartStr) : null;
-        const msiStart = msiStartDate ? Timestamp.fromDate(msiStartDate) : null;
+        let msiInstallmentNumber = null;
+        if(isMsi && msiStartDate && dateValue){
+          const chargeDate = parseLocalYYYYMMDDToDate(dateValue);
+          if(chargeDate){
+            const monthDiff = (chargeDate.getFullYear() - msiStartDate.getFullYear()) * 12
+              + (chargeDate.getMonth() - msiStartDate.getMonth());
+            msiInstallmentNumber = Math.max(1, monthDiff + 1);
+          }
+        }
 
         const scopeValue = type === "expense"
           ? normalizeScope(document.querySelector('input[name="tscope"]:checked')?.value)
@@ -5249,7 +5294,7 @@
 
         const payload = {
           owner: OWNER,
-          amount: amt,
+          amount: amountApplied,
           type,
           cardId: cid,
           cardName: cObj.name,
@@ -5261,7 +5306,10 @@
           // MSI
           isMsi: !!isMsi,
           msiMonths: msiMonths,
-          msiStart: msiStart
+          msiStart: msiStart,
+          msiTotal: isMsi ? msiTotal : null,
+          msiMonthly: isMsi ? amountApplied : null,
+          msiInstallmentNumber: isMsi ? msiInstallmentNumber : null
         };
 
         const cardRef=doc(db,"cards",cid);
@@ -5363,6 +5411,11 @@
 
       uiToggleMsiFields();
       if(isMsi){
+        const totalFallback = Number.isFinite(t.msiMonthly)
+          ? (t.msiMonthly * (t.msiMonths || 1))
+          : t.amount;
+        const totalValue = t.msiTotal ?? totalFallback;
+        document.getElementById('t-msi-total').value = Number.isFinite(totalValue) ? totalValue : "";
         document.getElementById('t-msi-months').value = String(t.msiMonths || 6);
         const s = t.msiStart?.toDate ? t.msiStart.toDate() : null;
         document.getElementById('t-msi-start').value = s ? toLocalYYYYMMDD(s) : document.getElementById('t-date').value;
@@ -5429,6 +5482,7 @@
       document.getElementById('t-scope-shared').checked = true;
       document.getElementById('t-msi').checked=false;
       document.getElementById('t-msi-months').value="6";
+      document.getElementById('t-msi-total').value="";
       document.getElementById('t-msi-start').value = document.getElementById('t-date').value;
       uiToggleMsiFields();
       uiCalcMsiMonthly();
