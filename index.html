@@ -2889,7 +2889,8 @@
 
     const buildMonthlyCardSummaryId = (owner, periodKey) => `${owner}_${periodKey}`;
 
-    const getSummaryCacheKey = (owner, periodKey) => `${owner}::${periodKey}`;
+    const getSummaryCacheKey = (owner, periodKey, scopeFilter = getActiveScopeFilter()) =>
+      `${owner}::${periodKey}::${scopeFilter || "all"}`;
 
     const queueSummaryRecalc = (periodKey) => {
       if(periodKey) summaryPendingRecalc.add(periodKey);
@@ -2932,6 +2933,15 @@
       return items.filter((item) => {
         const d = toDate(item?.date);
         return d >= startDate && d < endDateExclusive;
+      });
+    };
+
+    const getMonthlyCardSummaryItems = (periodKey, { owner, scopeFilter } = {}) => {
+      const o = getActiveOwner(owner);
+      const scoped = FEATURES.coupleMode ? applyScopeFilter(trans, scopeFilter) : trans;
+      return filterTransactionsByPeriod(scoped, periodKey).filter((item) => {
+        if(item?.owner && item.owner !== o) return false;
+        return true;
       });
     };
 
@@ -3100,27 +3110,16 @@
       select.value = currentSelected;
       periodLabel.textContent = formatPeriodLabel(currentSelected);
 
-      const cacheKey = getSummaryCacheKey(owner, currentSelected);
-      let summary = !force ? summaryState.cache.get(cacheKey) : null;
-      if(!summary){
-        try{
-          summary = await fetchMonthlyCardSummaryDoc(owner, currentSelected);
-        }catch(err){
-          console.warn("No se pudo leer resumen mensual cacheado.", err);
-        }
+      const scopeFilter = getActiveScopeFilter();
+      const monthItems = getMonthlyCardSummaryItems(currentSelected, { owner, scopeFilter });
+      const summary = buildMonthlyCardSummary(monthItems, { owner, periodKey: currentSelected });
+      if(summary?.counts?.txCount){
+        saveMonthlyCardSummary(summary).catch((err) => {
+          console.warn("No se pudo guardar resumen mensual.", err);
+        });
       }
 
-      if(!summary){
-        const monthItems = filterTransactionsByPeriod(trans, currentSelected);
-        summary = buildMonthlyCardSummary(monthItems, { owner, periodKey: currentSelected });
-        if(summary?.counts?.txCount){
-          saveMonthlyCardSummary(summary).catch((err) => {
-            console.warn("No se pudo guardar resumen mensual.", err);
-          });
-        }
-      }
-
-      summaryState.cache.set(cacheKey, summary);
+      summaryState.cache.set(getSummaryCacheKey(owner, currentSelected, scopeFilter), summary);
       renderSummaryTotals(summary);
       renderSummaryCards(summary);
       if(privacy) togglePrivacy();
@@ -3142,19 +3141,20 @@
       });
     };
 
-    const invalidateMonthlyCardSummaryCacheForPeriod = (owner, periodKey) => {
-      const cacheKey = getSummaryCacheKey(owner, periodKey);
+    const invalidateMonthlyCardSummaryCacheForPeriod = (owner, periodKey, scopeFilter) => {
+      const cacheKey = getSummaryCacheKey(owner, periodKey, scopeFilter);
       summaryState.cache.delete(cacheKey);
     };
 
     const recalcSummaryForPeriod = async (owner, periodKey) => {
       const o = getActiveOwner(owner);
-      const monthItems = filterTransactionsByPeriod(trans, periodKey);
+      const scopeFilter = getActiveScopeFilter();
+      const monthItems = getMonthlyCardSummaryItems(periodKey, { owner: o, scopeFilter });
       const summary = buildMonthlyCardSummary(monthItems, { owner: o, periodKey });
       if(summary?.counts?.txCount){
         await saveMonthlyCardSummary(summary);
       }
-      summaryState.cache.set(getSummaryCacheKey(o, periodKey), summary);
+      summaryState.cache.set(getSummaryCacheKey(o, periodKey, scopeFilter), summary);
       if(document.getElementById("view-summary")?.classList.contains("active")){
         renderSummaryTotals(summary);
         renderSummaryCards(summary);
@@ -4932,20 +4932,28 @@
 
             if(isMsiExpense){
               const months = Number(t.msiMonths || 0);
-              const isLegacy = t.msiTotal == null && months > 0;
+              const total = t.msiTotal != null ? Number(t.msiTotal) : null;
+              const legacyTotal = Number(t.amount || 0);
+              let installmentNumber = Number(t.msiInstallmentNumber);
+              if(!Number.isFinite(installmentNumber) || installmentNumber <= 0){
+                const startRaw = t.msiStart?.toDate ? t.msiStart.toDate() : t.msiStart;
+                const startDate = startRaw ? toDate(startRaw) : toDate(t.date);
+                const chargeDate = toDate(t.date);
+                const n = monthsBetween(startDate, chargeDate) + 1;
+                installmentNumber = Math.min(Math.max(n, 1), months || 999);
+              }
+              const isLegacy = total == null && months > 0;
 
               if(isLegacy){
-                const monthlyLegacy = months > 0 ? round2(Number(t.amount || 0) / months) : Number(t.amount || 0);
+                const monthlyLegacy = months > 0 ? round2(legacyTotal / months) : legacyTotal;
                 displayAmount = monthlyLegacy;
-                msiSecondary = `MSI ${months} • Total ${formatMoney(t.amount)}`;
               }else{
                 displayAmount = Number(t.amount || 0);
-                const total = t.msiTotal ?? t.amount ?? 0;
-                if(t.msiInstallmentNumber){
-                  msiSecondary = `MSI ${months} • Pago ${t.msiInstallmentNumber}/${months} • Total ${formatMoney(total)}`;
-                }else{
-                  msiSecondary = `MSI ${months} • Total ${formatMoney(total)}`;
-                }
+              }
+
+              if(months > 0){
+                const totalLabel = total != null ? formatMoney(total) : formatMoney(legacyTotal);
+                msiSecondary = `MSI ${months} • Pago ${installmentNumber}/${months} • Total ${totalLabel}`;
               }
             }
 
@@ -5968,6 +5976,7 @@
       refreshAll({ owner: OWNER, force: true, source: "filter-change" });
       updateAlerts({ force: true });
       updateMonthlyFootprint({ force: true });
+      renderSummaryView({ force: true });
       if(FEATURES.timeline){
         renderHistory();
       }
