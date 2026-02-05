@@ -2924,7 +2924,7 @@
       });
 
       keys.add(getPeriodKeyFromDate(new Date()));
-      return Array.from(keys).sort((a, b) => b.localeCompare(a));
+      return Array.from(keys).sort((a, b) => b.localeCompare(a)).slice(0, 24);
     };
 
     const filterTransactionsByPeriod = (items = [], periodKey) => {
@@ -3004,7 +3004,7 @@
           <div class="summary-kpi-value text-danger sensitive-data">-${formatMoney(totals.expense)}</div>
         </div>
         <div class="summary-kpi">
-          <div class="summary-kpi-label">Abonos / Ingresos</div>
+          <div class="summary-kpi-label">Ingresos / Abonos</div>
           <div class="summary-kpi-value text-success sensitive-data">+${formatMoney(totals.income)}</div>
         </div>
         <div class="summary-kpi">
@@ -3053,7 +3053,7 @@
             </div>
             <div class="d-flex justify-content-between small text-muted">
               <span>Gastos: <span class="text-danger sensitive-data">-${formatMoney(card.expense)}</span></span>
-              <span>Abonos: <span class="text-success sensitive-data">+${formatMoney(card.income)}</span></span>
+              <span>Ingresos / Abonos: <span class="text-success sensitive-data">+${formatMoney(card.income)}</span></span>
             </div>
           </div>
         `;
@@ -3082,6 +3082,9 @@
 
       if(periodKey && !summaryState.periodKeys.includes(periodKey)){
         summaryState.periodKeys.unshift(periodKey);
+        if(summaryState.periodKeys.length > 24){
+          summaryState.periodKeys = summaryState.periodKeys.slice(0, 24);
+        }
       }
 
       const currentSelected = periodKey || summaryState.selectedPeriodKey || summaryState.periodKeys[0];
