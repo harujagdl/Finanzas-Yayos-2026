@@ -4912,7 +4912,26 @@
       showToast("Marcado como revisado ✅", { tone: "success", duration: 1800 });
     };
 
-    const renderTimeline = (grouped = []) => grouped.map((group) => `
+    function startOfMonthKey(date){
+      return { y: date.getFullYear(), m: date.getMonth() };
+    }
+
+    function monthsBetweenYM(y1, m1, y2, m2){
+      return (y2 - y1) * 12 + (m2 - m1);
+    }
+
+    const getHistoryAnchorDate = () => {
+      const dateFilter = document.getElementById('hist-month-filter')?.value || "all";
+      if(dateFilter !== 'all'){
+        const [y, m] = dateFilter.split('-').map(Number);
+        if(Number.isFinite(y) && Number.isFinite(m)){
+          return new Date(y, m - 1, 1, 12, 0, 0, 0);
+        }
+      }
+      return new Date();
+    };
+
+    const renderTimeline = (grouped = [], anchorDate = new Date()) => grouped.map((group) => `
       <div class="timeline-day">
         <div class="timeline-header">
           <div class="timeline-title">${group.label}</div>
@@ -4934,14 +4953,6 @@
               const months = Number(t.msiMonths || 0);
               const total = t.msiTotal != null ? Number(t.msiTotal) : null;
               const legacyTotal = Number(t.amount || 0);
-              let installmentNumber = Number(t.msiInstallmentNumber);
-              if(!Number.isFinite(installmentNumber) || installmentNumber <= 0){
-                const startRaw = t.msiStart?.toDate ? t.msiStart.toDate() : t.msiStart;
-                const startDate = startRaw ? toDate(startRaw) : toDate(t.date);
-                const chargeDate = toDate(t.date);
-                const n = monthsBetween(startDate, chargeDate) + 1;
-                installmentNumber = Math.min(Math.max(n, 1), months || 999);
-              }
               const isLegacy = total == null && months > 0;
 
               if(isLegacy){
@@ -4952,6 +4963,12 @@
               }
 
               if(months > 0){
+                const startRaw = t.msiStart?.toDate ? t.msiStart.toDate() : t.msiStart;
+                const startDate = startRaw ? toDate(startRaw) : toDate(t.date);
+                const startKey = startOfMonthKey(startDate);
+                const anchorKey = startOfMonthKey(anchorDate);
+                let installmentNumber = monthsBetweenYM(startKey.y, startKey.m, anchorKey.y, anchorKey.m) + 1;
+                installmentNumber = Math.min(Math.max(installmentNumber, 1), months);
                 const totalLabel = total != null ? formatMoney(total) : formatMoney(legacyTotal);
                 msiSecondary = `MSI ${months} • Pago ${installmentNumber}/${months} • Total ${totalLabel}`;
               }
@@ -5049,8 +5066,9 @@
         return;
       }
 
+      const anchorDate = getHistoryAnchorDate();
       const grouped = groupExpensesByDay(filtered);
-      list.innerHTML = renderTimeline(grouped);
+      list.innerHTML = renderTimeline(grouped, anchorDate);
       setupHistoryInteractions();
 
       if (privacy) togglePrivacy();
