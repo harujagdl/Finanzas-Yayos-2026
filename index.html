@@ -2690,6 +2690,7 @@
     const MONTHLY_SUMMARY_COLLECTION = "monthly_summaries";
     const SUMMARY_SAVE_DEBOUNCE_MS = 8000;
     const summarySaveState = new Map();
+    const summarySaveLocks = new Map();
 
     const buildMonthlySummaryId = (owner, periodKey, scopeFilter) =>
       `${owner}__${periodKey}__${scopeFilter || "all"}`;
@@ -2761,6 +2762,45 @@
       return summary;
     };
 
+    const saveSummaryWithLock = async ({ id, signature, payload, onPermissionMessage, onErrorMessage }) => {
+      const now = Date.now();
+      const state = summarySaveState.get(id);
+      if(state && state.signature === signature && now - state.at < SUMMARY_SAVE_DEBOUNCE_MS){
+        return payload;
+      }
+
+      const currentLock = summarySaveLocks.get(id);
+      if(currentLock && currentLock.signature === signature){
+        return currentLock.promise;
+      }
+
+      const writePromise = (async () => {
+        try {
+          await setDoc(doc(db, MONTHLY_SUMMARY_COLLECTION, id), payload, { merge: true });
+          summarySaveState.set(id, { signature, at: now });
+          return payload;
+        } catch (err) {
+          if(isPermissionDeniedError(err)){
+            console.warn(onPermissionMessage, err);
+            summarySaveState.set(id, { signature, at: now });
+            return payload;
+          }
+          console.warn(onErrorMessage, err);
+          return payload;
+        }
+      })();
+
+      summarySaveLocks.set(id, { signature, promise: writePromise });
+      writePromise.finally(() => {
+        const lock = summarySaveLocks.get(id);
+        if(lock?.promise === writePromise){
+          summarySaveLocks.delete(id);
+        }
+      });
+
+      return writePromise;
+    };
+
     const saveMonthlySummary = async (summary) => {
       if(!summary) return null;
       const owner = summary.owner;
@@ -2768,33 +2808,33 @@
         console.warn("Se omitió guardar resumen mensual: owner inválido.", owner);
         return summary;
       }
-      const id = buildMonthlySummaryId(summary.owner, summary.periodKey, summary.scopeFilter);
-      const signature = JSON.stringify({
-        owner,
-        periodKey: summary.periodKey,
-        scopeFilter: summary.scopeFilter || "all",
-        totals: summary.totals,
-        counts: summary.counts,
-        highlights: summary.highlights,
-        narrative: summary.narrative
-      });
-      const now = Date.now();
-      const state = summarySaveState.get(id);
-      if(state && state.signature === signature && now - state.at < SUMMARY_SAVE_DEBOUNCE_MS){
+      if(!summary.periodKey){
+        console.warn("Se omitió guardar resumen mensual: periodKey inválido.", summary);
         return summary;
       }
-      try {
-        await setDoc(doc(db, MONTHLY_SUMMARY_COLLECTION, id), summary, { merge: true });
-        summarySaveState.set(id, { signature, at: now });
-      } catch (err) {
-        if(isPermissionDeniedError(err)){
-          console.warn("No se pudo guardar resumen mensual (permissions).", err);
-          summarySaveState.set(id, { signature, at: now });
-          return summary;
-        }
-        throw err;
-      }
-      return summary;
+      const id = buildMonthlySummaryId(summary.owner, summary.periodKey, summary.scopeFilter);
+      const payload = {
+        ...summary,
+        owner,
+        periodKey: summary.periodKey
+      };
+      const signature = JSON.stringify({
+        owner,
+        periodKey: payload.periodKey,
+        scopeFilter: payload.scopeFilter || "all",
+        totals: payload.totals,
+        counts: payload.counts,
+        highlights: payload.highlights,
+        narrative: payload.narrative
+      });
+
+      return saveSummaryWithLock({
+        id,
+        signature,
+        payload,
+        onPermissionMessage: "No se pudo guardar resumen mensual (permissions).",
+        onErrorMessage: "No se pudo guardar resumen mensual."
+      });
     };
 
     const maybeGenerateMonthlySummary = async (owner, { force = false, scopeFilter = getActiveScopeFilter() } = {}) => {
@@ -3067,6 +3107,10 @@
         console.warn("Se omitió guardar resumen por tarjeta: owner inválido.", owner);
         return summary;
       }
+      if(!summary.periodKey){
+        console.warn("Se omitió guardar resumen por tarjeta: periodKey inválido.", summary);
+        return summary;
+      }
       const id = buildMonthlyCardSummaryId(summary.owner, summary.periodKey);
       const payload = {
         owner,
@@ -3087,23 +3131,13 @@
         byCard: payload.byCard,
         counts: payload.counts
       });
-      const now = Date.now();
-      const state = summarySaveState.get(id);
-      if(state && state.signature === signature && now - state.at < SUMMARY_SAVE_DEBOUNCE_MS){
-        return payload;
-      }
-      try {
-        await setDoc(doc(db, MONTHLY_SUMMARY_COLLECTION, id), payload, { merge: true });
-        summarySaveState.set(id, { signature, at: now });
-      } catch (err) {
-        if(isPermissionDeniedError(err)){
-          console.warn("No se pudo guardar resumen mensual (permissions).", err);
-          summarySaveState.set(id, { signature, at: now });
-          return payload;
-        }
-        throw err;
-      }
-      return payload;
+      return saveSummaryWithLock({
+        id,
+        signature,
+        payload,
+        onPermissionMessage: "No se pudo guardar resumen por tarjeta (permissions).",
+        onErrorMessage: "No se pudo guardar resumen por tarjeta."
+      });
     };
 
     const renderSummaryTotals = (summary) => {
@@ -3632,6 +3666,25 @@
 
     const LEGACY_OWNER_COLLECTIONS = ["cards", "goals", "expenses", MONTHLY_SUMMARY_COLLECTION];
 
+    async function verifyOwnerCoverage(){
+      const report = [];
+      for(const collectionName of LEGACY_OWNER_COLLECTIONS){
+        try {
+          const snap = await getDocs(collection(db, collectionName));
+          let invalidCount = 0;
+          snap.forEach((docSnap) => {
+            const owner = docSnap.data()?.owner;
+            if(!isValidAppOwner(owner)) invalidCount += 1;
+          });
+          report.push({ collection: collectionName, total: snap.size, invalidCount });
+        } catch (err) {
+          console.warn(`[owner-audit] No se pudo auditar ${collectionName}.`, err);
+          report.push({ collection: collectionName, total: null, invalidCount: null, error: true });
+        }
+      }
+      return report;
+    }
+
     async function repairOwnerForCollection(collectionName, ownerValue, { pageSize = 200, batchLimit = 400 } = {}){
       let repaired = 0;
       let scanned = 0;
@@ -3673,6 +3726,8 @@
       return { repaired, scanned };
     }
 
+    window.verifyOwnerCoverage = verifyOwnerCoverage;
+
     window.repairLegacyOwnerData = async () => {
       const canRepair = isValidAppOwner(OWNER) || DEBUG_OWNER_REPAIR;
       if(!canRepair){
@@ -3690,6 +3745,9 @@
           logs.push({ collection: collectionName, ...result });
           console.info(`[owner-repair] ${collectionName}`, result);
         }
+
+        const audit = await verifyOwnerCoverage();
+        console.info("[owner-audit] reporte post-migración", audit);
 
         const total = logs.reduce((acc, row) => acc + row.repaired, 0);
         showToast(`Reparación completa: ${total} docs actualizados.`, { tone: "success", duration: 3200 });
