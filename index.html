@@ -1242,6 +1242,10 @@
       return err?.code === "permission-denied";
     }
 
+    function isValidAppOwner(owner){
+      return typeof owner === "string" && ALLOWED_APP_OWNERS.includes(owner);
+    }
+
     function unsubscribeAll(){
       if(unsubCards){
         unsubCards();
@@ -2663,6 +2667,8 @@
     // ✅ HUELLA MENSUAL + YO VS YO
     // =========================
     const MONTHLY_SUMMARY_COLLECTION = "monthly_summaries";
+    const SUMMARY_SAVE_DEBOUNCE_MS = 8000;
+    const summarySaveState = new Map();
 
     const buildMonthlySummaryId = (owner, periodKey, scopeFilter) =>
       `${owner}__${periodKey}__${scopeFilter || "all"}`;
@@ -2736,12 +2742,33 @@
 
     const saveMonthlySummary = async (summary) => {
       if(!summary) return null;
+      const owner = summary.owner;
+      if(!isValidAppOwner(owner)){
+        console.warn("Se omitió guardar resumen mensual: owner inválido.", owner);
+        return summary;
+      }
       const id = buildMonthlySummaryId(summary.owner, summary.periodKey, summary.scopeFilter);
+      const signature = JSON.stringify({
+        owner,
+        periodKey: summary.periodKey,
+        scopeFilter: summary.scopeFilter || "all",
+        totals: summary.totals,
+        counts: summary.counts,
+        highlights: summary.highlights,
+        narrative: summary.narrative
+      });
+      const now = Date.now();
+      const state = summarySaveState.get(id);
+      if(state && state.signature === signature && now - state.at < SUMMARY_SAVE_DEBOUNCE_MS){
+        return summary;
+      }
       try {
         await setDoc(doc(db, MONTHLY_SUMMARY_COLLECTION, id), summary, { merge: true });
+        summarySaveState.set(id, { signature, at: now });
       } catch (err) {
         if(isPermissionDeniedError(err)){
           console.warn("No se pudo guardar resumen mensual (permissions).", err);
+          summarySaveState.set(id, { signature, at: now });
           return summary;
         }
         throw err;
@@ -2751,6 +2778,7 @@
 
     const maybeGenerateMonthlySummary = async (owner, { force = false, scopeFilter = getActiveScopeFilter() } = {}) => {
       const o = getActiveOwner(owner);
+      if(!isValidAppOwner(o)) return null;
       const periodKey = getMonthKey(previousMonth(new Date()));
       const summaryId = buildMonthlySummaryId(o, periodKey, scopeFilter);
       const docRef = doc(db, MONTHLY_SUMMARY_COLLECTION, summaryId);
@@ -2878,10 +2906,15 @@
       body.innerHTML = '<small class="text-muted">Generando resumen...</small>';
       const owner = getActiveOwner();
       const scopeFilter = getActiveScopeFilter();
-      const summary = await maybeGenerateMonthlySummary(owner, { force, scopeFilter });
-      const summaries = await loadMonthlySummaries(owner, 6, scopeFilter);
-      const comparisons = summary ? computeComparisons(summary, summaries) : null;
-      renderMonthlyFootprint(summary, comparisons);
+      try{
+        const summary = await maybeGenerateMonthlySummary(owner, { force, scopeFilter });
+        const summaries = await loadMonthlySummaries(owner, 6, scopeFilter);
+        const comparisons = summary ? computeComparisons(summary, summaries) : null;
+        renderMonthlyFootprint(summary, comparisons);
+      }catch(err){
+        console.warn("No se pudo actualizar huella mensual.", err);
+        body.innerHTML = '<small class="text-muted">No se pudo actualizar el resumen por ahora.</small>';
+      }
     }
 
     window.manualCloseMonth = async () => {
@@ -3008,20 +3041,48 @@
 
     const saveMonthlyCardSummary = async (summary) => {
       if(!summary) return null;
+      const owner = summary.owner;
+      if(!isValidAppOwner(owner)){
+        console.warn("Se omitió guardar resumen por tarjeta: owner inválido.", owner);
+        return summary;
+      }
       const id = buildMonthlyCardSummaryId(summary.owner, summary.periodKey);
+      const payload = {
+        owner,
+        periodKey: summary.periodKey,
+        totals: {
+          expense: safeNumber(summary?.totals?.expense),
+          income: safeNumber(summary?.totals?.income),
+          net: safeNumber(summary?.totals?.net)
+        },
+        byCard: summary.byCard || {},
+        counts: summary.counts || { txCount: 0 },
+        updatedAt: serverTimestamp()
+      };
+      const signature = JSON.stringify({
+        owner,
+        periodKey: payload.periodKey,
+        totals: payload.totals,
+        byCard: payload.byCard,
+        counts: payload.counts
+      });
+      const now = Date.now();
+      const state = summarySaveState.get(id);
+      if(state && state.signature === signature && now - state.at < SUMMARY_SAVE_DEBOUNCE_MS){
+        return payload;
+      }
       try {
-        await setDoc(doc(db, MONTHLY_SUMMARY_COLLECTION, id), {
-          ...summary,
-          updatedAt: serverTimestamp()
-        }, { merge: true });
+        await setDoc(doc(db, MONTHLY_SUMMARY_COLLECTION, id), payload, { merge: true });
+        summarySaveState.set(id, { signature, at: now });
       } catch (err) {
         if(isPermissionDeniedError(err)){
           console.warn("No se pudo guardar resumen mensual (permissions).", err);
-          return summary;
+          summarySaveState.set(id, { signature, at: now });
+          return payload;
         }
         throw err;
       }
-      return summary;
+      return payload;
     };
 
     const renderSummaryTotals = (summary) => {
@@ -3100,52 +3161,63 @@
       status.textContent = "Cargando...";
       status.className = "text-muted small";
 
-      const owner = getActiveOwner();
-      const shouldReload = force || summaryState.owner !== owner || !summaryState.periodKeys.length;
-      if(shouldReload){
-        summaryState.periodKeys = await loadSummaryPeriodKeys(owner);
-        summaryState.owner = owner;
-      }
-
-      if(!summaryState.periodKeys.length){
-        summaryState.periodKeys = [getPeriodKeyFromDate(new Date())];
-      }
-
-      if(periodKey && !summaryState.periodKeys.includes(periodKey)){
-        summaryState.periodKeys.unshift(periodKey);
-        if(summaryState.periodKeys.length > 24){
-          summaryState.periodKeys = summaryState.periodKeys.slice(0, 24);
+      try{
+        const owner = getActiveOwner();
+        if(!isValidAppOwner(owner)){
+          status.textContent = "Owner inválido para guardar resumen.";
+          status.className = "text-warning small";
+          return;
         }
-      }
+        const shouldReload = force || summaryState.owner !== owner || !summaryState.periodKeys.length;
+        if(shouldReload){
+          summaryState.periodKeys = await loadSummaryPeriodKeys(owner);
+          summaryState.owner = owner;
+        }
 
-      const currentSelected = periodKey || summaryState.selectedPeriodKey || summaryState.periodKeys[0];
-      summaryState.selectedPeriodKey = currentSelected;
+        if(!summaryState.periodKeys.length){
+          summaryState.periodKeys = [getPeriodKeyFromDate(new Date())];
+        }
 
-      select.innerHTML = "";
-      summaryState.periodKeys.forEach((key) => {
-        const opt = document.createElement("option");
-        opt.value = key;
-        opt.textContent = formatPeriodLabel(key);
-        select.appendChild(opt);
-      });
-      select.value = currentSelected;
-      periodLabel.textContent = formatPeriodLabel(currentSelected);
+        if(periodKey && !summaryState.periodKeys.includes(periodKey)){
+          summaryState.periodKeys.unshift(periodKey);
+          if(summaryState.periodKeys.length > 24){
+            summaryState.periodKeys = summaryState.periodKeys.slice(0, 24);
+          }
+        }
 
-      const scopeFilter = getActiveScopeFilter();
-      const monthItems = getMonthlyCardSummaryItems(currentSelected, { owner, scopeFilter });
-      const summary = buildMonthlyCardSummary(monthItems, { owner, periodKey: currentSelected });
-      if(summary?.counts?.txCount){
-        saveMonthlyCardSummary(summary).catch((err) => {
-          console.warn("No se pudo guardar resumen mensual.", err);
+        const currentSelected = periodKey || summaryState.selectedPeriodKey || summaryState.periodKeys[0];
+        summaryState.selectedPeriodKey = currentSelected;
+
+        select.innerHTML = "";
+        summaryState.periodKeys.forEach((key) => {
+          const opt = document.createElement("option");
+          opt.value = key;
+          opt.textContent = formatPeriodLabel(key);
+          select.appendChild(opt);
         });
+        select.value = currentSelected;
+        periodLabel.textContent = formatPeriodLabel(currentSelected);
+
+        const scopeFilter = getActiveScopeFilter();
+        const monthItems = getMonthlyCardSummaryItems(currentSelected, { owner, scopeFilter });
+        const summary = buildMonthlyCardSummary(monthItems, { owner, periodKey: currentSelected });
+        if(summary?.counts?.txCount){
+          saveMonthlyCardSummary(summary).catch((err) => {
+            console.warn("No se pudo guardar resumen mensual.", err);
+          });
+        }
+
+        summaryState.cache.set(getSummaryCacheKey(owner, currentSelected, scopeFilter), summary);
+        renderSummaryTotals(summary);
+        renderSummaryCards(summary);
+        if(privacy) togglePrivacy();
+
+        status.textContent = "";
+      }catch(err){
+        console.warn("No se pudo renderizar resumen mensual.", err);
+        status.textContent = "No se pudo cargar el resumen.";
+        status.className = "text-warning small";
       }
-
-      summaryState.cache.set(getSummaryCacheKey(owner, currentSelected, scopeFilter), summary);
-      renderSummaryTotals(summary);
-      renderSummaryCards(summary);
-      if(privacy) togglePrivacy();
-
-      status.textContent = "";
     };
 
     window.handleSummaryMonthChange = () => {
