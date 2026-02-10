@@ -1238,6 +1238,10 @@
       return err?.message ? `Error inesperado: ${err.message}` : "Error inesperado de Firestore.";
     }
 
+    function isPermissionDeniedError(err){
+      return err?.code === "permission-denied";
+    }
+
     function unsubscribeAll(){
       if(unsubCards){
         unsubCards();
@@ -2732,7 +2736,15 @@
     const saveMonthlySummary = async (summary) => {
       if(!summary) return null;
       const id = buildMonthlySummaryId(summary.owner, summary.periodKey, summary.scopeFilter);
-      await setDoc(doc(db, MONTHLY_SUMMARY_COLLECTION, id), summary, { merge: true });
+      try {
+        await setDoc(doc(db, MONTHLY_SUMMARY_COLLECTION, id), summary, { merge: true });
+      } catch (err) {
+        if(isPermissionDeniedError(err)){
+          console.warn("No se pudo guardar resumen mensual (permissions).", err);
+          return summary;
+        }
+        throw err;
+      }
       return summary;
     };
 
@@ -2996,10 +3008,18 @@
     const saveMonthlyCardSummary = async (summary) => {
       if(!summary) return null;
       const id = buildMonthlyCardSummaryId(summary.owner, summary.periodKey);
-      await setDoc(doc(db, MONTHLY_SUMMARY_COLLECTION, id), {
-        ...summary,
-        updatedAt: serverTimestamp()
-      }, { merge: true });
+      try {
+        await setDoc(doc(db, MONTHLY_SUMMARY_COLLECTION, id), {
+          ...summary,
+          updatedAt: serverTimestamp()
+        }, { merge: true });
+      } catch (err) {
+        if(isPermissionDeniedError(err)){
+          console.warn("No se pudo guardar resumen mensual (permissions).", err);
+          return summary;
+        }
+        throw err;
+      }
       return summary;
     };
 
