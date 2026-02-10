@@ -3159,6 +3159,78 @@
       return { mode: summaryPeriodMode, selectedCardId, periodKey, range, anchorDate, warning, statementMeta };
     };
 
+    const updateSummaryTotalsUI = (summary = {}) => {
+      const kpisEl = document.getElementById("summary-kpis");
+      const emptyEl = document.getElementById("summary-empty");
+      if(!kpisEl || !emptyEl) return;
+
+      const expense = safeNumber(summary?.totals?.expense);
+      const income = safeNumber(summary?.totals?.income);
+      const net = safeNumber(summary?.totals?.net);
+      const txCount = safeNumber(summary?.counts?.txCount);
+
+      if(!txCount){
+        kpisEl.innerHTML = "";
+        emptyEl.classList.remove("d-none");
+        return;
+      }
+
+      emptyEl.classList.add("d-none");
+      const netTone = net >= 0 ? "text-success" : "text-danger";
+      kpisEl.innerHTML = `
+        <div class="summary-kpi-card">
+          <div class="kpi-label">Gastos</div>
+          <div class="kpi-value sensitive-data">${formatCurrency(expense)}</div>
+        </div>
+        <div class="summary-kpi-card">
+          <div class="kpi-label">Abonos</div>
+          <div class="kpi-value sensitive-data text-success">${formatCurrency(income)}</div>
+        </div>
+        <div class="summary-kpi-card">
+          <div class="kpi-label">Neto</div>
+          <div class="kpi-value sensitive-data ${netTone}">${formatCurrency(net)}</div>
+        </div>
+        <div class="summary-kpi-card">
+          <div class="kpi-label">Movimientos</div>
+          <div class="kpi-value">${txCount}</div>
+        </div>
+      `;
+    };
+
+    const renderSummaryCards = (summary = {}) => {
+      const listEl = document.getElementById("summary-cards-list");
+      const countEl = document.getElementById("summary-card-count");
+      if(!listEl || !countEl) return;
+
+      const entries = Object.entries(summary?.byCard || {});
+      countEl.textContent = `${entries.length} ${entries.length === 1 ? "tarjeta" : "tarjetas"}`;
+
+      if(!entries.length){
+        listEl.innerHTML = '<div class="text-muted small">Sin movimientos por tarjeta en este periodo.</div>';
+        return;
+      }
+
+      entries.sort(([, a], [, b]) => safeNumber(b?.expense) - safeNumber(a?.expense));
+      listEl.innerHTML = entries.map(([, card]) => {
+        const expense = safeNumber(card?.expense);
+        const income = safeNumber(card?.income);
+        const net = safeNumber(card?.net);
+        const netTone = net >= 0 ? "text-success" : "text-danger";
+        return `
+          <div class="summary-card-item d-flex justify-content-between align-items-center py-2 border-top">
+            <div>
+              <div class="fw-semibold">${card?.cardName || "Sin tarjeta"}</div>
+              <div class="small text-muted">Gasto: <span class="sensitive-data">${formatCurrency(expense)}</span> · Abono: <span class="sensitive-data">${formatCurrency(income)}</span></div>
+            </div>
+            <div class="fw-bold sensitive-data ${netTone}">${formatCurrency(net)}</div>
+          </div>
+        `;
+      }).join("");
+    };
+
+    // Compatibilidad: algunos flujos aún invocan renderSummaryTotals().
+    const renderSummaryTotals = (...args) => updateSummaryTotalsUI(...args);
+
     const renderSummaryEstimatedPayment = (summary, mode) => {
       const wrap = document.getElementById("summary-estimated-payment");
       if(!wrap) return;
