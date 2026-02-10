@@ -429,6 +429,16 @@
           <option value="haru">Haru</option>
         </select>
 
+        <button
+          id="btn-owner-repair"
+          class="btn btn-sm btn-outline-warning d-none"
+          type="button"
+          onclick="repairLegacyOwnerData()"
+          title="Reparar documentos legacy sin owner"
+        >
+          Reparar owner
+        </button>
+
         <!-- 🔔 Push (por ahora solo placeholder) -->
         <button class="btn btn-sm btn-outline-secondary rounded-circle"
           onclick="enablePush()"
@@ -1095,7 +1105,7 @@
     import {
       getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc,
       query, orderBy, writeBatch, Timestamp, enableIndexedDbPersistence, where, getDocs, getDoc, setDoc,
-      serverTimestamp, increment, limit
+      serverTimestamp, increment, limit, startAfter
     } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
 
     // =========================
@@ -1301,6 +1311,7 @@
 
     // Presets
     const ALLOWED_APP_OWNERS = ["haru", "yair"];
+    const DEBUG_OWNER_REPAIR = new URLSearchParams(window.location.search).get("debug") === "1";
 
     const PRESET_CARDS = [
       { name: "Like u", owner: "yair" },
@@ -1323,6 +1334,15 @@
 
     const getActiveScopeFilter = () => localStorage.getItem(SCOPE_FILTER_KEY) || "all";
 
+    function renderOwnerRepairButton(){
+      const btn = document.getElementById("btn-owner-repair");
+      if(!btn) return;
+      const canRepair = OWNER === "yair" || DEBUG_OWNER_REPAIR;
+      btn.classList.toggle("d-none", !canRepair);
+    }
+
+    renderOwnerRepairButton();
+
     ownerSelect.addEventListener("change", async ()=>{
       OWNER = ownerSelect.value;
       localStorage.setItem(OWNER_KEY, OWNER);
@@ -1340,6 +1360,7 @@
       refreshAll({ owner: OWNER, force: true, source: "owner-change" });
       updateMonthlyFootprint({ force: true });
       renderSummaryView({ force: true });
+      renderOwnerRepairButton();
     });
 
     // State
@@ -3609,6 +3630,78 @@
       renderSummaryView({ force: true });
     };
 
+    const LEGACY_OWNER_COLLECTIONS = ["cards", "goals", "expenses", MONTHLY_SUMMARY_COLLECTION];
+
+    async function repairOwnerForCollection(collectionName, ownerValue, { pageSize = 200, batchLimit = 400 } = {}){
+      let repaired = 0;
+      let scanned = 0;
+      let lastDoc = null;
+
+      while(true){
+        let q = query(collection(db, collectionName), orderBy("__name__"), limit(pageSize));
+        if(lastDoc) q = query(collection(db, collectionName), orderBy("__name__"), startAfter(lastDoc), limit(pageSize));
+
+        const snap = await getDocs(q);
+        if(snap.empty) break;
+
+        let batch = writeBatch(db);
+        let writes = 0;
+
+        for(const docSnap of snap.docs){
+          scanned += 1;
+          const data = docSnap.data();
+          const hasOwnerString = typeof data?.owner === "string";
+          if(hasOwnerString) continue;
+
+          batch.set(doc(db, collectionName, docSnap.id), { owner: ownerValue, updatedAt: serverTimestamp() }, { merge: true });
+          repaired += 1;
+          writes += 1;
+
+          if(writes >= batchLimit){
+            await batch.commit();
+            batch = writeBatch(db);
+            writes = 0;
+          }
+        }
+
+        if(writes > 0) await batch.commit();
+
+        lastDoc = snap.docs[snap.docs.length - 1];
+        if(snap.size < pageSize) break;
+      }
+
+      return { repaired, scanned };
+    }
+
+    window.repairLegacyOwnerData = async () => {
+      const canRepair = OWNER === "yair" || DEBUG_OWNER_REPAIR;
+      if(!canRepair){
+        showToast("Solo Yair (o modo debug) puede ejecutar esta reparación.", { tone: "warning", duration: 2600 });
+        return;
+      }
+
+      const triggerBtn = document.getElementById("btn-owner-repair");
+      setLoading(triggerBtn, true, { label: "Reparando..." });
+
+      try{
+        const logs = [];
+        for(const collectionName of LEGACY_OWNER_COLLECTIONS){
+          const result = await repairOwnerForCollection(collectionName, OWNER);
+          logs.push({ collection: collectionName, ...result });
+          console.info(`[owner-repair] ${collectionName}`, result);
+        }
+
+        const total = logs.reduce((acc, row) => acc + row.repaired, 0);
+        showToast(`Reparación completa: ${total} docs actualizados.`, { tone: "success", duration: 3200 });
+        await window.manualRefresh();
+      }catch(err){
+        console.error("owner repair error:", err);
+        showToast("No se pudo completar la reparación de owner.", { tone: "warning", duration: 3200 });
+      }finally{
+        setLoading(triggerBtn, false);
+      }
+    };
+
     const quickSheet = document.getElementById("quick-sheet");
     const quickBackdrop = document.getElementById("quick-sheet-backdrop");
     const quickAmount = document.getElementById("quick-amount");
@@ -3763,7 +3856,9 @@
     async function seedPresetCards(){
       try{
         setLoaderMsg("Verificando tarjetas precargadas...");
-        const existingSnap = await getDocs(query(collection(db,"cards")));
+        const existingSnap = await getDocs(
+          query(collection(db,"cards"), where("owner", "in", ALLOWED_APP_OWNERS))
+        );
         const existingByOwner={ yair:new Set(), haru:new Set(), both:new Set() };
 
         existingSnap.forEach(d=>{
@@ -3807,7 +3902,11 @@
     // Cards subscribe (front filter)
     function subscribeCards(){
       setLoaderMsg("Cargando tarjetas...");
-      const qCards=query(collection(db,"cards"), orderBy("name"));
+      const qCards=query(
+        collection(db,"cards"),
+        where("owner", "==", OWNER),
+        orderBy("name")
+      );
       let firstSnapshot = true;
       unsubCards = onSnapshot(qCards, (snap)=>{
         if(firstSnapshot){
@@ -3817,7 +3916,7 @@
         const tempAll=[];
         snap.forEach(d=>{ const c=d.data(); c.id=d.id; tempAll.push(c); });
 
-        const temp=tempAll.filter(c=>c.owner===OWNER || c.owner==="both");
+        const temp=tempAll.filter(c=>c.owner===OWNER);
 
         cards=[];
         let tDebt=0, tLimit=0;
@@ -3990,7 +4089,9 @@
     const formatGoalOwner = (owner) => owner === "haru" ? "Haru" : "Yair";
 
     const buildGoalsQuery = () => {
+      const activeOwner = getActiveOwner();
       const whereFields = [
+        { field: "owner", op: "==", value: activeOwner },
         { field: "status", op: "==", value: "active" }
       ];
       const orderByFields = [
@@ -4000,6 +4101,7 @@
       ];
       const q = query(
         collection(db,"goals"),
+        where("owner","==",activeOwner),
         where("status","==","active"),
         orderBy("priority","asc"),
         orderBy("sortOrder","asc"),
