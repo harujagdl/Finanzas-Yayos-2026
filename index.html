@@ -5333,7 +5333,7 @@
       return true;
     };
 
-    const computePeriodTotals = (items = [], anchorDate = new Date()) => {
+    const computeHistoryPeriodTotals = (items = [], anchorDate = new Date()) => {
       let gastosTotal = 0;
       let abonosTotal = 0;
       items.forEach((item) => {
@@ -5411,7 +5411,7 @@
         hint.classList.toggle("d-none", !context.warning);
       }
 
-      const totals = computePeriodTotals(items, context.anchorDate);
+      const totals = computeHistoryPeriodTotals(items, context.anchorDate);
       renderHistoryPeriodTotals(totals);
 
       if (context.warning) {
