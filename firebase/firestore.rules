@@ -1,0 +1,67 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function allowedOwners() {
+      return ["haru", "yair", "both"];
+    }
+
+    function isAllowedOwner(owner) {
+      return owner is string && owner in allowedOwners();
+    }
+
+    function hasImmutableOwner() {
+      return resource.data.owner == request.resource.data.owner;
+    }
+
+    function isMonthlySummaryPayload() {
+      return request.resource.data.periodKey is string
+        && request.resource.data.totals is map
+        && (
+          ("byCard" in request.resource.data && request.resource.data.byCard is map)
+          || ("highlights" in request.resource.data && request.resource.data.highlights is map)
+        );
+    }
+
+    match /cards/{docId} {
+      allow read: if true;
+      allow create: if isAllowedOwner(request.resource.data.owner);
+      allow update: if isAllowedOwner(resource.data.owner)
+                    && hasImmutableOwner()
+                    && isAllowedOwner(request.resource.data.owner);
+      allow delete: if isAllowedOwner(resource.data.owner);
+    }
+
+    match /expenses/{docId} {
+      allow read: if true;
+      allow create: if isAllowedOwner(request.resource.data.owner);
+      allow update: if isAllowedOwner(resource.data.owner)
+                    && hasImmutableOwner()
+                    && isAllowedOwner(request.resource.data.owner);
+      allow delete: if isAllowedOwner(resource.data.owner);
+    }
+
+    match /goals/{docId} {
+      allow read: if true;
+      allow create: if isAllowedOwner(request.resource.data.owner);
+      allow update: if isAllowedOwner(resource.data.owner)
+                    && hasImmutableOwner()
+                    && isAllowedOwner(request.resource.data.owner);
+      allow delete: if isAllowedOwner(resource.data.owner);
+    }
+
+    match /monthly_summaries/{docId} {
+      allow read: if true;
+      allow create: if isAllowedOwner(request.resource.data.owner)
+                    && isMonthlySummaryPayload();
+      allow update: if isAllowedOwner(resource.data.owner)
+                    && hasImmutableOwner()
+                    && isAllowedOwner(request.resource.data.owner)
+                    && isMonthlySummaryPayload();
+      allow delete: if isAllowedOwner(resource.data.owner);
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
