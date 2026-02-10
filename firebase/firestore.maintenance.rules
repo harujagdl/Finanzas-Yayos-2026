@@ -1,0 +1,63 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAllowedOwner(o) {
+      return o is string && (o == "haru" || o == "yair");
+    }
+
+    function canReadMaintenance() {
+      return !('owner' in resource.data)
+        || (resource.data.owner is string && isAllowedOwner(resource.data.owner));
+    }
+
+    function canCreate() {
+      return request.resource.data.owner is string && isAllowedOwner(request.resource.data.owner);
+    }
+
+    function canUpdateOrDeleteStrict() {
+      return resource.data.owner is string
+        && isAllowedOwner(resource.data.owner)
+        && request.resource.data.owner == resource.data.owner;
+    }
+
+    function canClaimLegacyOwner() {
+      return !('owner' in resource.data)
+        && request.resource.data.owner is string
+        && isAllowedOwner(request.resource.data.owner);
+    }
+
+    match /cards/{id} {
+      allow read: if canReadMaintenance();
+      allow create: if canCreate();
+      allow update: if canUpdateOrDeleteStrict() || canClaimLegacyOwner();
+      allow delete: if canUpdateOrDeleteStrict();
+    }
+
+    match /expenses/{id} {
+      allow read: if canReadMaintenance();
+      allow create: if canCreate();
+      allow update: if canUpdateOrDeleteStrict() || canClaimLegacyOwner();
+      allow delete: if canUpdateOrDeleteStrict();
+    }
+
+    match /goals/{id} {
+      allow read: if canReadMaintenance();
+      allow create: if canCreate();
+      allow update: if canUpdateOrDeleteStrict() || canClaimLegacyOwner();
+      allow delete: if canUpdateOrDeleteStrict();
+    }
+
+    match /monthly_summaries/{id} {
+      allow read: if canReadMaintenance();
+      allow create: if canCreate();
+      allow update: if canUpdateOrDeleteStrict() || canClaimLegacyOwner();
+      allow delete: if canUpdateOrDeleteStrict();
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1337,7 +1337,7 @@
     function renderOwnerRepairButton(){
       const btn = document.getElementById("btn-owner-repair");
       if(!btn) return;
-      const canRepair = OWNER === "yair" || DEBUG_OWNER_REPAIR;
+      const canRepair = isValidAppOwner(OWNER) || DEBUG_OWNER_REPAIR;
       btn.classList.toggle("d-none", !canRepair);
     }
 
@@ -3674,9 +3674,9 @@
     }
 
     window.repairLegacyOwnerData = async () => {
-      const canRepair = OWNER === "yair" || DEBUG_OWNER_REPAIR;
+      const canRepair = isValidAppOwner(OWNER) || DEBUG_OWNER_REPAIR;
       if(!canRepair){
-        showToast("Solo Yair (o modo debug) puede ejecutar esta reparación.", { tone: "warning", duration: 2600 });
+        showToast("Solo owners válidos (Haru/Yair) o modo debug pueden ejecutar esta reparación.", { tone: "warning", duration: 2600 });
         return;
       }
 
