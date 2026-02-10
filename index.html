@@ -648,6 +648,12 @@
             <option value="all">Tarjeta: Todas</option>
           </select>
         </div>
+        <div class="col-12 d-none" id="summary-abonos-mode-wrap">
+          <select id="summary-abonos-mode" class="form-select" onchange="handleAbonosModeChange(this.value)">
+            <option value="pagos_aplicados">Abonos: Pagos aplicados</option>
+            <option value="cashflow_ciclo">Abonos: Cashflow del ciclo</option>
+          </select>
+        </div>
       </div>
       <div id="summary-period-hint" class="text-muted small mb-2 d-none"></div>
       <div class="d-flex justify-content-between align-items-center mb-2">
@@ -809,7 +815,7 @@
 
     <div class="row g-2 mb-3">
       <div class="col-6">
-        <select id="hist-period-mode" class="form-select" onchange="renderHistory()">
+        <select id="hist-period-mode" class="form-select" onchange="handleHistoryPeriodModeChange()">
           <option value="month">Periodo: Mes</option>
           <option value="statement">Periodo: Estado de cuenta</option>
         </select>
@@ -822,6 +828,13 @@
       <div class="col-6">
         <select id="hist-card-filter" class="form-select" onchange="renderHistory()">
           <option value="all">Tarjeta: Todas</option>
+        </select>
+      </div>
+
+      <div class="col-12 d-none" id="hist-abonos-mode-wrap">
+        <select id="hist-abonos-mode" class="form-select" onchange="handleAbonosModeChange(this.value)">
+          <option value="pagos_aplicados">Abonos: Pagos aplicados</option>
+          <option value="cashflow_ciclo">Abonos: Cashflow del ciclo</option>
         </select>
       </div>
 
@@ -1423,6 +1436,10 @@
     let historyMsiFilter = "all";
     let historyPeriodMode = "month";
     let summaryPeriodMode = "month";
+    const ABONOS_MODE_KEY = "fy_abonos_mode";
+    const normalizeAbonosMode = (value) => value === "cashflow_ciclo" ? "cashflow_ciclo" : "pagos_aplicados";
+    let abonosMode = normalizeAbonosMode(localStorage.getItem(ABONOS_MODE_KEY));
+    if(!localStorage.getItem(ABONOS_MODE_KEY)) localStorage.setItem(ABONOS_MODE_KEY, abonosMode);
 
     const FEATURES = {
       dashboard: true,
@@ -3137,18 +3154,17 @@
       const selectedCardId = cardEl?.value || "all";
       const periodKey = monthEl?.value || summaryState.selectedPeriodKey || getPeriodKeyFromDate(new Date());
       const monthRange = getMonthRange(periodKey);
-      const monthAnchor = new Date(monthRange.endExclusive.getTime() - 1);
+      const monthAnchor = new Date(monthRange.startDate);
       let range = monthRange;
-      let anchorDate = monthAnchor;
+      let anchorDate = new Date(monthRange.endExclusive.getTime() - 1);
       let warning = "";
       let statementMeta = "";
       let statementConfigError = false;
+      let statement = null;
 
       if(summaryPeriodMode === "statement"){
         if(selectedCardId === "all"){
           warning = "Selecciona una tarjeta para ver su estado de cuenta";
-          summaryPeriodMode = "month";
-          if(modeEl) modeEl.value = "month";
         }else{
           const selectedCard = cards.find((c) => c.id === selectedCardId);
           const hasCutDay = Number.isFinite(Number(selectedCard?.cutDay));
@@ -3156,14 +3172,27 @@
             warning = "Tarjeta sin día de corte configurado";
             statementConfigError = true;
           }else{
-            range = getStatementRange(monthAnchor, Number(selectedCard.cutDay));
+            range = getStatementRange(monthAnchor, Number(selectedCard.cutDay), Number(selectedCard?.payDay || 1), abonosMode);
             anchorDate = range.endDate;
-            statementMeta = `Corta día ${selectedCard.cutDay} • Pagar antes del ${selectedCard?.payDay || 1}`;
+            statement = {
+              card: selectedCard,
+              statementStart: range.startDate,
+              statementEndInclusive: range.endDate,
+              statementEndExclusive: range.endExclusive,
+              payStart: range.paymentWindow.payStart,
+              payEndInclusive: range.paymentWindow.payEndInclusive,
+              payEndExclusive: range.paymentWindow.payEndExclusive,
+              abonosStart: range.abonosWindow.abonosStart,
+              abonosEndExclusive: range.abonosWindow.abonosEndExclusive,
+              abonosLabel: range.abonosWindow.label,
+              mode: abonosMode
+            };
+            statementMeta = statement.abonosLabel;
           }
         }
       }
 
-      return { mode: summaryPeriodMode, selectedCardId, periodKey, range, anchorDate, warning, statementMeta, statementConfigError };
+      return { mode: summaryPeriodMode, selectedCardId, periodKey, range, anchorDate, warning, statementMeta, statementConfigError, statement };
     };
 
     const updateSummaryTotalsUI = (summary = {}) => {
@@ -3175,6 +3204,8 @@
       const income = safeNumber(summary?.totals?.income);
       const net = safeNumber(summary?.totals?.net);
       const txCount = safeNumber(summary?.counts?.txCount);
+      const abonosKpiLabel = summary?.labels?.abonosKpi || "Abonos";
+      const netKpiLabel = summary?.labels?.netKpi || "Neto";
 
       if(!txCount){
         kpisEl.innerHTML = "";
@@ -3190,11 +3221,11 @@
           <div class="kpi-value sensitive-data">${formatCurrency(expense)}</div>
         </div>
         <div class="summary-kpi-card">
-          <div class="kpi-label">Abonos</div>
+          <div class="kpi-label">${abonosKpiLabel}</div>
           <div class="kpi-value sensitive-data text-success">${formatCurrency(income)}</div>
         </div>
         <div class="summary-kpi-card">
-          <div class="kpi-label">Neto</div>
+          <div class="kpi-label">${netKpiLabel}</div>
           <div class="kpi-value sensitive-data ${netTone}">${formatCurrency(net)}</div>
         </div>
         <div class="summary-kpi-card">
@@ -3238,24 +3269,29 @@
     // Compatibilidad: algunos flujos aún invocan renderSummaryTotals().
     const renderSummaryTotals = (...args) => updateSummaryTotalsUI(...args);
 
-    const renderSummaryEstimatedPayment = (summary, mode) => {
+    const renderSummaryEstimatedPayment = (summary, context) => {
       const wrap = document.getElementById("summary-estimated-payment");
       if(!wrap) return;
-      if(mode !== "statement"){
+      if(context?.mode !== "statement" || !context?.statement){
         wrap.classList.add("d-none");
         wrap.innerHTML = "";
         return;
       }
-      const gastosPeriodo = safeNumber(summary?.totals?.expense);
-      const abonosPeriodo = safeNumber(summary?.totals?.income);
-      const pagoEstimado = Math.max(0, round2(gastosPeriodo - abonosPeriodo));
-      const badge = pagoEstimado > 0
-        ? `<span class="badge-status bg-warning-light">Te faltan ${formatMoney(pagoEstimado)} para quedar tablas</span>`
+
+      const saldoEstimado = safeNumber(summary?.totals?.saldoEstimado);
+      const statement = context.statement;
+      const statementLabel = `Estado de cuenta: ${formatShortDate(statement.statementStart)} → ${formatShortDate(statement.statementEndInclusive)}`;
+      const abonosLabel = statement.mode === "cashflow_ciclo"
+        ? `Cashflow del ciclo: ${formatShortDate(statement.statementStart)} → ${formatShortDate(statement.statementEndInclusive)}`
+        : `Pagos aplicados: ${formatShortDate(statement.payStart)} → ${formatShortDate(statement.payEndInclusive)}`;
+      const badge = saldoEstimado > 0
+        ? `<span class="badge-status bg-warning-light">Te faltan ${formatMoney(saldoEstimado)} para quedar tablas</span>`
         : `<span class="badge-status bg-success-light">Vas al día en este estado de cuenta</span>`;
+
       wrap.classList.remove("d-none");
       wrap.innerHTML = `
-        <div class="small fw-bold mb-1">Pago estimado a cubrir</div>
-        <div class="small text-muted mb-1">Métrica interna del ciclo (no es pago mínimo bancario).</div>
+        <div class="small fw-bold mb-1">${statementLabel}</div>
+        <div class="small text-muted mb-1">${abonosLabel}</div>
         ${badge}
       `;
     };
@@ -3310,6 +3346,7 @@
         const scopeFilter = getActiveScopeFilter();
         const scoped = FEATURES.coupleMode ? applyScopeFilter(trans, scopeFilter) : trans;
         const context = getSummaryContext();
+        syncAbonosModeUI();
         if(context.mode === "month"){
           periodLabel.textContent = formatPeriodLabel(currentSelected);
         }else{
@@ -3325,26 +3362,57 @@
           meta.classList.toggle("d-none", !context.statementMeta);
         }
 
-        if(context.statementConfigError){
+        if(context.statementConfigError || (context.mode === "statement" && (!context.statement || context.warning))){
           renderSummaryTotals({ totals: {}, byCard: {}, counts: { txCount: 0 } });
           renderSummaryCards({ byCard: {} });
-          renderSummaryEstimatedPayment({}, context.mode);
+          renderSummaryEstimatedPayment({}, context);
           status.textContent = "";
           return;
         }
 
         const itemsByOwner = scoped.filter((item) => !item?.owner || item.owner === owner);
-        const ranged = itemsByOwner.filter((item) => {
-          const d = toDate(item?.date);
-          return context.range ? (d >= context.range.startDate && d < context.range.endExclusive) : true;
-        });
-        const filtered = context.selectedCardId === "all" ? ranged : ranged.filter((item) => item?.cardId === context.selectedCardId);
+        let summary;
 
-        const summary = buildMonthlyCardSummary(filtered, { owner, periodKey: currentSelected, anchorDate: context.anchorDate });
+        if(context.mode === "statement" && context.statement){
+          const statementPurchases = [];
+          const statementAbonos = [];
+          itemsByOwner.forEach((item) => {
+            if(item?.cardId !== context.selectedCardId) return;
+            const date = toDate(item?.date);
+            const amount = getMsiPaymentDetails(item, context.anchorDate).amount;
+            const isIncome = item?.type === "income" || item?.type === "payment";
+            if(!isIncome && date >= context.statement.statementStart && date < context.statement.statementEndExclusive){
+              statementPurchases.push({ ...item, computedAmount: amount });
+            }
+            if(isIncome && date >= context.statement.abonosStart && date < context.statement.abonosEndExclusive){
+              statementAbonos.push({ ...item, computedAmount: amount });
+            }
+          });
+          const comprasCiclo = round2(statementPurchases.reduce((acc, item) => acc + safeNumber(item.computedAmount), 0));
+          const abonosTotal = round2(statementAbonos.reduce((acc, item) => acc + safeNumber(item.computedAmount), 0));
+          const saldoEstimado = round2(comprasCiclo - abonosTotal);
+          summary = {
+            totals: { expense: comprasCiclo, income: abonosTotal, net: round2(abonosTotal - comprasCiclo), saldoEstimado },
+            byCard: buildMonthlyCardSummary([...statementPurchases, ...statementAbonos], { owner, periodKey: currentSelected, anchorDate: context.anchorDate }).byCard,
+            counts: { txCount: statementPurchases.length + statementAbonos.length },
+            labels: {
+              abonosKpi: context.statement.mode === "cashflow_ciclo" ? "Cashflow" : "Pagos aplicados",
+              netKpi: "Saldo"
+            }
+          };
+        }else{
+          const ranged = itemsByOwner.filter((item) => {
+            const d = toDate(item?.date);
+            return context.range ? (d >= context.range.startDate && d < context.range.endExclusive) : true;
+          });
+          const filtered = context.selectedCardId === "all" ? ranged : ranged.filter((item) => item?.cardId === context.selectedCardId);
+          summary = buildMonthlyCardSummary(filtered, { owner, periodKey: currentSelected, anchorDate: context.anchorDate });
+        }
+
         summaryState.cache.set(getSummaryCacheKey(owner, currentSelected, scopeFilter), summary);
         renderSummaryTotals(summary);
         renderSummaryCards(summary);
-        renderSummaryEstimatedPayment(summary, context.mode);
+        renderSummaryEstimatedPayment(summary, context);
         if(privacy) togglePrivacy();
 
         status.textContent = "";
@@ -3365,7 +3433,36 @@
     window.handleSummaryPeriodModeChange = () => {
       const modeEl = document.getElementById("summary-period-mode");
       summaryPeriodMode = modeEl?.value || "month";
+      syncAbonosModeUI();
       renderSummaryView();
+    };
+
+    const syncAbonosModeUI = () => {
+      const summaryWrap = document.getElementById("summary-abonos-mode-wrap");
+      const histWrap = document.getElementById("hist-abonos-mode-wrap");
+      const summaryMode = document.getElementById("summary-period-mode")?.value || summaryPeriodMode || "month";
+      const historyMode = document.getElementById("hist-period-mode")?.value || historyPeriodMode || "month";
+      if(summaryWrap) summaryWrap.classList.toggle("d-none", summaryMode !== "statement");
+      if(histWrap) histWrap.classList.toggle("d-none", historyMode !== "statement");
+      const summarySelect = document.getElementById("summary-abonos-mode");
+      const historySelect = document.getElementById("hist-abonos-mode");
+      if(summarySelect) summarySelect.value = abonosMode;
+      if(historySelect) historySelect.value = abonosMode;
+    };
+
+    window.handleAbonosModeChange = (nextMode) => {
+      abonosMode = normalizeAbonosMode(nextMode);
+      localStorage.setItem(ABONOS_MODE_KEY, abonosMode);
+      syncAbonosModeUI();
+      renderSummaryView();
+      renderHistory();
+    };
+
+    window.handleHistoryPeriodModeChange = () => {
+      const modeEl = document.getElementById("hist-period-mode");
+      historyPeriodMode = modeEl?.value || "month";
+      syncAbonosModeUI();
+      renderHistory();
     };
 
     window.renderSummaryView = (...args) => renderSummaryView(...args);
@@ -3673,9 +3770,11 @@
       if(vid.includes('goals')) document.getElementById('nav-goals').classList.add('active');
 
       // render MSI cuando entras
+      syncAbonosModeUI();
       if(vid === 'view-msi') renderMsi();
       if(vid === 'view-goals') renderGoals();
       if(vid === 'view-summary') renderSummaryView();
+      if(vid === 'view-hist') renderHistory();
     };
 
     const THEME_KEY = "themeMode";
@@ -3946,6 +4045,7 @@
       }
     }
     initFilters();
+    syncAbonosModeUI();
 
     // =========================
     // ✅ HIST FILTERS (SMART por cardId)
@@ -4011,6 +4111,7 @@
       if(p) p.value="month";
       historyPeriodMode = "month";
       historyMsiFilter = "all";
+      syncAbonosModeUI();
 
       renderHistory();
     };
@@ -4900,27 +5001,66 @@
 
     const formatShortDate = (date) => toDate(date).toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" });
 
-    const getStatementRange = (anchorDate, cutDay) => {
-      const anchor = toDate(anchorDate);
-      const year = anchor.getFullYear();
-      const month = anchor.getMonth();
-      const day = Number(cutDay) || 1;
-      const cycleCutThisMonth = new Date(year, month, clampDay(year, month, day), 12, 0, 0, 0);
-      const endDate = anchor <= cycleCutThisMonth
-        ? cycleCutThisMonth
-        : new Date(year, month + 1, clampDay(year, month + 1, day), 12, 0, 0, 0);
-      const prevCutDate = new Date(endDate.getFullYear(), endDate.getMonth() - 1, clampDay(endDate.getFullYear(), endDate.getMonth() - 1, day), 12, 0, 0, 0);
-      const startDate = new Date(prevCutDate);
-      startDate.setDate(startDate.getDate() + 1);
-      startDate.setHours(0, 0, 0, 0);
-      const endExclusive = new Date(endDate);
-      endExclusive.setDate(endExclusive.getDate() + 1);
-      endExclusive.setHours(0, 0, 0, 0);
+    const getStatementWindow = (anchorYear, anchorMonthIndex, cutDay) => {
+      const safeCutDay = Number(cutDay) || 1;
+      const previousCutDate = new Date(anchorYear, anchorMonthIndex, clampDay(anchorYear, anchorMonthIndex, safeCutDay), 12, 0, 0, 0);
+      const statementStart = new Date(previousCutDate);
+      statementStart.setDate(statementStart.getDate() + 1);
+      statementStart.setHours(0, 0, 0, 0);
+
+      const endYear = previousCutDate.getFullYear();
+      const endMonth = previousCutDate.getMonth() + 1;
+      const statementEndInclusive = new Date(endYear, endMonth, clampDay(endYear, endMonth, safeCutDay), 12, 0, 0, 0);
+      const statementEndExclusive = new Date(statementEndInclusive);
+      statementEndExclusive.setDate(statementEndExclusive.getDate() + 1);
+      statementEndExclusive.setHours(0, 0, 0, 0);
+
+      return { statementStart, statementEndInclusive, statementEndExclusive };
+    };
+
+    const getPaymentWindow = (statementEndInclusive, payDay) => {
+      const safePayDay = Number(payDay) || 1;
+      const payStart = new Date(statementEndInclusive);
+      payStart.setDate(payStart.getDate() + 1);
+      payStart.setHours(0, 0, 0, 0);
+
+      const payYear = statementEndInclusive.getFullYear();
+      const payMonth = statementEndInclusive.getMonth() + 1;
+      const payEndInclusive = new Date(payYear, payMonth, clampDay(payYear, payMonth, safePayDay), 12, 0, 0, 0);
+      const payEndExclusive = new Date(payEndInclusive);
+      payEndExclusive.setDate(payEndExclusive.getDate() + 1);
+      payEndExclusive.setHours(0, 0, 0, 0);
+
+      return { payStart, payEndInclusive, payEndExclusive };
+    };
+
+    const getAbonosWindow = (mode, statementWindow, paymentWindow) => {
+      if(mode === "cashflow_ciclo"){
+        return {
+          abonosStart: statementWindow.statementStart,
+          abonosEndExclusive: statementWindow.statementEndExclusive,
+          label: `Cashflow del ciclo: ${formatShortDate(statementWindow.statementStart)} → ${formatShortDate(statementWindow.statementEndInclusive)}`
+        };
+      }
       return {
-        startDate,
-        endDate,
-        endExclusive,
-        label: `Estado de cuenta: ${formatShortDate(startDate)} → ${formatShortDate(endDate)}`
+        abonosStart: paymentWindow.payStart,
+        abonosEndExclusive: paymentWindow.payEndExclusive,
+        label: `Pagos aplicados: ${formatShortDate(paymentWindow.payStart)} → ${formatShortDate(paymentWindow.payEndInclusive)}`
+      };
+    };
+
+    const getStatementRange = (anchorDate, cutDay, payDay, mode = abonosMode) => {
+      const anchor = toDate(anchorDate);
+      const statementWindow = getStatementWindow(anchor.getFullYear(), anchor.getMonth(), cutDay);
+      const paymentWindow = getPaymentWindow(statementWindow.statementEndInclusive, payDay);
+      const abonosWindow = getAbonosWindow(mode, statementWindow, paymentWindow);
+      return {
+        startDate: statementWindow.statementStart,
+        endDate: statementWindow.statementEndInclusive,
+        endExclusive: statementWindow.statementEndExclusive,
+        paymentWindow,
+        abonosWindow,
+        label: `Estado de cuenta: ${formatShortDate(statementWindow.statementStart)} → ${formatShortDate(statementWindow.statementEndInclusive)}`
       };
     };
 
@@ -5338,13 +5478,12 @@
       let anchorDate = new Date();
       let warning = "";
       let statementConfigError = false;
+      let statement = null;
       const selectedCard = cards.find((c) => c.id === cardFilter);
 
       if(historyPeriodMode === "statement"){
         if(cardFilter === "all"){
           warning = "Selecciona una tarjeta para ver su estado de cuenta";
-          historyPeriodMode = "month";
-          if(modeEl) modeEl.value = "month";
         }else{
           const hasCutDay = Number.isFinite(Number(selectedCard?.cutDay));
           if(!selectedCard || !hasCutDay){
@@ -5352,9 +5491,18 @@
             statementConfigError = true;
           }else{
             const monthRange = getMonthRange(dateFilter === "all" ? getPeriodKeyFromDate(new Date()) : dateFilter);
-            anchorDate = new Date(monthRange.endExclusive.getTime() - 1);
-            range = getStatementRange(anchorDate, Number(selectedCard.cutDay));
+            anchorDate = new Date(monthRange.startDate);
+            range = getStatementRange(anchorDate, Number(selectedCard.cutDay), Number(selectedCard?.payDay || 1), abonosMode);
             anchorDate = range.endDate;
+            statement = {
+              statementStart: range.startDate,
+              statementEndInclusive: range.endDate,
+              statementEndExclusive: range.endExclusive,
+              abonosStart: range.abonosWindow.abonosStart,
+              abonosEndExclusive: range.abonosWindow.abonosEndExclusive,
+              abonosLabel: range.abonosWindow.label,
+              mode: abonosMode
+            };
           }
         }
       }
@@ -5364,7 +5512,7 @@
         anchorDate = new Date(range.endExclusive.getTime() - 1);
       }
 
-      return { mode: historyPeriodMode, dateFilter, cardFilter, range, anchorDate, warning, selectedCard, statementConfigError };
+      return { mode: historyPeriodMode, dateFilter, cardFilter, range, anchorDate, warning, selectedCard, statementConfigError, statement };
     };
 
     const renderTimeline = (grouped = [], anchorDate = new Date()) => grouped.map((group) => `
@@ -5429,32 +5577,28 @@
       return true;
     };
 
-    const computeHistoryPeriodTotals = (items = [], anchorDate = new Date()) => {
-      let gastosTotal = 0;
-      let abonosTotal = 0;
-      items.forEach((item) => {
-        const amount = getMsiPaymentDetails(item, anchorDate).amount;
-        const isIncome = item?.type === "income" || item?.type === "payment";
-        if(isIncome) abonosTotal += amount;
-        else gastosTotal += amount;
-      });
+    const computeHistoryPeriodTotals = ({ compras = [], abonos = [] } = {}, anchorDate = new Date()) => {
+      const gastosTotal = round2(compras.reduce((acc, item) => acc + getMsiPaymentDetails(item, anchorDate).amount, 0));
+      const abonosTotal = round2(abonos.reduce((acc, item) => acc + getMsiPaymentDetails(item, anchorDate).amount, 0));
       return {
-        gastosTotal: round2(gastosTotal),
-        abonosTotal: round2(abonosTotal),
-        neto: round2(abonosTotal - gastosTotal),
-        movimientosCount: items.length
+        gastosTotal,
+        abonosTotal,
+        saldoEstimado: round2(gastosTotal - abonosTotal),
+        movimientosCount: compras.length + abonos.length
       };
     };
 
-    const renderHistoryPeriodTotals = (totals) => {
+    const renderHistoryPeriodTotals = (totals, context) => {
       const box = document.getElementById("hist-period-totals");
       if(!box) return;
+      const isStatement = context?.mode === "statement";
+      const abonosLabel = isStatement && context?.statement?.mode === "cashflow_ciclo" ? "Cashflow" : "Abonos";
       box.innerHTML = `
         <div class="fw-bold mb-2">Totales del periodo</div>
         <div class="d-flex flex-wrap gap-3 small">
-          <span>Gastos: <strong class="text-danger sensitive-data">-${formatMoney(totals.gastosTotal)}</strong></span>
-          <span>Abonos: <strong class="text-success sensitive-data">+${formatMoney(totals.abonosTotal)}</strong></span>
-          <span>Neto: <strong class="${totals.neto >= 0 ? "text-success" : "text-danger"} sensitive-data">${totals.neto >= 0 ? "+" : "-"}${formatMoney(Math.abs(totals.neto))}</strong></span>
+          <span>Compras ciclo: <strong class="text-danger sensitive-data">-${formatMoney(totals.gastosTotal)}</strong></span>
+          <span>${abonosLabel}: <strong class="text-success sensitive-data">+${formatMoney(totals.abonosTotal)}</strong></span>
+          <span>Saldo estimado: <strong class="${totals.saldoEstimado <= 0 ? "text-success" : "text-danger"} sensitive-data">${totals.saldoEstimado <= 0 ? "-" : ""}${formatMoney(Math.abs(totals.saldoEstimado))}</strong></span>
           <span>#Movimientos: <strong>${totals.movimientosCount}</strong></span>
         </div>
       `;
@@ -5467,35 +5611,50 @@
       const context = getHistoryContext();
 
       const scopedTrans = FEATURES.coupleMode ? applyScopeFilter(trans, getActiveScopeFilter()) : trans;
-      return {
-        context,
-        items: scopedTrans.filter(t => {
-          const matchesText =
-            (t.concept || "").toLowerCase().includes(term) ||
-            (t.cardName || "").toLowerCase().includes(term) ||
-            (t.category || "").toLowerCase().includes(term);
-
-          let matchesDate = true;
-          if(context.range){
-            const d = toDate(t.date);
-            matchesDate = d >= context.range.startDate && d < context.range.endExclusive;
-          }
-
-          let matchesCard = true;
-          if(context.mode === "statement"){
-            matchesCard = context.cardFilter !== "all" && t.cardId === context.cardFilter;
-          }else if (context.cardFilter !== 'all'){
-            matchesCard = (t.cardId === context.cardFilter);
-          }
-
-          let matchesCat = true;
-          if (catFilter !== 'all') matchesCat = (t.category === catFilter);
-
-          const matchesMsi = matchesHistoryMsiFilter(t, msiFilter);
-
-          return matchesText && matchesDate && matchesCard && matchesCat && matchesMsi;
-        })
+      if(context.mode === "statement" && (context.warning || !context.statement)){
+        return { context, compras: [], abonos: [] };
+      }
+      const baseMatches = (t) => {
+        const matchesText =
+          (t.concept || "").toLowerCase().includes(term) ||
+          (t.cardName || "").toLowerCase().includes(term) ||
+          (t.category || "").toLowerCase().includes(term);
+        const matchesCat = catFilter === 'all' ? true : (t.category === catFilter);
+        return matchesText && matchesCat;
       };
+
+      if(context.mode === "statement" && context.statement){
+        const compras = [];
+        const abonos = [];
+        scopedTrans.forEach((t) => {
+          if(t.cardId !== context.cardFilter) return;
+          if(!baseMatches(t)) return;
+          const d = toDate(t.date);
+          const isIncome = t?.type === "income" || t?.type === "payment";
+          if(!isIncome){
+            if(!matchesHistoryMsiFilter(t, msiFilter)) return;
+            if(d >= context.statement.statementStart && d < context.statement.statementEndExclusive) compras.push(t);
+            return;
+          }
+          if(d >= context.statement.abonosStart && d < context.statement.abonosEndExclusive) abonos.push(t);
+        });
+        return { context, compras, abonos };
+      }
+
+      const items = scopedTrans.filter(t => {
+        if(!baseMatches(t)) return false;
+        let matchesDate = true;
+        if(context.range){
+          const d = toDate(t.date);
+          matchesDate = d >= context.range.startDate && d < context.range.endExclusive;
+        }
+
+        let matchesCard = true;
+        if(context.cardFilter !== 'all') matchesCard = (t.cardId === context.cardFilter);
+        const matchesMsi = matchesHistoryMsiFilter(t, msiFilter);
+        return matchesDate && matchesCard && matchesMsi;
+      });
+      return { context, compras: items.filter((t) => t.type === "expense"), abonos: items.filter((t) => t.type === "income" || t.type === "payment") };
     };
 
     window.renderHistory = () => {
@@ -5504,31 +5663,45 @@
 
       if(!list) return;
       list.innerHTML = '';
+      syncAbonosModeUI();
 
-      const { context, items } = getHistoryFilteredTransactions();
+      const { context, compras, abonos } = getHistoryFilteredTransactions();
       if(hint){
         hint.textContent = context.warning || "";
         hint.classList.toggle("d-none", !context.warning);
       }
 
-      const totals = computeHistoryPeriodTotals(items, context.anchorDate);
-      renderHistoryPeriodTotals(totals);
+      const totals = computeHistoryPeriodTotals({ compras, abonos }, context.anchorDate);
+      renderHistoryPeriodTotals(totals, context);
 
-      if (context.warning) {
+      if (context.warning || (!compras.length && !abonos.length)) {
         list.innerHTML = '<div class="text-center text-muted mt-3">No se encontraron resultados</div>';
         return;
       }
 
-      if (items.length === 0) {
-        list.innerHTML = '<div class="text-center text-muted mt-3">No se encontraron resultados</div>';
-        return;
-      }
+      const comprasGrouped = groupExpensesByDay(compras);
+      const abonosGrouped = groupExpensesByDay(abonos);
+      const statementRangeLabel = context.statement
+        ? `<div class="small text-muted mb-2">Compras del ciclo: ${formatShortDate(context.statement.statementStart)} → ${formatShortDate(context.statement.statementEndInclusive)}</div>`
+        : "";
+      const abonosRangeLabel = context.statement
+        ? `<div class="small text-muted mb-2">${context.statement.abonosLabel}</div>`
+        : "";
 
-      const grouped = groupExpensesByDay(items);
-      list.innerHTML = renderTimeline(grouped, context.anchorDate);
+      list.innerHTML = `
+        <div class="card-box p-3 mb-3">
+          <div class="fw-bold mb-2">Compras del ciclo</div>
+          ${statementRangeLabel}
+          ${compras.length ? renderTimeline(comprasGrouped, context.anchorDate) : '<div class="text-muted small">Sin compras en el ciclo.</div>'}
+        </div>
+        <details class="card-box p-3">
+          <summary class="fw-bold" style="cursor:pointer;">Abonos (${abonos.length})</summary>
+          <div class="mt-2">${abonosRangeLabel}${abonos.length ? renderTimeline(abonosGrouped, context.anchorDate) : '<div class="text-muted small">Sin abonos en este rango.</div>'}</div>
+        </details>
+      `;
       setupHistoryInteractions();
 
-      if (privacy) togglePrivacy();
+      if(privacy) togglePrivacy();
     };
 
     const closeAllTransMenus = () => {
