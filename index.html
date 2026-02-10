@@ -1296,6 +1296,8 @@
     };
 
     // Presets
+    const ALLOWED_APP_OWNERS = ["haru", "yair"];
+
     const PRESET_CARDS = [
       { name: "Like u", owner: "yair" },
       { name: "Free", owner: "yair" },
@@ -1305,8 +1307,7 @@
       { name: "Simplicity", owner: "haru" },
       { name: "BBVA", owner: "haru" },
       { name: "Liverpool", owner: "haru" },
-      { name: "Palacio", owner: "haru" },
-      { name: "Pago c/ Transferencia", owner: "both" }
+      { name: "Palacio", owner: "haru" }
     ];
 
     // Owner
@@ -3700,7 +3701,7 @@
           if(existingByOwner[owner]) existingByOwner[owner].add(name);
         });
 
-        const need=PRESET_CARDS.filter(c=>c.owner===OWNER || c.owner==="both");
+        const need=PRESET_CARDS.filter(c=>c.owner===OWNER && ALLOWED_APP_OWNERS.includes(c.owner));
         for(const c of need){
           const nm=c.name.toLowerCase();
           const bucket=existingByOwner[c.owner]||new Set();
@@ -5547,6 +5548,10 @@
 
     window.editCard=(id)=>{
       const c=cards.find(x=>x.id===id); if(!c) return;
+      if(!ALLOWED_APP_OWNERS.includes(c.owner)){
+        showToast("Esta tarjeta no se puede editar por restricciones de owner.", { tone: "warning", duration: 2800 });
+        return;
+      }
       document.getElementById('c-id').value=id;
       document.getElementById('c-name').value=c.name;
       document.getElementById('c-cut').value=c.cutDay;
@@ -5603,6 +5608,7 @@
 
       try{
         await addDoc(collection(db,"goals"), {
+          owner: OWNER,
           name,
           targetAmount,
           status: "active",

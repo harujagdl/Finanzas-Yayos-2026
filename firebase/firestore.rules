@@ -2,7 +2,7 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function allowedOwners() {
-      return ["haru", "yair", "both"];
+      return ["haru", "yair"];
     }
 
     function isAllowedOwner(owner) {
@@ -22,42 +22,70 @@ service cloud.firestore {
         );
     }
 
+    function isCardPayload() {
+      return request.resource.data.name is string
+        && request.resource.data.balance is number;
+    }
+
+    function isExpensePayload() {
+      return request.resource.data.amount is number
+        && request.resource.data.type in ["expense", "income"]
+        && request.resource.data.date is timestamp;
+    }
+
+    function isGoalPayload() {
+      return request.resource.data.name is string
+        && request.resource.data.targetAmount is number;
+    }
+
+    function canCreateWithAllowedOwner() {
+      return isAllowedOwner(request.resource.data.owner);
+    }
+
+    function canUpdateWithImmutableAllowedOwner() {
+      return isAllowedOwner(resource.data.owner)
+        && isAllowedOwner(request.resource.data.owner)
+        && hasImmutableOwner();
+    }
+
+    function canDeleteWithAllowedOwner() {
+      return isAllowedOwner(resource.data.owner);
+    }
+
     match /cards/{docId} {
       allow read: if true;
-      allow create: if isAllowedOwner(request.resource.data.owner);
-      allow update: if isAllowedOwner(resource.data.owner)
-                    && hasImmutableOwner()
-                    && isAllowedOwner(request.resource.data.owner);
-      allow delete: if isAllowedOwner(resource.data.owner);
+      allow create: if canCreateWithAllowedOwner()
+                    && isCardPayload();
+      allow update: if canUpdateWithImmutableAllowedOwner()
+                    && isCardPayload();
+      allow delete: if canDeleteWithAllowedOwner();
     }
 
     match /expenses/{docId} {
       allow read: if true;
-      allow create: if isAllowedOwner(request.resource.data.owner);
-      allow update: if isAllowedOwner(resource.data.owner)
-                    && hasImmutableOwner()
-                    && isAllowedOwner(request.resource.data.owner);
-      allow delete: if isAllowedOwner(resource.data.owner);
+      allow create: if canCreateWithAllowedOwner()
+                    && isExpensePayload();
+      allow update: if canUpdateWithImmutableAllowedOwner()
+                    && isExpensePayload();
+      allow delete: if canDeleteWithAllowedOwner();
     }
 
     match /goals/{docId} {
       allow read: if true;
-      allow create: if isAllowedOwner(request.resource.data.owner);
-      allow update: if isAllowedOwner(resource.data.owner)
-                    && hasImmutableOwner()
-                    && isAllowedOwner(request.resource.data.owner);
-      allow delete: if isAllowedOwner(resource.data.owner);
+      allow create: if canCreateWithAllowedOwner()
+                    && isGoalPayload();
+      allow update: if canUpdateWithImmutableAllowedOwner()
+                    && isGoalPayload();
+      allow delete: if canDeleteWithAllowedOwner();
     }
 
     match /monthly_summaries/{docId} {
       allow read: if true;
-      allow create: if isAllowedOwner(request.resource.data.owner)
+      allow create: if canCreateWithAllowedOwner()
                     && isMonthlySummaryPayload();
-      allow update: if isAllowedOwner(resource.data.owner)
-                    && hasImmutableOwner()
-                    && isAllowedOwner(request.resource.data.owner)
+      allow update: if canUpdateWithImmutableAllowedOwner()
                     && isMonthlySummaryPayload();
-      allow delete: if isAllowedOwner(resource.data.owner);
+      allow delete: if canDeleteWithAllowedOwner();
     }
 
     match /{document=**} {
