@@ -636,11 +636,26 @@
     </div>
 
     <div class="card-box">
+      <div class="row g-2 mb-3">
+        <div class="col-6">
+          <select id="summary-period-mode" class="form-select" onchange="handleSummaryPeriodModeChange()">
+            <option value="month">Periodo: Mes</option>
+            <option value="statement">Periodo: Estado de cuenta</option>
+          </select>
+        </div>
+        <div class="col-6">
+          <select id="summary-card-filter" class="form-select" onchange="renderSummaryView()">
+            <option value="all">Tarjeta: Todas</option>
+          </select>
+        </div>
+      </div>
+      <div id="summary-period-hint" class="text-muted small mb-2 d-none"></div>
       <div class="d-flex justify-content-between align-items-center mb-2">
         <span class="kpi-label">Mes</span>
         <span class="text-muted small" id="summary-period-label">--</span>
       </div>
       <select id="summary-month-select" class="form-select" onchange="handleSummaryMonthChange()"></select>
+      <div id="summary-statement-meta" class="text-muted small mt-2 d-none"></div>
     </div>
 
     <div class="card-box">
@@ -649,6 +664,7 @@
       </div>
       <div id="summary-kpis" class="summary-kpis"></div>
       <div id="summary-empty" class="text-center text-muted small mt-3 d-none">Sin movimientos en este mes.</div>
+      <div id="summary-estimated-payment" class="mt-3 d-none"></div>
     </div>
 
     <div class="card-box">
@@ -793,6 +809,12 @@
 
     <div class="row g-2 mb-3">
       <div class="col-6">
+        <select id="hist-period-mode" class="form-select" onchange="renderHistory()">
+          <option value="month">Periodo: Mes</option>
+          <option value="statement">Periodo: Estado de cuenta</option>
+        </select>
+      </div>
+      <div class="col-6">
         <select id="hist-month-filter" class="form-select" onchange="renderHistory()">
           <option value="all">Mes: Todo</option>
         </select>
@@ -827,6 +849,9 @@
         </button>
       </div>
     </div>
+
+    <div id="hist-period-hint" class="text-muted small mb-2 d-none"></div>
+    <div id="hist-period-totals" class="card-box p-3 mb-3"></div>
 
     <div id="hist-list"></div>
   </div>
@@ -1396,6 +1421,8 @@
     // MSI state
     let msiChartInstance=null;
     let historyMsiFilter = "all";
+    let historyPeriodMode = "month";
+    let summaryPeriodMode = "month";
 
     const FEATURES = {
       dashboard: true,
@@ -1712,6 +1739,16 @@
     const startOfMonth = (date = new Date()) => {
       const d = toDate(date);
       return new Date(d.getFullYear(), d.getMonth(), 1, 0, 0, 0, 0);
+    };
+
+    const startMonthKey = (date = new Date()) => {
+      const d = toDate(date);
+      return { y: d.getFullYear(), m: d.getMonth() };
+    };
+
+    const clampDay = (year, monthIndex, day) => {
+      const maxDay = new Date(year, monthIndex + 1, 0).getDate();
+      return Math.min(Math.max(Number(day) || 1, 1), maxDay);
     };
 
     const endOfMonth = (date = new Date()) => {
@@ -3036,10 +3073,10 @@
     };
 
     const filterTransactionsByPeriod = (items = [], periodKey) => {
-      const { startDate, endDateExclusive } = getMonthRange(periodKey);
+      const { startDate, endExclusive } = getMonthRange(periodKey);
       return items.filter((item) => {
         const d = toDate(item?.date);
-        return d >= startDate && d < endDateExclusive;
+        return d >= startDate && d < endExclusive;
       });
     };
 
@@ -3052,11 +3089,11 @@
       });
     };
 
-    const buildMonthlyCardSummary = (items = [], { owner, periodKey } = {}) => {
+    const buildMonthlyCardSummary = (items = [], { owner, periodKey, anchorDate = new Date() } = {}) => {
       const totals = { expense: 0, income: 0, net: 0 };
       const byCard = {};
       items.forEach((item) => {
-        const amount = safeNumber(item?.amount);
+        const amount = getMsiPaymentDetails(item, anchorDate).amount;
         const type = item?.type;
         const isIncome = type === "income" || type === "payment";
         if(isIncome) totals.income += amount;
@@ -3090,127 +3127,66 @@
       };
     };
 
-    const fetchMonthlyCardSummaryDoc = async (owner, periodKey) => {
-      const o = getActiveOwner(owner);
-      const docRef = doc(db, MONTHLY_SUMMARY_COLLECTION, buildMonthlyCardSummaryId(o, periodKey));
-      const snap = await getDoc(docRef);
-      if(!snap.exists()) return null;
-      const data = snap.data();
-      if(!data?.totals || !data?.byCard) return null;
-      return data;
-    };
+    const getSummaryContext = () => {
+      const modeEl = document.getElementById("summary-period-mode");
+      const cardEl = document.getElementById("summary-card-filter");
+      const statementOption = modeEl?.querySelector('option[value="statement"]');
+      if(statementOption) statementOption.disabled = (cardEl?.value || "all") === "all";
+      const monthEl = document.getElementById("summary-month-select");
+      summaryPeriodMode = modeEl?.value || summaryPeriodMode || "month";
+      const selectedCardId = cardEl?.value || "all";
+      const periodKey = monthEl?.value || summaryState.selectedPeriodKey || getPeriodKeyFromDate(new Date());
+      const monthRange = getMonthRange(periodKey);
+      const monthAnchor = new Date(monthRange.endExclusive.getTime() - 1);
+      let range = monthRange;
+      let anchorDate = monthAnchor;
+      let warning = "";
+      let statementMeta = "";
 
-    const saveMonthlyCardSummary = async (summary) => {
-      if(!summary) return null;
-      const owner = summary.owner;
-      if(!isValidAppOwner(owner)){
-        console.warn("Se omitió guardar resumen por tarjeta: owner inválido.", owner);
-        return summary;
+      if(summaryPeriodMode === "statement"){
+        if(selectedCardId === "all"){
+          warning = "Selecciona una tarjeta para ver su estado de cuenta";
+          summaryPeriodMode = "month";
+          if(modeEl) modeEl.value = "month";
+        }else{
+          const selectedCard = cards.find((c) => c.id === selectedCardId);
+          range = getStatementRange(monthAnchor, Number(selectedCard?.cutDay || 1));
+          anchorDate = range.endDate;
+          statementMeta = `Corta día ${selectedCard?.cutDay || 1} • Pagar antes del ${selectedCard?.payDay || 1}`;
+        }
       }
-      if(!summary.periodKey){
-        console.warn("Se omitió guardar resumen por tarjeta: periodKey inválido.", summary);
-        return summary;
-      }
-      const id = buildMonthlyCardSummaryId(summary.owner, summary.periodKey);
-      const payload = {
-        owner,
-        periodKey: summary.periodKey,
-        totals: {
-          expense: safeNumber(summary?.totals?.expense),
-          income: safeNumber(summary?.totals?.income),
-          net: safeNumber(summary?.totals?.net)
-        },
-        byCard: summary.byCard || {},
-        counts: summary.counts || { txCount: 0 },
-        updatedAt: serverTimestamp()
-      };
-      const signature = JSON.stringify({
-        owner,
-        periodKey: payload.periodKey,
-        totals: payload.totals,
-        byCard: payload.byCard,
-        counts: payload.counts
-      });
-      return saveSummaryWithLock({
-        id,
-        signature,
-        payload,
-        onPermissionMessage: "No se pudo guardar resumen por tarjeta (permissions).",
-        onErrorMessage: "No se pudo guardar resumen por tarjeta."
-      });
+
+      return { mode: summaryPeriodMode, selectedCardId, periodKey, range, anchorDate, warning, statementMeta };
     };
 
-    const renderSummaryTotals = (summary) => {
-      const kpis = document.getElementById("summary-kpis");
-      if(!kpis) return;
-      const totals = summary?.totals || { expense: 0, income: 0, net: 0 };
-      const netClass = totals.net >= 0 ? "text-success" : "text-danger";
-      kpis.innerHTML = `
-        <div class="summary-kpi">
-          <div class="summary-kpi-label">Gastos</div>
-          <div class="summary-kpi-value text-danger sensitive-data">-${formatMoney(totals.expense)}</div>
-        </div>
-        <div class="summary-kpi">
-          <div class="summary-kpi-label">Ingresos / Abonos</div>
-          <div class="summary-kpi-value text-success sensitive-data">+${formatMoney(totals.income)}</div>
-        </div>
-        <div class="summary-kpi">
-          <div class="summary-kpi-label">Neto</div>
-          <div class="summary-kpi-value ${netClass} sensitive-data">${totals.net >= 0 ? "+" : "-"}${formatMoney(Math.abs(totals.net))}</div>
-        </div>
-      `;
-    };
-
-    const renderSummaryCards = (summary) => {
-      const list = document.getElementById("summary-cards-list");
-      const count = document.getElementById("summary-card-count");
-      const empty = document.getElementById("summary-empty");
-      if(!list || !count || !empty) return;
-
-      const txCount = summary?.counts?.txCount || 0;
-      const hasMovements = txCount > 0;
-      empty.classList.toggle("d-none", hasMovements);
-
-      if(!hasMovements){
-        list.innerHTML = '<div class="text-muted small">Sin movimientos en este mes.</div>';
-        count.textContent = "0 tarjetas";
+    const renderSummaryEstimatedPayment = (summary, mode) => {
+      const wrap = document.getElementById("summary-estimated-payment");
+      if(!wrap) return;
+      if(mode !== "statement"){
+        wrap.classList.add("d-none");
+        wrap.innerHTML = "";
         return;
       }
-
-      const cards = Object.values(summary?.byCard || {})
-        .map((card) => ({
-          ...card,
-          expense: safeNumber(card.expense),
-          income: safeNumber(card.income),
-          net: safeNumber(card.net)
-        }))
-        .sort((a, b) => b.expense - a.expense);
-
-      count.textContent = `${cards.length} ${cards.length === 1 ? "tarjeta" : "tarjetas"}`;
-
-      list.innerHTML = cards.map((card) => {
-        const netClass = card.net >= 0 ? "text-success" : "text-danger";
-        return `
-          <div class="list-item summary-card-item">
-            <div class="d-flex justify-content-between align-items-center">
-              <div class="fw-bold">${card.cardName}</div>
-              <div class="small ${netClass}">
-                Neto: <span class="sensitive-data">${card.net >= 0 ? "+" : "-"}${formatMoney(Math.abs(card.net))}</span>
-              </div>
-            </div>
-            <div class="d-flex justify-content-between small text-muted">
-              <span>Gastos: <span class="text-danger sensitive-data">-${formatMoney(card.expense)}</span></span>
-              <span>Ingresos / Abonos: <span class="text-success sensitive-data">+${formatMoney(card.income)}</span></span>
-            </div>
-          </div>
-        `;
-      }).join("");
+      const gastosPeriodo = safeNumber(summary?.totals?.expense);
+      const abonosPeriodo = safeNumber(summary?.totals?.income);
+      const pagoEstimado = Math.max(0, round2(gastosPeriodo - abonosPeriodo));
+      const badge = pagoEstimado > 0
+        ? `<span class="badge-status bg-warning-light">Te faltan ${formatMoney(pagoEstimado)} para quedar tablas</span>`
+        : `<span class="badge-status bg-success-light">Vas al día en este estado de cuenta</span>`;
+      wrap.classList.remove("d-none");
+      wrap.innerHTML = `
+        <div class="small fw-bold mb-1">Pago estimado a cubrir</div>
+        <div class="small text-muted mb-1">Métrica interna del ciclo (no es pago mínimo bancario).</div>
+        ${badge}
+      `;
     };
 
     const renderSummaryView = async ({ force = false, periodKey } = {}) => {
       const select = document.getElementById("summary-month-select");
       const status = document.getElementById("summary-status");
       const periodLabel = document.getElementById("summary-period-label");
+      const hint = document.getElementById("summary-period-hint");
+      const meta = document.getElementById("summary-statement-meta");
       if(!select || !status || !periodLabel) return;
 
       status.textContent = "Cargando...";
@@ -3251,20 +3227,37 @@
           select.appendChild(opt);
         });
         select.value = currentSelected;
-        periodLabel.textContent = formatPeriodLabel(currentSelected);
 
         const scopeFilter = getActiveScopeFilter();
-        const monthItems = getMonthlyCardSummaryItems(currentSelected, { owner, scopeFilter });
-        const summary = buildMonthlyCardSummary(monthItems, { owner, periodKey: currentSelected });
-        if(summary?.counts?.txCount){
-          saveMonthlyCardSummary(summary).catch((err) => {
-            console.warn("No se pudo guardar resumen mensual.", err);
-          });
+        const scoped = FEATURES.coupleMode ? applyScopeFilter(trans, scopeFilter) : trans;
+        const context = getSummaryContext();
+        if(context.mode === "month"){
+          periodLabel.textContent = formatPeriodLabel(currentSelected);
+        }else{
+          periodLabel.textContent = context.range?.label || "Estado de cuenta";
         }
 
+        if(hint){
+          hint.textContent = context.warning || "";
+          hint.classList.toggle("d-none", !context.warning);
+        }
+        if(meta){
+          meta.textContent = context.statementMeta || "";
+          meta.classList.toggle("d-none", !context.statementMeta);
+        }
+
+        const itemsByOwner = scoped.filter((item) => !item?.owner || item.owner === owner);
+        const ranged = itemsByOwner.filter((item) => {
+          const d = toDate(item?.date);
+          return context.range ? (d >= context.range.startDate && d < context.range.endExclusive) : true;
+        });
+        const filtered = context.selectedCardId === "all" ? ranged : ranged.filter((item) => item?.cardId === context.selectedCardId);
+
+        const summary = buildMonthlyCardSummary(filtered, { owner, periodKey: currentSelected, anchorDate: context.anchorDate });
         summaryState.cache.set(getSummaryCacheKey(owner, currentSelected, scopeFilter), summary);
         renderSummaryTotals(summary);
         renderSummaryCards(summary);
+        renderSummaryEstimatedPayment(summary, context.mode);
         if(privacy) togglePrivacy();
 
         status.textContent = "";
@@ -3280,6 +3273,12 @@
       if(!select) return;
       summaryState.selectedPeriodKey = select.value;
       renderSummaryView({ periodKey: select.value });
+    };
+
+    window.handleSummaryPeriodModeChange = () => {
+      const modeEl = document.getElementById("summary-period-mode");
+      summaryPeriodMode = modeEl?.value || "month";
+      renderSummaryView();
     };
 
     const invalidateMonthlyCardSummaryCacheForOwner = (owner) => {
@@ -3891,6 +3890,20 @@
 
       selCard.value = [...selCard.options].some(o=>o.value===prevCard) ? prevCard : "all";
       selCat.value  = [...selCat.options].some(o=>o.value===prevCat) ? prevCat : "all";
+
+
+      const summaryCard = document.getElementById('summary-card-filter');
+      if(summaryCard){
+        const prevSummaryCard = summaryCard.value || "all";
+        summaryCard.innerHTML = `<option value="all">Tarjeta: Todas</option>`;
+        sortedCards.forEach((c) => {
+          const opt = document.createElement('option');
+          opt.value = c.id;
+          opt.textContent = c.owner === "both" ? `${c.name} (Compartida)` : c.name;
+          summaryCard.appendChild(opt);
+        });
+        summaryCard.value = [...summaryCard.options].some((o) => o.value === prevSummaryCard) ? prevSummaryCard : "all";
+      }
     }
 
     window.clearHistFilters = ()=>{
@@ -3899,12 +3912,15 @@
       const g = document.getElementById('hist-cat-filter');
       const f = document.getElementById('hist-msi-filter');
       const s = document.getElementById('search-input');
+      const p = document.getElementById('hist-period-mode');
 
       if(m) m.value="all";
       if(c) c.value="all";
       if(g) g.value="all";
       if(f) f.value="all";
       if(s) s.value="";
+      if(p) p.value="month";
+      historyPeriodMode = "month";
       historyMsiFilter = "all";
 
       renderHistory();
@@ -4779,16 +4795,45 @@
     function getMonthRange(periodKey){
       if(!periodKey){
         const now = new Date();
+        const label = now.toLocaleDateString("es-MX", { month: "long", year: "numeric" });
         return {
           startDate: startOfMonth(now),
-          endDateExclusive: new Date(now.getFullYear(), now.getMonth() + 1, 1, 0, 0, 0, 0)
+          endExclusive: new Date(now.getFullYear(), now.getMonth() + 1, 1, 0, 0, 0, 0),
+          label
         };
       }
       const [year, month] = String(periodKey).split("-").map(Number);
       const startDate = new Date(year, (month || 1) - 1, 1, 0, 0, 0, 0);
-      const endDateExclusive = new Date(year, month || 1, 1, 0, 0, 0, 0);
-      return { startDate, endDateExclusive };
+      const endExclusive = new Date(year, month || 1, 1, 0, 0, 0, 0);
+      const label = startDate.toLocaleDateString("es-MX", { month: "long", year: "numeric" });
+      return { startDate, endExclusive, label };
     }
+
+    const formatShortDate = (date) => toDate(date).toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" });
+
+    const getStatementRange = (anchorDate, cutDay) => {
+      const anchor = toDate(anchorDate);
+      const year = anchor.getFullYear();
+      const month = anchor.getMonth();
+      const day = Number(cutDay) || 1;
+      const cycleCutThisMonth = new Date(year, month, clampDay(year, month, day), 12, 0, 0, 0);
+      const endDate = anchor <= cycleCutThisMonth
+        ? cycleCutThisMonth
+        : new Date(year, month + 1, clampDay(year, month + 1, day), 12, 0, 0, 0);
+      const prevCutDate = new Date(endDate.getFullYear(), endDate.getMonth() - 1, clampDay(endDate.getFullYear(), endDate.getMonth() - 1, day), 12, 0, 0, 0);
+      const startDate = new Date(prevCutDate);
+      startDate.setDate(startDate.getDate() + 1);
+      startDate.setHours(0, 0, 0, 0);
+      const endExclusive = new Date(endDate);
+      endExclusive.setDate(endExclusive.getDate() + 1);
+      endExclusive.setHours(0, 0, 0, 0);
+      return {
+        startDate,
+        endDate,
+        endExclusive,
+        label: `Estado de cuenta: ${formatShortDate(startDate)} → ${formatShortDate(endDate)}`
+      };
+    };
 
     function getDateKey(date){
       const d = toDate(date);
@@ -5165,23 +5210,65 @@
       showToast("Marcado como revisado ✅", { tone: "success", duration: 1800 });
     };
 
-    function startOfMonthKey(date){
-      return { y: date.getFullYear(), m: date.getMonth() };
-    }
-
     function monthsBetweenYM(y1, m1, y2, m2){
       return (y2 - y1) * 12 + (m2 - m1);
     }
 
-    const getHistoryAnchorDate = () => {
+    const getMsiPaymentDetails = (transaction, anchorDate = new Date()) => {
+      const months = Number(transaction?.msiMonths || 0);
+      const isMsiExpense = transaction?.type === "expense" && transaction?.isMsi === true && months > 0;
+      const baseAmount = safeNumber(transaction?.amount);
+      if(!isMsiExpense){
+        return { amount: baseAmount, subtitle: "" };
+      }
+
+      const total = transaction?.msiTotal != null ? safeNumber(transaction.msiTotal) : null;
+      const monthlyPayment = total != null ? round2(total / months) : round2(baseAmount / months);
+      const startRaw = transaction?.msiStart?.toDate ? transaction.msiStart.toDate() : transaction?.msiStart;
+      const startDate = startRaw ? toDate(startRaw) : toDate(transaction?.date);
+      const startKey = startMonthKey(startDate);
+      const anchorKey = startMonthKey(anchorDate);
+      let installmentNumber = monthsBetweenYM(startKey.y, startKey.m, anchorKey.y, anchorKey.m) + 1;
+      installmentNumber = Math.min(Math.max(installmentNumber, 1), months);
+      const totalLabel = total != null ? formatMoney(total) : formatMoney(baseAmount);
+      return {
+        amount: monthlyPayment,
+        subtitle: `MSI ${months} • Pago ${installmentNumber}/${months} • Total ${totalLabel}`
+      };
+    };
+
+    const getHistoryContext = () => {
       const dateFilter = document.getElementById('hist-month-filter')?.value || "all";
-      if(dateFilter !== 'all'){
-        const [y, m] = dateFilter.split('-').map(Number);
-        if(Number.isFinite(y) && Number.isFinite(m)){
-          return new Date(y, m - 1, 1, 12, 0, 0, 0);
+      const cardFilter = document.getElementById('hist-card-filter')?.value || "all";
+      const modeEl = document.getElementById('hist-period-mode');
+      const statementOption = modeEl?.querySelector('option[value="statement"]');
+      if(statementOption) statementOption.disabled = cardFilter === "all";
+      historyPeriodMode = modeEl?.value || historyPeriodMode || "month";
+
+      let range = null;
+      let anchorDate = new Date();
+      let warning = "";
+      const selectedCard = cards.find((c) => c.id === cardFilter);
+
+      if(historyPeriodMode === "statement"){
+        if(cardFilter === "all"){
+          warning = "Selecciona una tarjeta para ver su estado de cuenta";
+          historyPeriodMode = "month";
+          if(modeEl) modeEl.value = "month";
+        }else{
+          const monthRange = getMonthRange(dateFilter === "all" ? getPeriodKeyFromDate(new Date()) : dateFilter);
+          anchorDate = new Date(monthRange.endExclusive.getTime() - 1);
+          range = getStatementRange(anchorDate, Number(selectedCard?.cutDay || 1));
+          anchorDate = range.endDate;
         }
       }
-      return new Date();
+
+      if(historyPeriodMode !== "statement" && dateFilter !== "all"){
+        range = getMonthRange(dateFilter);
+        anchorDate = new Date(range.endExclusive.getTime() - 1);
+      }
+
+      return { mode: historyPeriodMode, dateFilter, cardFilter, range, anchorDate, warning, selectedCard };
     };
 
     const renderTimeline = (grouped = [], anchorDate = new Date()) => grouped.map((group) => `
@@ -5199,33 +5286,7 @@
             const tagMsi = isMsiExpense ? `<span class="badge-status bg-success-light ms-2">MSI</span>` : "";
             const d = toDate(t.date);
             const reviewedClass = isTransactionReviewed(t.id) ? "reviewed" : "";
-            let displayAmount = t.amount;
-            let msiSecondary = "";
-
-            if(isMsiExpense){
-              const months = Number(t.msiMonths || 0);
-              const total = t.msiTotal != null ? Number(t.msiTotal) : null;
-              const legacyTotal = Number(t.amount || 0);
-              const isLegacy = total == null && months > 0;
-
-              if(isLegacy){
-                const monthlyLegacy = months > 0 ? round2(legacyTotal / months) : legacyTotal;
-                displayAmount = monthlyLegacy;
-              }else{
-                displayAmount = Number(t.amount || 0);
-              }
-
-              if(months > 0){
-                const startRaw = t.msiStart?.toDate ? t.msiStart.toDate() : t.msiStart;
-                const startDate = startRaw ? toDate(startRaw) : toDate(t.date);
-                const startKey = startOfMonthKey(startDate);
-                const anchorKey = startOfMonthKey(anchorDate);
-                let installmentNumber = monthsBetweenYM(startKey.y, startKey.m, anchorKey.y, anchorKey.m) + 1;
-                installmentNumber = Math.min(Math.max(installmentNumber, 1), months);
-                const totalLabel = total != null ? formatMoney(total) : formatMoney(legacyTotal);
-                msiSecondary = `MSI ${months} • Pago ${installmentNumber}/${months} • Total ${totalLabel}`;
-              }
-            }
+            const msiDetails = getMsiPaymentDetails(t, anchorDate);
 
             return `
               <div class="list-item swipe-item ${reviewedClass}" data-trans-id="${t.id}">
@@ -5234,11 +5295,11 @@
                   <div>
                     <div class="fw-bold">${t.concept}${tagMsi}</div>
                     <small class="text-muted">${d.toLocaleDateString()} • ${t.cardName} • ${t.category}</small>
-                    ${msiSecondary ? `<div class="text-muted small">${msiSecondary}</div>` : ""}
+                    ${msiDetails.subtitle ? `<div class="text-muted small">${msiDetails.subtitle}</div>` : ""}
                   </div>
                 </div>
                 <div class="d-flex align-items-center gap-2">
-                  <div class="fw-bold ${isExp ? "text-danger" : "text-success"} sensitive-data">${isExp ? "-" : "+"}${formatMoney(displayAmount)}</div>
+                  <div class="fw-bold ${isExp ? "text-danger" : "text-success"} sensitive-data">${isExp ? "-" : "+"}${formatMoney(msiDetails.amount)}</div>
                   <div class="item-actions">
                     <button class="action-kebab" type="button" onclick="toggleTransMenu('${t.id}', event)" aria-label="Acciones">
                       <i class="fas fa-ellipsis-v"></i>
@@ -5272,56 +5333,99 @@
       return true;
     };
 
+    const computePeriodTotals = (items = [], anchorDate = new Date()) => {
+      let gastosTotal = 0;
+      let abonosTotal = 0;
+      items.forEach((item) => {
+        const amount = getMsiPaymentDetails(item, anchorDate).amount;
+        const isIncome = item?.type === "income" || item?.type === "payment";
+        if(isIncome) abonosTotal += amount;
+        else gastosTotal += amount;
+      });
+      return {
+        gastosTotal: round2(gastosTotal),
+        abonosTotal: round2(abonosTotal),
+        neto: round2(abonosTotal - gastosTotal),
+        movimientosCount: items.length
+      };
+    };
+
+    const renderHistoryPeriodTotals = (totals) => {
+      const box = document.getElementById("hist-period-totals");
+      if(!box) return;
+      box.innerHTML = `
+        <div class="fw-bold mb-2">Totales del periodo</div>
+        <div class="d-flex flex-wrap gap-3 small">
+          <span>Gastos: <strong class="text-danger sensitive-data">-${formatMoney(totals.gastosTotal)}</strong></span>
+          <span>Abonos: <strong class="text-success sensitive-data">+${formatMoney(totals.abonosTotal)}</strong></span>
+          <span>Neto: <strong class="${totals.neto >= 0 ? "text-success" : "text-danger"} sensitive-data">${totals.neto >= 0 ? "+" : "-"}${formatMoney(Math.abs(totals.neto))}</strong></span>
+          <span>#Movimientos: <strong>${totals.movimientosCount}</strong></span>
+        </div>
+      `;
+    };
+
     const getHistoryFilteredTransactions = () => {
       const term = (document.getElementById('search-input')?.value || "").toLowerCase();
-
-      const dateFilter = document.getElementById('hist-month-filter')?.value || "all";
-      const cardFilter = document.getElementById('hist-card-filter')?.value || "all";
       const catFilter  = document.getElementById('hist-cat-filter')?.value || "all";
       const msiFilter = getHistoryMsiFilter();
+      const context = getHistoryContext();
 
       const scopedTrans = FEATURES.coupleMode ? applyScopeFilter(trans, getActiveScopeFilter()) : trans;
-      return scopedTrans.filter(t => {
-        const matchesText =
-          (t.concept || "").toLowerCase().includes(term) ||
-          (t.cardName || "").toLowerCase().includes(term) ||
-          (t.category || "").toLowerCase().includes(term);
+      return {
+        context,
+        items: scopedTrans.filter(t => {
+          const matchesText =
+            (t.concept || "").toLowerCase().includes(term) ||
+            (t.cardName || "").toLowerCase().includes(term) ||
+            (t.category || "").toLowerCase().includes(term);
 
-        let matchesDate = true;
-        if (dateFilter !== 'all') {
-          const [y, m] = dateFilter.split('-').map(Number);
-          const d = toDate(t.date);
-          matchesDate = (d.getMonth() + 1 === m && d.getFullYear() === y);
-        }
+          let matchesDate = true;
+          if(context.range){
+            const d = toDate(t.date);
+            matchesDate = d >= context.range.startDate && d < context.range.endExclusive;
+          }
 
-        let matchesCard = true;
-        if (cardFilter !== 'all') matchesCard = (t.cardId === cardFilter);
+          let matchesCard = true;
+          if (context.cardFilter !== 'all') matchesCard = (t.cardId === context.cardFilter);
 
-        let matchesCat = true;
-        if (catFilter !== 'all') matchesCat = (t.category === catFilter);
+          let matchesCat = true;
+          if (catFilter !== 'all') matchesCat = (t.category === catFilter);
 
-        const matchesMsi = matchesHistoryMsiFilter(t, msiFilter);
+          const matchesMsi = matchesHistoryMsiFilter(t, msiFilter);
 
-        return matchesText && matchesDate && matchesCard && matchesCat && matchesMsi;
-      });
+          return matchesText && matchesDate && matchesCard && matchesCat && matchesMsi;
+        })
+      };
     };
 
     window.renderHistory = () => {
       const list = document.getElementById('hist-list');
+      const hint = document.getElementById('hist-period-hint');
 
       if(!list) return;
       list.innerHTML = '';
 
-      const filtered = getHistoryFilteredTransactions();
+      const { context, items } = getHistoryFilteredTransactions();
+      if(hint){
+        hint.textContent = context.warning || "";
+        hint.classList.toggle("d-none", !context.warning);
+      }
 
-      if (filtered.length === 0) {
+      const totals = computePeriodTotals(items, context.anchorDate);
+      renderHistoryPeriodTotals(totals);
+
+      if (context.warning) {
         list.innerHTML = '<div class="text-center text-muted mt-3">No se encontraron resultados</div>';
         return;
       }
 
-      const anchorDate = getHistoryAnchorDate();
-      const grouped = groupExpensesByDay(filtered);
-      list.innerHTML = renderTimeline(grouped, anchorDate);
+      if (items.length === 0) {
+        list.innerHTML = '<div class="text-center text-muted mt-3">No se encontraron resultados</div>';
+        return;
+      }
+
+      const grouped = groupExpensesByDay(items);
+      list.innerHTML = renderTimeline(grouped, context.anchorDate);
       setupHistoryInteractions();
 
       if (privacy) togglePrivacy();
