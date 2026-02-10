@@ -16,10 +16,7 @@ service cloud.firestore {
     function isMonthlySummaryPayload() {
       return request.resource.data.periodKey is string
         && request.resource.data.totals is map
-        && (
-          ("byCard" in request.resource.data && request.resource.data.byCard is map)
-          || ("highlights" in request.resource.data && request.resource.data.highlights is map)
-        );
+        && request.resource.data.byCard is map;
     }
 
     function isCardPayload() {
