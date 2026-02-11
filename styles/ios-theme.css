@@ -1,0 +1,93 @@
+:root{
+  color-scheme: dark light;
+
+  --bg:#0b1220;
+  --surface:rgba(255,255,255,.06);
+  --surface2:rgba(255,255,255,.09);
+  --surface3:rgba(255,255,255,.12);
+  --border:rgba(255,255,255,.10);
+  --border2:rgba(255,255,255,.16);
+
+  --text:rgba(255,255,255,.92);
+  --muted:rgba(255,255,255,.62);
+  --muted2:rgba(255,255,255,.44);
+
+  --accent:#2f7cff;
+  --success:#34c759;
+  --danger:#ff453a;
+  --warning:#ffd60a;
+  --overlay:rgba(2,6,23,.58);
+
+  --shadow:0 10px 30px rgba(0,0,0,.35);
+  --shadow2:0 6px 18px rgba(0,0,0,.25);
+  --ring:0 0 0 3px rgba(47,124,255,.25);
+
+  --r-xl:28px;
+  --r-lg:22px;
+  --r-md:16px;
+  --r-sm:12px;
+
+  --bg-body:var(--bg);
+  --bg-card:var(--surface);
+  --text-main:var(--text);
+  --text-muted:var(--muted);
+  --primary:var(--accent);
+  --border-color:var(--border);
+  --sheet-overlay:var(--overlay);
+}
+
+@media (prefers-color-scheme: light){
+  :root{
+    --bg:#f4f6fb;
+    --surface:#ffffff;
+    --surface2:#f8faff;
+    --surface3:#eef2ff;
+    --border:rgba(15,23,42,.12);
+    --border2:rgba(15,23,42,.18);
+
+    --text:#0f172a;
+    --muted:rgba(15,23,42,.62);
+    --muted2:rgba(15,23,42,.45);
+
+    --overlay:rgba(15,23,42,.32);
+
+    --shadow:0 10px 30px rgba(15,23,42,.12);
+    --shadow2:0 6px 18px rgba(15,23,42,.10);
+  }
+}
+
+:root[data-theme="dark"]{
+  --bg:#0b1220;
+  --surface:rgba(255,255,255,.06);
+  --surface2:rgba(255,255,255,.09);
+  --surface3:rgba(255,255,255,.12);
+  --border:rgba(255,255,255,.10);
+  --border2:rgba(255,255,255,.16);
+
+  --text:rgba(255,255,255,.92);
+  --muted:rgba(255,255,255,.62);
+  --muted2:rgba(255,255,255,.44);
+
+  --overlay:rgba(2,6,23,.58);
+
+  --shadow:0 10px 30px rgba(0,0,0,.35);
+  --shadow2:0 6px 18px rgba(0,0,0,.25);
+}
+
+:root[data-theme="light"]{
+  --bg:#f4f6fb;
+  --surface:#ffffff;
+  --surface2:#f8faff;
+  --surface3:#eef2ff;
+  --border:rgba(15,23,42,.12);
+  --border2:rgba(15,23,42,.18);
+
+  --text:#0f172a;
+  --muted:rgba(15,23,42,.62);
+  --muted2:rgba(15,23,42,.45);
+
+  --overlay:rgba(15,23,42,.32);
+
+  --shadow:0 10px 30px rgba(15,23,42,.12);
+  --shadow2:0 6px 18px rgba(15,23,42,.10);
+}
