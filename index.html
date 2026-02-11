@@ -17,36 +17,14 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800&display=swap" rel="stylesheet" />
+  <link href="./styles/ios-theme.css" rel="stylesheet" />
   <link href="./styles/ios-tokens.css" rel="stylesheet" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
   <style>
-    :root{
-      --bg-body:#f3f4f6; --bg-card:#ffffff; --text-main:#1f2937; --text-muted:#6b7280;
-      --primary:#2563eb; --danger:#ef4444; --success:#10b981; --warning:#f59e0b;
-      --shadow:0 4px 6px -1px rgba(0,0,0,.05); --border-color:#e5e7eb;
-      --sheet-overlay:rgba(15,23,42,.35);
-    }
-    @media (prefers-color-scheme: dark){
-      :root{
-        --bg-body:#111827; --bg-card:#1f2937; --text-main:#f9fafb; --text-muted:#9ca3af;
-        --shadow:0 4px 6px -1px rgba(0,0,0,.3); --border-color:#374151;
-        --sheet-overlay:rgba(2,6,23,.6);
-      }
-    }
-    html.theme-dark{
-      --bg-body:#111827; --bg-card:#1f2937; --text-main:#f9fafb; --text-muted:#9ca3af;
-      --shadow:0 4px 6px -1px rgba(0,0,0,.3); --border-color:#374151;
-      --sheet-overlay:rgba(2,6,23,.6);
-    }
-    html.theme-light{
-      --bg-body:#f3f4f6; --bg-card:#ffffff; --text-main:#1f2937; --text-muted:#6b7280;
-      --shadow:0 4px 6px -1px rgba(0,0,0,.05); --border-color:#e5e7eb;
-      --sheet-overlay:rgba(15,23,42,.35);
-    }
     body{
       background:var(--bg-body); color:var(--text-main); font-family:'Inter',sans-serif;
-      padding-bottom:110px; transition:background .3s; -webkit-tap-highlight-color:transparent;
+      padding-bottom:110px; -webkit-tap-highlight-color:transparent;
     }
     .text-muted{color:var(--text-muted)!important;} .text-dark{color:var(--text-main)!important;}
     h1,h2,h3,h4,h5,h6{color:var(--text-main);}
@@ -59,7 +37,7 @@
     .kpi-label{font-size:.75rem; text-transform:uppercase; letter-spacing:1px; color:var(--text-muted); font-weight:700;}
     .kpi-value{font-size:1.75rem; font-weight:800; letter-spacing:-1px;}
     .smart-banner{
-      background:linear-gradient(135deg,var(--primary),#1e40af); color:#fff; border-radius:16px;
+      background:linear-gradient(135deg,var(--primary),#1e40af); color:var(--text); border-radius:16px;
       padding:20px; margin-bottom:24px; box-shadow:0 10px 15px -3px rgba(37,99,235,.3);
     }
     .list-item{
@@ -284,24 +262,6 @@
       color:var(--text-main)!important; flex-shrink:0;
     }
     .hamburger{display:none;}
-    .mobile-menu-backdrop{
-      position:fixed; inset:0; background:var(--sheet-overlay); backdrop-filter:blur(2px);
-      opacity:0; pointer-events:none; transition:opacity .2s ease; z-index:140;
-    }
-    .mobile-menu-backdrop.is-open{opacity:1; pointer-events:auto;}
-    .mobile-menu-sheet{
-      position:fixed; right:0; top:0; bottom:0; width:min(88vw, 320px);
-      background:var(--bg-card); border-left:1px solid var(--border-color);
-      border-top-left-radius:16px; border-bottom-left-radius:16px;
-      padding:14px; transform:translateX(108%); transition:transform .2s ease;
-      z-index:145; box-shadow:-10px 0 30px rgba(15,23,42,.2);
-      display:flex; flex-direction:column; gap:10px;
-    }
-    .mobile-menu-sheet.is-open{transform:translateX(0);}
-    .mobile-menu-header{display:flex; justify-content:space-between; align-items:center;}
-    .mobile-menu-title{font-size:.95rem; font-weight:800; margin:0;}
-    .mobile-menu-actions{display:flex; flex-direction:column; gap:8px;}
-    .mobile-menu-actions .btn{justify-content:flex-start; text-align:left;}
 
     /* MSI */
     .msi-pill{
@@ -353,20 +313,6 @@
     .timeline-title{font-weight:800;}
     .timeline-subtotal{font-size:.85rem; color:var(--text-muted);}
     .timeline-items .list-item{margin-bottom:8px;}
-    .simulation-box{
-      background:var(--bg-body); border:1px dashed var(--border-color);
-      border-radius:14px; padding:12px;
-    }
-    .simulation-result{
-      background:var(--bg-card); border:1px solid var(--border-color);
-      border-radius:12px; padding:12px; margin-top:12px;
-    }
-    .simulation-result.sim-active{border-color:rgba(37,99,235,.3);}
-    .simulation-label{
-      font-size:.75rem; text-transform:uppercase; letter-spacing:.8px;
-      color:var(--text-muted); font-weight:700;
-    }
-    .simulation-value{font-weight:800;}
     .goals-header{
       display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;
     }
@@ -433,7 +379,6 @@
       font-size:1.15rem; letter-spacing:-.2px;
     }
     @media (max-width: 520px){
-      .topbar-right .btn-secondary,
       .topbar-right .btn-owner-repair{display:none;}
       .hamburger{display:inline-flex;}
       .summary-card-item{align-items:flex-start; text-align:left;}
@@ -441,6 +386,34 @@
       .summary-card-net{text-align:right; min-width:110px;}
       .owner-pill,.owner-select{max-width:126px;}
     }
+
+    .sheetOverlay{position:fixed; inset:0; background:var(--overlay); display:flex; align-items:flex-end; justify-content:center; padding:18px; z-index:9999;}
+    .sheetOverlay.hidden{display:none;}
+    .sheet{width:min(520px,100%); background:var(--surface2); border:1px solid var(--border); border-radius:var(--r-xl); box-shadow:var(--shadow); backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px); overflow:hidden;}
+    .sheetHeader{display:flex; align-items:center; justify-content:space-between; padding:14px 14px 10px; border-bottom:1px solid var(--border);}
+    .sheetTitle{font-weight:700; color:var(--text);}
+    .themeOptions{display:flex; flex-direction:column; padding:12px; gap:10px;}
+    .themeOption{width:100%; background:var(--surface); border:1px solid var(--border); border-radius:18px; padding:14px 12px; color:var(--text); font-weight:600; display:flex; align-items:center; justify-content:center;}
+    .themeOption.active{border-color:rgba(47,124,255,.45); box-shadow:var(--ring);}
+
+    .pill, .chip, .badge, .bullet, .badge-status, .sync-pill, .net-badge, .msi-pill{
+      display:inline-flex; align-items:center; justify-content:center; gap:8px; line-height:1; white-space:nowrap;
+    }
+    .segment{display:flex; background:var(--surface); border:1px solid var(--border); border-radius:999px; padding:4px; gap:4px;}
+    .segment button{flex:1; display:flex; align-items:center; justify-content:center; line-height:1; padding:10px 0; border-radius:999px; border:0; background:transparent; color:var(--muted); font-weight:600;}
+    .segment button.active{background:var(--surface2); color:var(--text); box-shadow:var(--shadow2);}
+    .kpiRow,.kpi{display:flex; align-items:center; justify-content:space-between;}
+    .kpiValue{display:flex; align-items:baseline; gap:6px;}
+    .center{display:flex; align-items:center; justify-content:center;}
+
+    .iconBtn, .topbar-icon-btn{display:inline-flex; align-items:center; justify-content:center; line-height:1;}
+
+    @media (prefers-reduced-motion: no-preference){
+      body, .card-box, .card, input, select, textarea, .topbar, .bottomNav, .sheet, .themeOption{
+        transition:background-color .18s ease, color .18s ease, border-color .18s ease, box-shadow .18s ease;
+      }
+    }
+
     @media (prefers-reduced-motion: reduce){
       .fade-in, .toast-message{transition:none;}
       .btn-loading .spinner, .skeleton::after{animation:none;}
@@ -497,14 +470,6 @@
           Reparar owner
         </button>
 
-        <!-- 🔔 Push (por ahora solo placeholder) -->
-        <button class="btn btn-sm btn-outline-secondary rounded-circle btn-secondary topbar-icon-btn"
-          onclick="enablePush()"
-          title="Activar recordatorios"
-          >
-          <i class="fas fa-bell"></i>
-        </button>
-
         <button class="btn btn-sm btn-outline-secondary rounded-circle topbar-icon-btn"
           onclick="manualRefresh()"
           title="Actualizar datos"
@@ -512,24 +477,11 @@
           <i class="fas fa-rotate"></i>
         </button>
 
-        <button class="btn btn-sm btn-outline-secondary rounded-circle btn-secondary topbar-icon-btn"
-          onclick="toggleThemeMode()"
-          title="Cambiar tema"
-          >
-          <i class="fas fa-moon" id="theme-icon"></i>
-        </button>
-
-        <button class="btn btn-sm btn-outline-secondary rounded-circle btn-secondary topbar-icon-btn"
-          onclick="togglePrivacy()"
-          >
-          <i class="fas fa-eye" id="eye-icon"></i>
-        </button>
-
         <button class="btn btn-sm btn-outline-secondary rounded-circle topbar-icon-btn hamburger hamburgerBtn"
           type="button"
           title="Abrir menú"
           aria-label="Abrir menú"
-          onclick="toggleMenu(true)">
+          onclick="openMenuSheet()">
           <i class="fas fa-bars"></i>
         </button>
       </div>
@@ -560,13 +512,10 @@
         <div class="kpi-label">Filtro de gastos</div>
         <span class="text-muted small" id="scope-filter-label">Todo</span>
       </div>
-      <div class="btn-group w-100" role="group" aria-label="Filtro de gastos">
-        <input type="radio" class="btn-check" name="scope-filter" id="scope-filter-all" value="all" onchange="handleScopeFilterChange(this.value)">
-        <label class="btn btn-outline-secondary" for="scope-filter-all">Todo</label>
-        <input type="radio" class="btn-check" name="scope-filter" id="scope-filter-shared" value="shared" onchange="handleScopeFilterChange(this.value)">
-        <label class="btn btn-outline-secondary" for="scope-filter-shared">Compartido</label>
-        <input type="radio" class="btn-check" name="scope-filter" id="scope-filter-personal" value="personal" onchange="handleScopeFilterChange(this.value)">
-        <label class="btn btn-outline-secondary" for="scope-filter-personal">Personal</label>
+      <div class="segment" role="group" aria-label="Filtro de gastos">
+        <button type="button" id="scope-filter-all" onclick="handleScopeFilterChange('all')">Todo</button>
+        <button type="button" id="scope-filter-shared" onclick="handleScopeFilterChange('shared')">Compartido</button>
+        <button type="button" id="scope-filter-personal" onclick="handleScopeFilterChange('personal')">Personal</button>
       </div>
     </section>
 
@@ -585,29 +534,6 @@
       <div id="prediction-body" class="text-muted small">Calculando predicción...</div>
     </section>
 
-    <section id="simulation-section" class="card-box card">
-      <div class="d-flex justify-content-between align-items-center mb-2">
-        <h6 class="fw-bold m-0"><i class="fas fa-vial me-2"></i>Simular gasto</h6>
-        <span id="simulation-status" class="badge-status bg-warning-light d-none">SIMULADO</span>
-      </div>
-      <div class="simulation-box">
-        <div class="row g-2">
-          <div class="col-7">
-            <label class="small fw-bold text-muted mb-1">Monto</label>
-            <input type="number" id="sim-amount" class="form-control" placeholder="0.00" step="0.01" />
-          </div>
-          <div class="col-5">
-            <label class="small fw-bold text-muted mb-1">Categoría (opcional)</label>
-            <input type="text" id="sim-category" class="form-control" placeholder="Ej: Comida" />
-          </div>
-        </div>
-        <div class="d-flex gap-2 mt-3">
-          <button class="btn btn-outline-primary flex-fill" type="button" onclick="runSimulation()">Simular</button>
-          <button class="btn btn-light flex-fill" type="button" onclick="cancelSimulation()">Cancelar</button>
-        </div>
-        <div id="simulation-result" class="simulation-result d-none"></div>
-      </div>
-    </section>
 
     <div id="alerts-section" class="card-box d-none">
       <div class="d-flex justify-content-between align-items-center mb-3">
@@ -1015,20 +941,35 @@
     </div>
   </div>
 
-  <div id="mobile-menu-backdrop" class="mobile-menu-backdrop" onclick="toggleMenu(false)"></div>
-  <aside id="mobile-menu-sheet" class="mobile-menu-sheet" role="dialog" aria-modal="true" aria-labelledby="mobile-menu-title">
-    <div class="mobile-menu-header">
-      <h6 class="mobile-menu-title" id="mobile-menu-title">Acciones rápidas</h6>
-      <button class="btn btn-sm btn-outline-secondary" type="button" onclick="toggleMenu(false)">Cerrar</button>
+  <div id="menuSheetOverlay" class="sheetOverlay hidden" onclick="closeMenuSheet(event)">
+    <div class="sheet" role="dialog" aria-modal="true" onclick="event.stopPropagation()">
+      <div class="sheetHeader">
+        <div class="sheetTitle">Menú</div>
+        <button class="btn btn-sm btn-outline-secondary iconBtn" type="button" onclick="closeMenuSheet()">✕</button>
+      </div>
+      <div class="themeOptions">
+        <button class="themeOption" type="button" onclick="openThemeSheet()">Tema</button>
+        <button class="themeOption" type="button" onclick="menuAction('enablePush')">Notificaciones</button>
+        <button class="themeOption" type="button" onclick="menuAction('togglePrivacy')">Privacidad</button>
+        <button id="mobile-owner-repair" class="themeOption d-none" type="button" onclick="menuAction('repairLegacyOwnerData')">Reparar owner</button>
+      </div>
     </div>
-    <div class="mobile-menu-actions">
-      <button class="btn btn-outline-secondary" type="button" onclick="mobileMenuAction('enablePush')"><i class="fas fa-bell me-2"></i>Notificaciones</button>
-      <button class="btn btn-outline-secondary" type="button" onclick="mobileMenuAction('manualRefresh')"><i class="fas fa-rotate me-2"></i>Sincronizar / recargar</button>
-      <button class="btn btn-outline-secondary" type="button" onclick="mobileMenuAction('toggleThemeMode')"><i class="fas fa-moon me-2"></i>Settings (tema)</button>
-      <button class="btn btn-outline-secondary" type="button" onclick="mobileMenuAction('togglePrivacy')"><i class="fas fa-eye me-2"></i>Modo admin / privacidad</button>
-      <button id="mobile-owner-repair" class="btn btn-outline-warning d-none" type="button" onclick="mobileMenuAction('repairLegacyOwnerData')"><i class="fas fa-screwdriver-wrench me-2"></i>Reparar owner</button>
+  </div>
+
+  <div id="themeSheetOverlay" class="sheetOverlay hidden" onclick="closeThemeSheet(event)">
+    <div class="sheet" role="dialog" aria-modal="true" onclick="event.stopPropagation()">
+      <div class="sheetHeader">
+        <div class="sheetTitle">Tema</div>
+        <button class="btn btn-sm btn-outline-secondary iconBtn" type="button" onclick="closeThemeSheet()">✕</button>
+      </div>
+
+      <div class="themeOptions">
+        <button class="themeOption" data-theme="system" onclick="setTheme('system')">Sistema</button>
+        <button class="themeOption" data-theme="light" onclick="setTheme('light')">Claro</button>
+        <button class="themeOption" data-theme="dark" onclick="setTheme('dark')">Oscuro</button>
+      </div>
     </div>
-  </aside>
+  </div>
 
   <button class="quick-fab" type="button" onclick="openQuickAdd()" aria-label="Agregar gasto rápido">
     <i class="fas fa-plus"></i>
@@ -1227,6 +1168,19 @@
   <div id="toast-container" aria-live="polite" aria-atomic="true"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+(function(){
+  const KEY="fy_theme";
+  const saved=localStorage.getItem(KEY);
+  const root=document.documentElement;
+  function apply(t){
+    if(t==="light"||t==="dark") root.setAttribute("data-theme", t);
+    else root.removeAttribute("data-theme");
+  }
+  if(saved){ apply(saved==="system" ? null : saved); }
+})();
+</script>
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
@@ -1485,7 +1439,6 @@
       await seedPresetCards();
       resubscribeAll();
       periodDataCache = { owner: null, scope: null, data: null };
-      cancelSimulation();
       refreshAll({ owner: OWNER, force: true, source: "owner-change" });
       updateMonthlyFootprint({ force: true });
       renderSummaryView({ force: true });
@@ -1520,7 +1473,6 @@
       lastGoodCounts: null,
       error: null
     };
-    const simulationState = { active: false, amount: 0, category: "", result: null };
 
     // MSI state
     let msiChartInstance=null;
@@ -1539,7 +1491,6 @@
       offlineUx: true,
       timeline: true,
       prediction: true,
-      simulator: true,
       gestures: true,
       darkMode: true,
       coupleMode: true,
@@ -1672,7 +1623,6 @@
       toggle("alerts-section", FEATURES.alerts);
       toggle("insights-section", FEATURES.insights);
       toggle("prediction-section", FEATURES.prediction);
-      toggle("simulation-section", FEATURES.simulator);
       toggle("monthly-footprint-section", FEATURES.monthlyFootprint);
       toggle("scope-filter-section", FEATURES.coupleMode);
     };
@@ -1832,9 +1782,10 @@
       const shared = document.getElementById("scope-filter-shared");
       const personal = document.getElementById("scope-filter-personal");
       if(label) label.textContent = scopeLabel(value);
-      if(all) all.checked = value === "all";
-      if(shared) shared.checked = value === "shared";
-      if(personal) personal.checked = value === "personal";
+      [all, shared, personal].forEach((btn) => {
+        if(!btn) return;
+        btn.classList.toggle("active", btn.id === `scope-filter-${value}`);
+      });
     };
 
     const toDate = (value) => {
@@ -2639,15 +2590,6 @@
       };
     };
 
-    const computeSimulationImpact = (simAmount, periodData) => {
-      const base = computeMonthlyPrediction(periodData);
-      const simulated = computeMonthlyPrediction(periodData, { extraAmount: simAmount });
-      const delta = base?.show && simulated?.show
-        ? simulated.predictedTotal - base.predictedTotal
-        : null;
-      return { base, simulated, delta };
-    };
-
     const renderPrediction = (prediction) => {
       const section = document.getElementById("prediction-section");
       const statusEl = document.getElementById("prediction-status");
@@ -2713,50 +2655,6 @@
       if (privacy) togglePrivacy();
     };
 
-    const renderSimulationResult = (result) => {
-      const statusEl = document.getElementById("simulation-status");
-      const container = document.getElementById("simulation-result");
-      if (!statusEl || !container) return;
-
-      if (!result) {
-        container.classList.add("d-none");
-        container.classList.remove("sim-active");
-        statusEl.classList.add("d-none");
-        return;
-      }
-
-      statusEl.classList.remove("d-none");
-      container.classList.remove("d-none");
-      container.classList.add("sim-active");
-
-      if (!result.simulated?.show) {
-        container.innerHTML = `
-          <div class="text-muted">${result.simulated?.reason || "No hay suficientes datos para simular."}</div>
-        `;
-        return;
-      }
-
-      const delta = result.delta;
-      const deltaLabel = (typeof delta === "number")
-        ? `${delta >= 0 ? "+" : "-"}${formatCurrency(Math.abs(delta))}`
-        : null;
-      const deltaColor = delta >= 0 ? "text-danger" : "text-success";
-
-      container.innerHTML = `
-        <div class="simulation-label">Nueva predicción mensual</div>
-        <div class="simulation-value sensitive-data">${formatCurrency(result.simulated.predictedTotal)}</div>
-        ${deltaLabel ? `
-          <div class="small ${deltaColor} mt-1">
-            ${deltaLabel} vs predicción actual
-          </div>
-        ` : ""}
-        <button class="btn btn-sm btn-outline-secondary mt-2" type="button" onclick="convertSimulationToReal()">
-          Convertir en gasto real
-        </button>
-      `;
-      if (privacy) togglePrivacy();
-    };
-
     async function updatePrediction({ force = false, periodData = null, source = "prediction" } = {}) {
       const section = document.getElementById("prediction-section");
       if(!FEATURES.prediction){
@@ -2773,10 +2671,6 @@
       logRenderDebug(`prediction:${source}`, renderData, { owner });
       const prediction = renderData ? computeMonthlyPrediction(renderData) : null;
       renderPrediction(prediction);
-      if (simulationState.active) {
-        simulationState.result = computeSimulationImpact(simulationState.amount, renderData || resolvedData);
-        renderSimulationResult(simulationState.result);
-      }
     }
 
     async function refreshAll({ owner, force = false, source = "refreshAll" } = {}) {
@@ -2799,10 +2693,6 @@
         renderDashboardSummary(metrics);
         renderInsights(insights);
         renderPrediction(prediction);
-        if (simulationState.active) {
-          simulationState.result = computeSimulationImpact(simulationState.amount, dataState.lastGoodPeriodData);
-          renderSimulationResult(simulationState.result);
-        }
         logRenderDebug(`${source}:last-good`, dataState.lastGoodPeriodData, {
           owner: resolvedOwner,
           scopeFilter: dataState.scopeFilter,
@@ -2855,10 +2745,6 @@
       renderInsights(insights);
       renderPrediction(prediction);
 
-      if (simulationState.active) {
-        simulationState.result = computeSimulationImpact(simulationState.amount, renderData);
-        renderSimulationResult(simulationState.result);
-      }
 
       logRenderDebug(`${source}:render`, renderData, {
         owner: resolvedOwner,
@@ -3749,65 +3635,6 @@
       return summary;
     };
 
-    window.runSimulation = async () => {
-      const amountInput = document.getElementById("sim-amount");
-      const categoryInput = document.getElementById("sim-category");
-      const amount = safeNumber(amountInput?.value);
-      const category = (categoryInput?.value || "").trim();
-
-      if (!amount || amount <= 0) {
-        showToast("Ingresa un monto válido para simular.", { tone: "warning", duration: 2200 });
-        haptic("warn");
-        return;
-      }
-
-      const periodData = await getPeriodData(getActiveOwner(), { force: false });
-      simulationState.active = true;
-      simulationState.amount = amount;
-      simulationState.category = category;
-      simulationState.result = computeSimulationImpact(amount, periodData);
-      renderSimulationResult(simulationState.result);
-    };
-
-    window.cancelSimulation = () => {
-      simulationState.active = false;
-      simulationState.amount = 0;
-      simulationState.category = "";
-      simulationState.result = null;
-      const amountInput = document.getElementById("sim-amount");
-      const categoryInput = document.getElementById("sim-category");
-      if (amountInput) amountInput.value = "";
-      if (categoryInput) categoryInput.value = "";
-      renderSimulationResult(null);
-    };
-
-    window.convertSimulationToReal = () => {
-      if (!simulationState.active) return;
-      nav("view-add");
-      document.getElementById("t-exp").checked = true;
-      uiUpdateCats();
-      uiToggleScope();
-      document.getElementById("t-scope-shared").checked = true;
-      document.getElementById("t-amount").value = simulationState.amount;
-      const catSelect = document.getElementById("t-cat");
-      if (simulationState.category) {
-        const hasOption = [...catSelect.options].some((opt) => opt.value === simulationState.category);
-        if (!hasOption) {
-          const opt = document.createElement("option");
-          opt.value = simulationState.category;
-          opt.textContent = simulationState.category;
-          catSelect.appendChild(opt);
-        }
-        catSelect.value = simulationState.category;
-      }
-      if (!document.getElementById("t-concept").value) {
-        document.getElementById("t-concept").value = "Simulación";
-      }
-      document.getElementById("t-date").value = toLocalYYYYMMDD(new Date());
-      cancelSimulation();
-      showToast("Simulación cargada en el formulario. Solo falta guardar 😉", { tone: "info", duration: 2600 });
-    };
-
     // FASE 1 - Helpers base listos
 
     // ===== FASE 2: RANGOS + CACHE (sesión) =====
@@ -4031,69 +3858,50 @@
       if(vid === 'view-hist') renderHistory();
     };
 
-    const THEME_KEY = "themeMode";
-    const THEME_MODES = ["auto", "light", "dark"];
+    (function themeInit(){
+      const KEY="fy_theme";
+      const root=document.documentElement;
 
-    const getStoredTheme = () => localStorage.getItem(THEME_KEY) || "auto";
-
-    const getSystemPrefersDark = () =>
-      window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
-
-    const getEffectiveTheme = (mode) => {
-      if(mode === "dark") return "dark";
-      if(mode === "light") return "light";
-      return getSystemPrefersDark() ? "dark" : "light";
-    };
-
-    const isDarkMode = () => getEffectiveTheme(getStoredTheme()) === "dark";
-
-    const applyThemeMode = (mode) => {
-      const root = document.documentElement;
-      root.classList.remove("theme-dark", "theme-light");
-      if(mode === "dark") root.classList.add("theme-dark");
-      if(mode === "light") root.classList.add("theme-light");
-      const icon = document.getElementById("theme-icon");
-      if(icon){
-        icon.className = getEffectiveTheme(mode) === "dark" ? "fas fa-moon" : "fas fa-sun";
+      function apply(theme){
+        if(theme === "light" || theme === "dark") root.setAttribute("data-theme", theme);
+        else root.removeAttribute("data-theme");
       }
-      updateChart();
-      renderMsi();
-    };
+
+      window.setTheme = function(theme){
+        const t = (theme === "light" || theme === "dark") ? theme : "system";
+        apply(t === "system" ? null : t);
+        localStorage.setItem(KEY, t);
+        window.updateThemeUI?.();
+        updateChart();
+        renderMsi();
+      };
+
+      window.getTheme = function(){
+        return localStorage.getItem(KEY) || "system";
+      };
+
+      window.loadTheme = function(){
+        const saved = window.getTheme();
+        apply(saved === "system" ? null : saved);
+        window.updateThemeUI?.();
+      };
+
+      window.loadTheme();
+    })();
 
     const isProbablyIOS = () => {
       const ua = navigator.userAgent || "";
       return /iPad|iPhone|iPod/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
     };
 
-    window.toggleThemeMode = () => {
-      const current = getStoredTheme();
-      const idx = THEME_MODES.indexOf(current);
-      const next = THEME_MODES[(idx + 1) % THEME_MODES.length] || "auto";
-      localStorage.setItem(THEME_KEY, next);
-      applyThemeMode(next);
-      showToast(`Tema: ${next === "auto" ? "auto" : next === "dark" ? "oscuro" : "claro"}`, {
-        tone: "info",
-        duration: 1800
-      });
-    };
-
-    const initThemeMode = () => {
-      const mode = getStoredTheme();
-      applyThemeMode(mode);
-      const media = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
-      if(media && typeof media.addEventListener === "function"){
-        media.addEventListener("change", () => {
-          if(getStoredTheme() === "auto") applyThemeMode("auto");
-        });
-      }
-    };
 
     window.togglePrivacy=()=>{
       privacy=!privacy;
       document.querySelectorAll('.sensitive-data').forEach(el=>{
         privacy ? el.classList.add('blur-sensitive') : el.classList.remove('blur-sensitive');
       });
-      document.getElementById('eye-icon').className = privacy ? 'fas fa-eye-slash' : 'fas fa-eye';
+      const eyeIcon = document.getElementById('eye-icon');
+      if(eyeIcon) eyeIcon.className = privacy ? 'fas fa-eye-slash' : 'fas fa-eye';
     };
 
     window.manualRefresh = async () => {
@@ -4201,20 +4009,42 @@
       }
     };
 
-    const mobileMenuSheet = document.getElementById("mobile-menu-sheet");
-    const mobileMenuBackdrop = document.getElementById("mobile-menu-backdrop");
-
-    window.toggleMenu = (open = false) => {
-      const shouldOpen = Boolean(open);
-      if(mobileMenuSheet) mobileMenuSheet.classList.toggle("is-open", shouldOpen);
-      if(mobileMenuBackdrop) mobileMenuBackdrop.classList.toggle("is-open", shouldOpen);
+    window.openThemeSheet = function(){
+      closeMenuSheet();
+      document.getElementById("themeSheetOverlay")?.classList.remove("hidden");
+      window.updateThemeUI?.();
     };
 
-    window.mobileMenuAction = (actionName) => {
-      toggleMenu(false);
+    window.closeThemeSheet = function(e){
+      if(e && e.target && e.target.id !== "themeSheetOverlay") return;
+      document.getElementById("themeSheetOverlay")?.classList.add("hidden");
+    };
+
+    window.updateThemeUI = function(){
+      const saved = window.getTheme?.() || "system";
+      document.querySelectorAll(".themeOption[data-theme]").forEach((btn)=>{
+        btn.classList.toggle("active", btn.dataset.theme === saved);
+      });
+    };
+
+    window.openMenuSheet = function(){
+      document.getElementById("menuSheetOverlay")?.classList.remove("hidden");
+    };
+
+    window.closeMenuSheet = function(e){
+      if(e && e.target && e.target.id !== "menuSheetOverlay") return;
+      document.getElementById("menuSheetOverlay")?.classList.add("hidden");
+    };
+
+    window.menuAction = function(actionName){
+      closeMenuSheet();
       const action = typeof window[actionName] === "function" ? window[actionName] : null;
       if(action) action();
     };
+
+    document.addEventListener("DOMContentLoaded", () => {
+      window.updateThemeUI?.();
+    });
 
     const quickSheet = document.getElementById("quick-sheet");
     const quickBackdrop = document.getElementById("quick-sheet-backdrop");
@@ -4222,46 +4052,11 @@
     const quickCategory = document.getElementById("quick-category");
     let quickAddPending = false;
 
-    const syncQuickCategories = () => {
-      const source = document.getElementById("t-cat");
-      if(!source || !quickCategory) return;
-      quickCategory.innerHTML = "";
-      [...source.options].forEach((opt) => {
-        const option = document.createElement("option");
-        option.value = opt.value;
-        option.textContent = opt.textContent;
-        quickCategory.appendChild(option);
-      });
-      if(quickCategory.options.length) quickCategory.selectedIndex = 0;
-    };
-
-    window.openQuickAdd = () => {
-      syncQuickCategories();
-      if(quickAmount) quickAmount.value = "";
-      if(quickSheet) quickSheet.classList.add("is-open");
-      if(quickBackdrop) quickBackdrop.classList.add("is-open");
-      setTimeout(() => quickAmount?.focus(), 100);
-    };
-
-    window.closeQuickAdd = () => {
-      if(quickSheet) quickSheet.classList.remove("is-open");
-      if(quickBackdrop) quickBackdrop.classList.remove("is-open");
-    };
-
     (() => {
-      let touchStartX = 0;
-      if(mobileMenuSheet){
-        mobileMenuSheet.addEventListener("touchstart", (event) => {
-          touchStartX = event.touches?.[0]?.clientX || 0;
-        }, { passive: true });
-        mobileMenuSheet.addEventListener("touchend", (event) => {
-          const touchEndX = event.changedTouches?.[0]?.clientX || 0;
-          if(touchEndX - touchStartX > 55) toggleMenu(false);
-        }, { passive: true });
-      }
       document.addEventListener("keydown", (event) => {
         if(event.key !== "Escape") return;
-        toggleMenu(false);
+        closeMenuSheet();
+        closeThemeSheet();
         closeQuickAdd();
       });
     })();
@@ -6880,8 +6675,7 @@
         invalidateCacheForOwner(OWNER);
         refreshAll({ owner: OWNER, force: true, source: "save-expense" });
         updateAlerts({ force: true });
-        cancelSimulation();
-        resetForm();
+          resetForm();
         nav('view-home');
       }catch(e){
         showToast("No se pudo guardar. Intenta de nuevo.", { tone: "warning", duration: 2600 });
@@ -6985,7 +6779,6 @@
       invalidateCacheForOwner(OWNER);
       refreshAll({ owner: OWNER, force: true, source: "delete-expense" });
       updateAlerts({ force: true });
-      cancelSimulation();
       resetForm();
       nav('view-hist');
     };
@@ -7073,7 +6866,7 @@
 
     // Init
     loadReviewedIds();
-    initThemeMode();
+    loadTheme();
     uiUpdateCats();
     resetForm();
     uiToggleScope();
