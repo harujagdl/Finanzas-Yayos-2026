@@ -146,6 +146,15 @@
     .chart-skeleton .skeleton-pie{width:120px; height:120px; border-radius:50%;}
     .chart-skeleton .skeleton-text{width:140px; height:12px;}
     .chart-message{font-size:.85rem; text-align:center;}
+    .chart-container,
+    .msi-chart-container{
+      position:relative;
+      min-height:220px;
+      display:flex;
+      justify-content:center;
+      align-items:center;
+    }
+    .msi-chart-container{min-height:260px;}
     @keyframes spin{to{transform:rotate(360deg);}}
     @keyframes shimmer{to{transform:translateX(100%);}}
 
@@ -621,14 +630,14 @@
         <h6 class="fw-bold m-0">Distribución de Gastos</h6>
         <select id="chart-month-filter" class="form-select form-select-sm w-auto py-1" onchange="updateChart()"></select>
       </div>
-      <div style="position:relative;height:200px;display:flex;justify-content:center;align-items:center;" id="chart-container">
+      <div id="chart-container" class="chart-container">
         <canvas id="expensesChart"></canvas>
         <div id="chart-skeleton" class="chart-skeleton d-none">
           <div class="skeleton skeleton-pie"></div>
           <div class="skeleton skeleton-text"></div>
           <div class="text-muted small">Cargando gráfica...</div>
         </div>
-        <div id="no-data-msg" class="text-muted chart-message d-none">Aún no hay gastos para graficar este mes.</div>
+        <div id="no-data-msg" class="text-muted chart-message d-none">Sin datos para este periodo.</div>
         <div id="chart-error-msg" class="text-danger chart-message d-none">No se pudo renderizar la gráfica. Reintenta.</div>
       </div>
     </div>
@@ -655,7 +664,7 @@
           </select>
         </div>
         <div class="col-6">
-          <select id="summary-card-filter" class="form-select" onchange="renderSummaryView()">
+          <select id="summary-card-filter" class="form-select" onchange="onFiltersChange()">
             <option value="all">Tarjeta: Todas</option>
           </select>
         </div>
@@ -943,7 +952,7 @@
           <option value="done">Liquidadas</option>
         </select>
       </div>
-      <div style="position:relative;height:260px;">
+      <div class="msi-chart-container">
         <canvas id="msiChart"></canvas>
         <div id="msi-no-data" class="text-muted small d-none" style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center;">
           No hay compras MSI registradas.
@@ -3599,18 +3608,23 @@
       }
     };
 
+    window.onFiltersChange = ({ periodKey } = {}) => {
+      renderSummaryView(periodKey ? { periodKey } : undefined);
+      window.renderCharts?.();
+    };
+
     window.handleSummaryMonthChange = () => {
       const select = document.getElementById("summary-month-select");
       if(!select) return;
       summaryState.selectedPeriodKey = select.value;
-      renderSummaryView({ periodKey: select.value });
+      onFiltersChange({ periodKey: select.value });
     };
 
     window.handleSummaryPeriodModeChange = () => {
       const modeEl = document.getElementById("summary-period-mode");
       summaryPeriodMode = modeEl?.value || "month";
       syncAbonosModeUI();
-      renderSummaryView();
+      onFiltersChange();
     };
 
     const syncAbonosModeUI = () => {
@@ -3888,9 +3902,15 @@
 
       // render MSI cuando entras
       syncAbonosModeUI();
-      if(vid === 'view-msi') renderMsi();
+      if(vid === 'view-msi') {
+        renderMsi();
+        setTimeout(() => window.renderCharts?.(), 50);
+      }
       if(vid === 'view-goals') renderGoals();
-      if(vid === 'view-summary') renderSummaryView();
+      if(vid === 'view-summary') {
+        renderSummaryView();
+        setTimeout(() => window.renderCharts?.(), 50);
+      }
       if(vid === 'view-hist') renderHistory();
     };
 
@@ -3908,8 +3928,7 @@
         apply(t === "system" ? null : t);
         localStorage.setItem(KEY, t);
         window.updateThemeUI?.();
-        updateChart();
-        renderMsi();
+        window.renderCharts?.();
       };
 
       window.getTheme = function(){
@@ -5491,54 +5510,69 @@
       }
 
       // Chart (bar)
-      if(msiChartInstance) msiChartInstance.destroy();
+      destroyChart("bar-msi");
 
       if(items.length === 0){
         canvas.style.display='none';
         noData.classList.remove('d-none');
         return;
-      }else{
-        canvas.style.display='block';
-        noData.classList.add('d-none');
       }
-
-      const isDark = isDarkMode();
-      const textColor=isDark ? '#f9fafb' : '#6b7280';
 
       const labels = items.slice(0, 10).map(t => {
         const name = (t.concept || 'MSI').trim();
         return name.length > 16 ? name.slice(0, 16) + '…' : name;
       });
-      const values = items.slice(0, 10).map(t => t.remaining);
+      const values = items.slice(0, 10).map(t => Number(t.remaining) || 0);
+      const hasData = labels.length > 0 && labels.length === values.length && values.some(v => v > 0);
+      if(!hasData){
+        canvas.style.display='none';
+        noData.classList.remove('d-none');
+        return;
+      }
 
-      msiChartInstance = new Chart(canvas, {
-        type: 'bar',
-        data: {
-          labels,
-          datasets: [{
-            label: 'Meses restantes',
-            data: values
-          }]
-        },
-        options: {
-          indexAxis: 'y',
-          responsive:true,
-          maintainAspectRatio:false,
-          plugins:{
-            legend:{ display:false },
-            tooltip:{ enabled:true }
-          },
-          scales: {
-            x: {
-              beginAtZero:true,
-              ticks: { color:textColor }
+      canvas.style.display='block';
+      noData.classList.add('d-none');
+
+      const isDark = isDarkMode();
+      const textColor=isDark ? '#f9fafb' : '#6b7280';
+
+      waitForVisibleCanvas(canvas)
+        .then(() => {
+          msiChartInstance = new Chart(canvas, {
+            type: 'bar',
+            data: {
+              labels,
+              datasets: [{
+                label: 'Meses restantes',
+                data: values
+              }]
             },
-            y: {
-              ticks: { color:textColor, precision:0 }
+            options: {
+              indexAxis: 'y',
+              responsive:true,
+              maintainAspectRatio:false,
+              plugins:{
+                legend:{ display:false },
+                tooltip:{ enabled:true }
+              },
+              scales: {
+                x: {
+                  beginAtZero:true,
+                  ticks: { color:textColor }
+                },
+                y: {
+                  ticks: { color:textColor, precision:0 }
+                }
+              }
             }
-          }
-        }
-      });
+          });
+          window.__charts["bar-msi"] = msiChartInstance;
+        })
+        .catch((err) => {
+          console.info("[chart:msi] canvas hidden or no size", err?.message || err);
+          canvas.style.display='none';
+          noData.classList.remove('d-none');
+        });
 
       if(privacy) togglePrivacy();
     };
@@ -5974,8 +6008,32 @@
     // =========================
     // ✅ CHART GASTOS
     // =========================
+    window.__charts = window.__charts || {};
     const categoryAggCache = new Map();
     const chartRenderState = { scheduled: false };
+
+    const destroyChart = (key) => {
+      const existing = window.__charts[key];
+      if (existing && typeof existing.destroy === "function") {
+        try { existing.destroy(); } catch (_) {}
+      }
+      window.__charts[key] = null;
+      if (key === "pie-expenses") chartInstance = null;
+      if (key === "bar-msi") msiChartInstance = null;
+    };
+
+    const waitForVisibleCanvas = (canvas, timeoutMs = 1200) =>
+      new Promise((resolve, reject) => {
+        const start = performance.now();
+        const tick = () => {
+          const rect = canvas?.getBoundingClientRect?.();
+          const ok = rect && rect.width > 10 && rect.height > 10 && canvas?.isConnected;
+          if (ok) return resolve(rect);
+          if (performance.now() - start > timeoutMs) return reject(new Error("canvas_not_visible"));
+          requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      });
 
     const getCategoryAggCacheKey = ({ owner, periodKey, scopeFilter }) =>
       `${owner}|${periodKey}|${scopeFilter}`;
@@ -6029,11 +6087,13 @@
       const others = sorted.slice(6).reduce((sum, [, amount]) => sum + amount, 0);
       if (others > 0) top.push(["Otros", others]);
 
+      const labels = top.map(([label]) => label);
+      const values = top.map(([, amount]) => Number(amount) || 0);
       return {
-        labels: top.map(([label]) => label),
-        data: top.map(([, amount]) => amount),
+        labels,
+        data: values,
         expensesCount,
-        categoryCount: top.length
+        categoryCount: labels.length
       };
     };
 
@@ -6052,44 +6112,32 @@
       return Promise.resolve(computeCategoryAgg(items, selYear, selMonth));
     };
 
-    const attemptChartRender = async ({ attempt = 0 } = {}) => {
-      const container = document.getElementById("chart-container");
+    const attemptChartRender = async () => {
       const canvas = document.getElementById("expensesChart");
-      if (!container || !canvas) return;
+      if (!canvas) return;
 
       if (dataState.loading) {
         setChartUiState({ showCanvas: false, showSkeleton: true, showNoData: false, showError: false });
         return;
       }
 
+      const filterEl = document.getElementById("chart-month-filter");
+      if (!filterEl || !filterEl.value) return;
+
+      try {
+        await waitForVisibleCanvas(canvas);
+      } catch (err) {
+        setChartUiState({ showCanvas: false, showSkeleton: true, showNoData: false, showError: false });
+        console.info("[chart:pie] canvas hidden or no size", err?.message || err);
+        return;
+      }
+
       if (!trans.length) {
-        if (chartInstance) {
-          chartInstance.destroy();
-          chartInstance = null;
-        }
+        destroyChart("pie-expenses");
         setChartUiState({ showCanvas: false, showSkeleton: false, showNoData: true, showError: false });
         return;
       }
 
-      const rect = container.getBoundingClientRect();
-      const width = rect.width;
-      const height = rect.height;
-      if (width < 50 || height < 50) {
-        setChartUiState({ showCanvas: false, showSkeleton: true, showNoData: false, showError: false });
-        if (attempt < 5) {
-          setTimeout(() => attemptChartRender({ attempt: attempt + 1 }), 0);
-        } else {
-          if (chartInstance) {
-            chartInstance.destroy();
-            chartInstance = null;
-          }
-          setChartUiState({ showCanvas: false, showSkeleton: false, showNoData: false, showError: true });
-        }
-        return;
-      }
-
-      const filterEl = document.getElementById("chart-month-filter");
-      if (!filterEl || !filterEl.value) return;
       const filterVal = filterEl.value;
       const [selYear, selMonth] = filterVal.split("-").map(Number);
       const scopeFilter = getActiveScopeFilter();
@@ -6109,36 +6157,36 @@
           categoryAggCache.set(cacheKey, agg);
         }
 
+        const labels = Array.isArray(agg?.labels) ? agg.labels : [];
+        const values = Array.isArray(agg?.data) ? agg.data.map((v) => Number(v) || 0) : [];
+        const hasData = labels.length > 0 && labels.length === values.length && values.some((v) => v > 0);
+        const rect = canvas.getBoundingClientRect();
         const computeMs = cached ? 0 : performance.now() - startCompute;
         console.info("[chart:pie]", {
-          expensesCount: agg.expensesCount,
-          categoryCount: agg.categoryCount,
-          width: Math.round(width),
-          height: Math.round(height),
+          expensesCount: agg?.expensesCount || 0,
+          categoryCount: labels.length,
+          width: Math.round(rect.width || 0),
+          height: Math.round(rect.height || 0),
           computeMs: Math.round(computeMs),
           cached
         });
 
-        if (!agg.labels.length) {
-          if (chartInstance) {
-            chartInstance.destroy();
-            chartInstance = null;
-          }
+        if (!hasData) {
+          destroyChart("pie-expenses");
           setChartUiState({ showCanvas: false, showSkeleton: false, showNoData: true, showError: false });
           return;
         }
 
-        if (chartInstance) chartInstance.destroy();
-
+        destroyChart("pie-expenses");
         const isDark = isDarkMode();
         const textColor = isDark ? "#f9fafb" : "#6b7280";
 
         chartInstance = new Chart(canvas, {
           type: "doughnut",
           data: {
-            labels: agg.labels,
+            labels,
             datasets: [{
-              data: agg.data,
+              data: values,
               backgroundColor: ["#2563eb", "#ef4444", "#10b981", "#f59e0b", "#8b5cf6", "#ec4899", "#6366f1"],
               borderWidth: 0
             }]
@@ -6149,15 +6197,13 @@
             plugins: { legend: { position: "right", labels: { boxWidth: 10, font: { size: 10 }, color: textColor } } }
           }
         });
-
+        window.__charts["pie-expenses"] = chartInstance;
         setChartUiState({ showCanvas: true, showSkeleton: false, showNoData: false, showError: false });
       } catch (err) {
         console.error("[chart:pie] render error", err);
-        if (chartInstance) {
-          chartInstance.destroy();
-          chartInstance = null;
-        }
-        setChartUiState({ showCanvas: false, showSkeleton: false, showNoData: false, showError: true });
+        destroyChart("pie-expenses");
+        setChartUiState({ showCanvas: false, showSkeleton: false, showNoData: false, showError: false });
+        showToast("No se pudo renderizar la gráfica de gastos.", { tone: "warning", duration: 2600 });
       }
     };
 
@@ -6165,13 +6211,23 @@
       if (chartRenderState.scheduled) return;
       chartRenderState.scheduled = true;
       requestAnimationFrame(() => {
-        chartRenderState.scheduled = false;
-        attemptChartRender({ attempt: 0 });
+        requestAnimationFrame(() => {
+          chartRenderState.scheduled = false;
+          attemptChartRender();
+        });
       });
     };
 
     window.updateChart = () => {
       scheduleChartRender();
+    };
+
+    window.renderCharts = () => {
+      scheduleChartRender();
+      const msiViewActive = document.getElementById("view-msi")?.classList.contains("active");
+      if (msiViewActive) {
+        requestAnimationFrame(() => requestAnimationFrame(() => renderMsi()));
+      }
     };
 
     // =========================
