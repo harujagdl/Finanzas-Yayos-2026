@@ -269,7 +269,38 @@
       max-width:320px; text-align:center;
     }
     .loader-error p{margin:0 0 10px; font-size:.9rem; color:var(--text-muted);}
-    .owner-select{width:120px; padding:8px 10px; border-radius:12px; font-weight:800;}
+    .topbar{
+      display:flex; justify-content:space-between; align-items:center;
+      gap:8px; flex-wrap:nowrap;
+    }
+    .topbar-left{display:flex; align-items:center; gap:10px; min-width:0; flex:1;}
+    .topbar-right{display:flex; align-items:center; gap:8px; flex-shrink:0;}
+    .owner-pill{max-width:140px; min-width:0; overflow:hidden;}
+    .owner-select{width:100%; max-width:140px; padding:8px 10px; border-radius:12px; font-weight:800;}
+    .owner-select option{text-overflow:ellipsis;}
+    .topbar-icon-btn{
+      width:40px; height:40px; border-color:var(--border-color)!important;
+      color:var(--text-main)!important; flex-shrink:0;
+    }
+    .hamburger{display:none;}
+    .mobile-menu-backdrop{
+      position:fixed; inset:0; background:var(--sheet-overlay); backdrop-filter:blur(2px);
+      opacity:0; pointer-events:none; transition:opacity .2s ease; z-index:140;
+    }
+    .mobile-menu-backdrop.is-open{opacity:1; pointer-events:auto;}
+    .mobile-menu-sheet{
+      position:fixed; right:0; top:0; bottom:0; width:min(88vw, 320px);
+      background:var(--bg-card); border-left:1px solid var(--border-color);
+      border-top-left-radius:16px; border-bottom-left-radius:16px;
+      padding:14px; transform:translateX(108%); transition:transform .2s ease;
+      z-index:145; box-shadow:-10px 0 30px rgba(15,23,42,.2);
+      display:flex; flex-direction:column; gap:10px;
+    }
+    .mobile-menu-sheet.is-open{transform:translateX(0);}
+    .mobile-menu-header{display:flex; justify-content:space-between; align-items:center;}
+    .mobile-menu-title{font-size:.95rem; font-weight:800; margin:0;}
+    .mobile-menu-actions{display:flex; flex-direction:column; gap:8px;}
+    .mobile-menu-actions .btn{justify-content:flex-start; text-align:left;}
 
     /* MSI */
     .msi-pill{
@@ -387,7 +418,28 @@
       color:var(--text-muted); font-weight:700;
     }
     .summary-kpi-value{font-size:1.25rem; font-weight:800;}
-    .summary-card-item{flex-direction:column; align-items:stretch; gap:6px;}
+    .summary-cards-list{display:flex; flex-direction:column;}
+    .summary-card-item{
+      display:flex; justify-content:space-between; align-items:flex-start;
+      gap:10px; padding:12px 0; border-top:1px solid var(--border-color);
+      text-align:left;
+    }
+    .summary-card-main{flex:1; text-align:left; min-width:0;}
+    .summary-card-title{font-size:1rem; font-weight:600; line-height:1.25;}
+    .summary-card-subline{font-size:.85rem; color:var(--text-muted); line-height:1.35; margin-top:3px;}
+    .summary-card-net{
+      min-width:110px; text-align:right; font-weight:800;
+      font-size:1.15rem; letter-spacing:-.2px;
+    }
+    @media (max-width: 520px){
+      .topbar-right .btn-secondary,
+      .topbar-right .btn-owner-repair{display:none;}
+      .hamburger{display:inline-flex;}
+      .summary-card-item{align-items:flex-start; text-align:left;}
+      .summary-card-main,.summary-card-title,.summary-card-subline{text-align:left;}
+      .summary-card-net{text-align:right; min-width:110px;}
+      .owner-pill,.owner-select{max-width:126px;}
+    }
     @media (prefers-reduced-motion: reduce){
       .fade-in, .toast-message{transition:none;}
       .btn-loading .spinner, .skeleton::after{animation:none;}
@@ -413,8 +465,9 @@
         ✅ INICIO
   ======================= -->
   <div id="view-home" class="view-section active p-3">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-      <div>
+    <div class="topbar mb-4">
+      <div class="topbar-left">
+        <div>
         <h5 class="fw-black m-0">Control Total</h5>
         <div class="d-flex align-items-center gap-2 flex-wrap mt-1">
           <div id="netBadge" class="net-badge offline">Offline</div>
@@ -422,16 +475,19 @@
           <small id="sync-time" class="text-muted small d-none">Última sincronización: --</small>
         </div>
       </div>
+      </div>
 
-      <div class="d-flex gap-2 align-items-center">
-        <select id="owner-select" class="form-select form-select-sm owner-select" title="¿Quién está usando la app?">
-          <option value="yair">Yair</option>
-          <option value="haru">Haru</option>
-        </select>
+      <div class="topbar-right">
+        <div class="owner-pill">
+          <select id="owner-select" class="form-select form-select-sm owner-select" title="¿Quién está usando la app?">
+            <option value="yair">Yair</option>
+            <option value="haru">Haru</option>
+          </select>
+        </div>
 
         <button
           id="btn-owner-repair"
-          class="btn btn-sm btn-outline-warning d-none"
+          class="btn btn-sm btn-outline-warning d-none btn-owner-repair"
           type="button"
           onclick="repairLegacyOwnerData()"
           title="Reparar documentos legacy sin owner"
@@ -440,31 +496,39 @@
         </button>
 
         <!-- 🔔 Push (por ahora solo placeholder) -->
-        <button class="btn btn-sm btn-outline-secondary rounded-circle"
+        <button class="btn btn-sm btn-outline-secondary rounded-circle btn-secondary topbar-icon-btn"
           onclick="enablePush()"
           title="Activar recordatorios"
-          style="width:40px;height:40px;border-color:var(--border-color);color:var(--text-main);">
+          >
           <i class="fas fa-bell"></i>
         </button>
 
-        <button class="btn btn-sm btn-outline-secondary rounded-circle"
+        <button class="btn btn-sm btn-outline-secondary rounded-circle topbar-icon-btn"
           onclick="manualRefresh()"
           title="Actualizar datos"
-          style="width:40px;height:40px;border-color:var(--border-color);color:var(--text-main);">
+          >
           <i class="fas fa-rotate"></i>
         </button>
 
-        <button class="btn btn-sm btn-outline-secondary rounded-circle"
+        <button class="btn btn-sm btn-outline-secondary rounded-circle btn-secondary topbar-icon-btn"
           onclick="toggleThemeMode()"
           title="Cambiar tema"
-          style="width:40px;height:40px;border-color:var(--border-color);color:var(--text-main);">
+          >
           <i class="fas fa-moon" id="theme-icon"></i>
         </button>
 
-        <button class="btn btn-sm btn-outline-secondary rounded-circle"
+        <button class="btn btn-sm btn-outline-secondary rounded-circle btn-secondary topbar-icon-btn"
           onclick="togglePrivacy()"
-          style="width:40px;height:40px;border-color:var(--border-color);color:var(--text-main);">
+          >
           <i class="fas fa-eye" id="eye-icon"></i>
+        </button>
+
+        <button class="btn btn-sm btn-outline-secondary rounded-circle topbar-icon-btn hamburger"
+          type="button"
+          title="Abrir menú"
+          aria-label="Abrir menú"
+          onclick="toggleMenu(true)">
+          <i class="fas fa-bars"></i>
         </button>
       </div>
     </div>
@@ -678,7 +742,7 @@
         <h6 class="fw-bold m-0">Desglose por tarjeta</h6>
         <span class="text-muted small" id="summary-card-count">0 tarjetas</span>
       </div>
-      <div id="summary-cards-list"></div>
+      <div id="summary-cards-list" class="summary-cards-list"></div>
     </div>
   </div>
 
@@ -948,6 +1012,21 @@
       <div id="msi-list"><small class="text-muted">Cargando...</small></div>
     </div>
   </div>
+
+  <div id="mobile-menu-backdrop" class="mobile-menu-backdrop" onclick="toggleMenu(false)"></div>
+  <aside id="mobile-menu-sheet" class="mobile-menu-sheet" role="dialog" aria-modal="true" aria-labelledby="mobile-menu-title">
+    <div class="mobile-menu-header">
+      <h6 class="mobile-menu-title" id="mobile-menu-title">Acciones rápidas</h6>
+      <button class="btn btn-sm btn-outline-secondary" type="button" onclick="toggleMenu(false)">Cerrar</button>
+    </div>
+    <div class="mobile-menu-actions">
+      <button class="btn btn-outline-secondary" type="button" onclick="mobileMenuAction('enablePush')"><i class="fas fa-bell me-2"></i>Notificaciones</button>
+      <button class="btn btn-outline-secondary" type="button" onclick="mobileMenuAction('manualRefresh')"><i class="fas fa-rotate me-2"></i>Sincronizar / recargar</button>
+      <button class="btn btn-outline-secondary" type="button" onclick="mobileMenuAction('toggleThemeMode')"><i class="fas fa-moon me-2"></i>Settings (tema)</button>
+      <button class="btn btn-outline-secondary" type="button" onclick="mobileMenuAction('togglePrivacy')"><i class="fas fa-eye me-2"></i>Modo admin / privacidad</button>
+      <button id="mobile-owner-repair" class="btn btn-outline-warning d-none" type="button" onclick="mobileMenuAction('repairLegacyOwnerData')"><i class="fas fa-screwdriver-wrench me-2"></i>Reparar owner</button>
+    </div>
+  </aside>
 
   <button class="quick-fab" type="button" onclick="openQuickAdd()" aria-label="Agregar gasto rápido">
     <i class="fas fa-plus"></i>
@@ -1383,9 +1462,10 @@
 
     function renderOwnerRepairButton(){
       const btn = document.getElementById("btn-owner-repair");
-      if(!btn) return;
+      const mobileBtn = document.getElementById("mobile-owner-repair");
       const canRepair = isValidAppOwner(OWNER) || DEBUG_OWNER_REPAIR;
-      btn.classList.toggle("d-none", !canRepair);
+      if(btn) btn.classList.toggle("d-none", !canRepair);
+      if(mobileBtn) mobileBtn.classList.toggle("d-none", !canRepair);
     }
 
     renderOwnerRepairButton();
@@ -3423,12 +3503,12 @@
         const net = safeNumber(card?.net);
         const netTone = net >= 0 ? "text-success" : "text-danger";
         return `
-          <div class="summary-card-item d-flex justify-content-between align-items-center py-2 border-top">
-            <div>
-              <div class="fw-semibold">${card?.cardName || "Sin tarjeta"}</div>
-              <div class="small text-muted">Gasto: <span class="sensitive-data">${formatCurrency(expense)}</span> · Abono: <span class="sensitive-data">${formatCurrency(income)}</span></div>
+          <div class="summary-card-item">
+            <div class="summary-card-main">
+              <div class="summary-card-title">${card?.cardName || "Sin tarjeta"}</div>
+              <div class="summary-card-subline">Gasto: <span class="sensitive-data">${formatCurrency(expense)}</span> · Abono: <span class="sensitive-data">${formatCurrency(income)}</span></div>
             </div>
-            <div class="fw-bold sensitive-data ${netTone}">${formatCurrency(net)}</div>
+            <div class="summary-card-net sensitive-data ${netTone}">${formatCurrency(net)}</div>
           </div>
         `;
       }).join("");
@@ -4119,6 +4199,21 @@
       }
     };
 
+    const mobileMenuSheet = document.getElementById("mobile-menu-sheet");
+    const mobileMenuBackdrop = document.getElementById("mobile-menu-backdrop");
+
+    window.toggleMenu = (open = false) => {
+      const shouldOpen = Boolean(open);
+      if(mobileMenuSheet) mobileMenuSheet.classList.toggle("is-open", shouldOpen);
+      if(mobileMenuBackdrop) mobileMenuBackdrop.classList.toggle("is-open", shouldOpen);
+    };
+
+    window.mobileMenuAction = (actionName) => {
+      toggleMenu(false);
+      const action = typeof window[actionName] === "function" ? window[actionName] : null;
+      if(action) action();
+    };
+
     const quickSheet = document.getElementById("quick-sheet");
     const quickBackdrop = document.getElementById("quick-sheet-backdrop");
     const quickAmount = document.getElementById("quick-amount");
@@ -4150,6 +4245,24 @@
       if(quickSheet) quickSheet.classList.remove("is-open");
       if(quickBackdrop) quickBackdrop.classList.remove("is-open");
     };
+
+    (() => {
+      let touchStartX = 0;
+      if(mobileMenuSheet){
+        mobileMenuSheet.addEventListener("touchstart", (event) => {
+          touchStartX = event.touches?.[0]?.clientX || 0;
+        }, { passive: true });
+        mobileMenuSheet.addEventListener("touchend", (event) => {
+          const touchEndX = event.changedTouches?.[0]?.clientX || 0;
+          if(touchEndX - touchStartX > 55) toggleMenu(false);
+        }, { passive: true });
+      }
+      document.addEventListener("keydown", (event) => {
+        if(event.key !== "Escape") return;
+        toggleMenu(false);
+        closeQuickAdd();
+      });
+    })();
 
     window.saveQuickAdd = () => {
       const amount = safeNumber(quickAmount?.value);
