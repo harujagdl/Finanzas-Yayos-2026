@@ -31,11 +31,23 @@
     .card-box{
       background:var(--bg-card); border-radius:16px; padding:20px; margin-bottom:16px;
       box-shadow:var(--shadow); border:none; transition:background .3s;
+      overflow:hidden;
     }
     .fw-black{font-weight:800;}
     .blur-sensitive{filter:blur(6px); user-select:none; transition:filter .3s;}
     .kpi-label{font-size:.75rem; text-transform:uppercase; letter-spacing:1px; color:var(--text-muted); font-weight:700;}
-    .kpi-value{font-size:1.75rem; font-weight:800; letter-spacing:-1px;}
+    .kpi-value{
+      font-size:clamp(22px, 6vw, 42px);
+      font-weight:800;
+      letter-spacing:-0.02em;
+      line-height:1.05;
+      font-variant-numeric:tabular-nums;
+      max-width:100%;
+      min-width:0;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      white-space:nowrap;
+    }
     .smart-banner{
       background:linear-gradient(135deg,var(--primary),#1e40af); color:var(--text); border-radius:16px;
       padding:20px; margin-bottom:24px; box-shadow:0 10px 15px -3px rgba(37,99,235,.3);
@@ -153,6 +165,13 @@
       display:flex;
       justify-content:center;
       align-items:center;
+    }
+    .chart-container{min-height:260px;}
+    .chart-container canvas,
+    .msi-chart-container canvas{
+      display:block;
+      width:100% !important;
+      height:220px !important;
     }
     .msi-chart-container{min-height:260px;}
     @keyframes spin{to{transform:rotate(360deg);}}
@@ -404,7 +423,13 @@
     .summary-card-subline{font-size:.85rem; color:var(--text-muted); line-height:1.35; margin-top:3px;}
     .summary-card-net{
       min-width:110px; text-align:right; font-weight:800;
-      font-size:1.15rem; letter-spacing:-.2px;
+      font-size:clamp(18px, 5vw, 32px);
+      letter-spacing:-0.02em;
+      line-height:1.05;
+      font-variant-numeric:tabular-nums;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      white-space:nowrap;
     }
     @media (max-width: 520px){
       .topbar-right .btn-owner-repair{display:none;}
@@ -5469,7 +5494,7 @@
       return items;
     }
 
-    window.renderMsi = () => {
+    window.renderMsi = async () => {
       const list = document.getElementById('msi-list');
       const count = document.getElementById('msi-count');
       const canvas = document.getElementById('msiChart');
@@ -5477,104 +5502,108 @@
 
       if(!list || !canvas || !noData) return;
 
-      const items = getMsiItems();
-      count.textContent = `${items.length} compras`;
-
-      // List
-      if(items.length === 0){
-        list.innerHTML = '<div class="text-center text-muted small p-3">No hay compras MSI en este filtro.</div>';
-      }else{
-        list.innerHTML = '';
-        items.forEach(t => {
-          const pct = t.totalMonths > 0 ? Math.min((t.passed / t.totalMonths) * 100, 100) : 0;
-          const color = (t.remaining === 0) ? 'success' : (t.remaining <= 2 ? 'warning' : 'primary');
-
-          list.innerHTML += `
-            <div class="mb-3">
-              <div class="d-flex justify-content-between align-items-start">
-                <div>
-                  <div class="fw-bold">${t.concept || 'Compra MSI'}</div>
-                  <small class="text-muted">${t.cardName || ''} • Inicio: ${t.start.toLocaleDateString()} • ${t.totalMonths} MSI</small>
-                </div>
-                <div class="text-end">
-                  <div class="fw-black sensitive-data">${t.remaining === 0 ? '✅ Liquidada' : `${t.remaining} meses`}</div>
-                  <small class="text-muted sensitive-data">${formatMoney(t.monthly)}/mes</small>
-                </div>
-              </div>
-              <div class="progress mt-2" style="height:12px;background-color:var(--bg-body);">
-                <div class="progress-bar bg-${color}" role="progressbar" style="width:${pct}%"></div>
-              </div>
-            </div>
-          `;
-        });
-      }
-
-      // Chart (bar)
-      destroyChart("bar-msi");
-
-      if(items.length === 0){
-        canvas.style.display='none';
-        noData.classList.remove('d-none');
-        return;
-      }
-
-      const labels = items.slice(0, 10).map(t => {
-        const name = (t.concept || 'MSI').trim();
-        return name.length > 16 ? name.slice(0, 16) + '…' : name;
-      });
-      const values = items.slice(0, 10).map(t => Number(t.remaining) || 0);
-      const hasData = labels.length > 0 && labels.length === values.length && values.some(v => v > 0);
-      if(!hasData){
-        canvas.style.display='none';
-        noData.classList.remove('d-none');
-        return;
-      }
-
-      canvas.style.display='block';
+      list.innerHTML = '<div class="text-center text-muted small p-3">Cargando...</div>';
+      if(count) count.textContent = '0 compras';
+      canvas.style.display='none';
       noData.classList.add('d-none');
 
-      const isDark = isDarkMode();
-      const textColor=isDark ? '#f9fafb' : '#6b7280';
+      try {
+        const items = getMsiItems();
+        if(count) count.textContent = `${items.length} compras`;
 
-      waitForVisibleCanvas(canvas)
-        .then(() => {
-          msiChartInstance = new Chart(canvas, {
-            type: 'bar',
-            data: {
-              labels,
-              datasets: [{
-                label: 'Meses restantes',
-                data: values
-              }]
+        // List
+        if(items.length === 0){
+          list.innerHTML = '<div class="text-center text-muted small p-3">Sin compras a MSI activas.</div>';
+        }else{
+          list.innerHTML = '';
+          items.forEach(t => {
+            const pct = t.totalMonths > 0 ? Math.min((t.passed / t.totalMonths) * 100, 100) : 0;
+            const color = (t.remaining === 0) ? 'success' : (t.remaining <= 2 ? 'warning' : 'primary');
+
+            list.innerHTML += `
+              <div class="mb-3">
+                <div class="d-flex justify-content-between align-items-start">
+                  <div>
+                    <div class="fw-bold">${t.concept || 'Compra MSI'}</div>
+                    <small class="text-muted">${t.cardName || ''} • Inicio: ${t.start.toLocaleDateString()} • ${t.totalMonths} MSI</small>
+                  </div>
+                  <div class="text-end">
+                    <div class="fw-black sensitive-data">${t.remaining === 0 ? '✅ Liquidada' : `${t.remaining} meses`}</div>
+                    <small class="text-muted sensitive-data">${formatMoney(t.monthly)}/mes</small>
+                  </div>
+                </div>
+                <div class="progress mt-2" style="height:12px;background-color:var(--bg-body);">
+                  <div class="progress-bar bg-${color}" role="progressbar" style="width:${pct}%"></div>
+                </div>
+              </div>
+            `;
+          });
+        }
+
+        // Chart (bar)
+        destroyChart("bar-msi");
+
+        if(items.length === 0){
+          noData.classList.remove('d-none');
+          return;
+        }
+
+        const labels = items.slice(0, 10).map(t => {
+          const name = (t.concept || 'MSI').trim();
+          return name.length > 16 ? name.slice(0, 16) + '…' : name;
+        });
+        const values = items.slice(0, 10).map(t => Number(t.remaining) || 0);
+        const hasData = labels.length > 0 && labels.length === values.length && values.some(v => v > 0);
+        if(!hasData){
+          noData.classList.remove('d-none');
+          return;
+        }
+
+        const isDark = isDarkMode();
+        const textColor=isDark ? '#f9fafb' : '#6b7280';
+
+        await waitForCanvasReady(canvas);
+
+        canvas.style.display='block';
+        noData.classList.add('d-none');
+
+        msiChartInstance = new Chart(canvas, {
+          type: 'bar',
+          data: {
+            labels,
+            datasets: [{
+              label: 'Meses restantes',
+              data: values
+            }]
+          },
+          options: {
+            indexAxis: 'y',
+            responsive:true,
+            maintainAspectRatio:false,
+            plugins:{
+              legend:{ display:false },
+              tooltip:{ enabled:true }
             },
-            options: {
-              indexAxis: 'y',
-              responsive:true,
-              maintainAspectRatio:false,
-              plugins:{
-                legend:{ display:false },
-                tooltip:{ enabled:true }
+            scales: {
+              x: {
+                beginAtZero:true,
+                ticks: { color:textColor }
               },
-              scales: {
-                x: {
-                  beginAtZero:true,
-                  ticks: { color:textColor }
-                },
-                y: {
-                  ticks: { color:textColor, precision:0 }
-                }
+              y: {
+                ticks: { color:textColor, precision:0 }
               }
             }
-          });
-          window.__charts["bar-msi"] = msiChartInstance;
-        })
-        .catch((err) => {
-          console.info("[chart:msi] canvas hidden or no size", err?.message || err);
-          canvas.style.display='none';
-          noData.classList.remove('d-none');
+          }
         });
-
-      if(privacy) togglePrivacy();
+        window.__charts["bar-msi"] = msiChartInstance;
+      } catch (err) {
+        console.error("chart_error", err);
+        destroyChart("bar-msi");
+        canvas.style.display='none';
+        noData.classList.remove('d-none');
+      } finally {
+        if(privacy) togglePrivacy();
+      }
     };
 
     // =========================
@@ -6011,6 +6040,11 @@
     window.__charts = window.__charts || {};
     const categoryAggCache = new Map();
     const chartRenderState = { scheduled: false };
+    const chartUiState = { loading: false };
+
+    const setChartLoading = (isLoading) => {
+      chartUiState.loading = !!isLoading;
+    };
 
     const destroyChart = (key) => {
       const existing = window.__charts[key];
@@ -6022,14 +6056,14 @@
       if (key === "bar-msi") msiChartInstance = null;
     };
 
-    const waitForVisibleCanvas = (canvas, timeoutMs = 1200) =>
+    const waitForCanvasReady = (canvas, timeoutMs = 1200) =>
       new Promise((resolve, reject) => {
         const start = performance.now();
         const tick = () => {
           const rect = canvas?.getBoundingClientRect?.();
-          const ok = rect && rect.width > 10 && rect.height > 10 && canvas?.isConnected;
+          const ok = rect && rect.width > 20 && rect.height > 20 && canvas?.isConnected;
           if (ok) return resolve(rect);
-          if (performance.now() - start > timeoutMs) return reject(new Error("canvas_not_visible"));
+          if (performance.now() - start > timeoutMs) return reject(new Error("canvas_not_ready"));
           requestAnimationFrame(tick);
         };
         requestAnimationFrame(tick);
@@ -6116,7 +6150,7 @@
       const canvas = document.getElementById("expensesChart");
       if (!canvas) return;
 
-      if (dataState.loading) {
+      if (dataState.loading || chartUiState.loading) {
         setChartUiState({ showCanvas: false, showSkeleton: true, showNoData: false, showError: false });
         return;
       }
@@ -6124,34 +6158,29 @@
       const filterEl = document.getElementById("chart-month-filter");
       if (!filterEl || !filterEl.value) return;
 
+      setChartLoading(true);
+      setChartUiState({ showCanvas: false, showSkeleton: true, showNoData: false, showError: false });
       try {
-        await waitForVisibleCanvas(canvas);
-      } catch (err) {
-        setChartUiState({ showCanvas: false, showSkeleton: true, showNoData: false, showError: false });
-        console.info("[chart:pie] canvas hidden or no size", err?.message || err);
-        return;
-      }
+        await waitForCanvasReady(canvas);
 
-      if (!trans.length) {
-        destroyChart("pie-expenses");
-        setChartUiState({ showCanvas: false, showSkeleton: false, showNoData: true, showError: false });
-        return;
-      }
+        if (!trans.length) {
+          destroyChart("pie-expenses");
+          setChartUiState({ showCanvas: false, showSkeleton: false, showNoData: true, showError: false });
+          return;
+        }
 
-      const filterVal = filterEl.value;
-      const [selYear, selMonth] = filterVal.split("-").map(Number);
-      const scopeFilter = getActiveScopeFilter();
-      const owner = getActiveOwner();
-      const periodKey = `${selYear}-${String(selMonth).padStart(2, "0")}`;
-      const cacheKey = getCategoryAggCacheKey({ owner, periodKey, scopeFilter });
-      const startCompute = performance.now();
-      let cached = true;
-      let agg = categoryAggCache.get(cacheKey);
+        const filterVal = filterEl.value;
+        const [selYear, selMonth] = filterVal.split("-").map(Number);
+        const scopeFilter = getActiveScopeFilter();
+        const owner = getActiveOwner();
+        const periodKey = `${selYear}-${String(selMonth).padStart(2, "0")}`;
+        const cacheKey = getCategoryAggCacheKey({ owner, periodKey, scopeFilter });
+        const startCompute = performance.now();
+        let cached = true;
+        let agg = categoryAggCache.get(cacheKey);
 
-      try {
         if (!agg) {
           cached = false;
-          setChartUiState({ showCanvas: false, showSkeleton: true, showNoData: false, showError: false });
           const scopedTrans = applyScopeFilter(trans, scopeFilter);
           agg = await computeCategoryAggAsync(scopedTrans, selYear, selMonth);
           categoryAggCache.set(cacheKey, agg);
@@ -6200,10 +6229,16 @@
         window.__charts["pie-expenses"] = chartInstance;
         setChartUiState({ showCanvas: true, showSkeleton: false, showNoData: false, showError: false });
       } catch (err) {
-        console.error("[chart:pie] render error", err);
+        console.error("chart_error", err);
         destroyChart("pie-expenses");
-        setChartUiState({ showCanvas: false, showSkeleton: false, showNoData: false, showError: false });
-        showToast("No se pudo renderizar la gráfica de gastos.", { tone: "warning", duration: 2600 });
+        if ((err?.message || "") === "canvas_not_ready") {
+          setChartUiState({ showCanvas: false, showSkeleton: false, showNoData: true, showError: false });
+          return;
+        }
+        setChartUiState({ showCanvas: false, showSkeleton: false, showNoData: false, showError: true });
+        showToast("No se pudo renderizar la gráfica. Reintenta.", { tone: "warning", duration: 2600 });
+      } finally {
+        setChartLoading(false);
       }
     };
 
