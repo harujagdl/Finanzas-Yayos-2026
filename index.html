@@ -766,7 +766,7 @@
 
           <div id="msi-fields" style="display:none;">
             <div class="mb-2">
-              <label class="small fw-bold text-muted mb-1">Monto de la compra (total)</label>
+              <label class="small fw-bold text-muted mb-1">Monto total de la compra (total)</label>
               <input type="number" id="t-msi-total" class="form-control" placeholder="0.00" step="0.01" />
             </div>
             <div class="row g-2">
@@ -1848,6 +1848,11 @@
     const isNonCardFilter = (cardId = "") =>
       cardId === PAYMENT_METHOD_SENTINELS.cash.id || cardId === PAYMENT_METHOD_SENTINELS.transfer.id;
 
+    const matchesTargetCard = (transaction = {}, cardId = "") => {
+      if(!cardId || cardId === "all") return true;
+      return transaction?.targetCardId === cardId || transaction?.cardId === cardId;
+    };
+
     const getEffectiveAmount = (mov, { periodStart = null, periodEnd = null } = {}) => {
       const _periodStart = periodStart;
       const _periodEnd = periodEnd;
@@ -1858,10 +1863,6 @@
       const amount = safeNumber(mov?.amount);
       if(type === "income" || type === "payment") return amount;
       if(type === "expense" && mov?.isMsi === true){
-        const months = Number(mov?.msiMonths || 0);
-        if(mov?.msiTotal != null && Number.isFinite(months) && months > 0){
-          return round2(safeNumber(mov.msiTotal) / months);
-        }
         return amount;
       }
       return amount;
@@ -3091,11 +3092,30 @@
       showToast("Resumen mensual actualizado.", { tone: "success", duration: 2000 });
     };
 
-    window.repairMsiFields = async ({ owner = OWNER, batchSize = 250 } = {}) => {
+    const pickLegacyField = (obj, keys = []) => {
+      for(const key of keys){
+        if(obj?.[key] != null && obj[key] !== "") return obj[key];
+      }
+      return null;
+    };
+
+    const inferMsiTotalFallback = ({ amount = 0, months = 0, totalHint = null }) => {
+      const normalizedMonths = Number(months || 0);
+      const numericAmount = safeNumber(amount);
+      if(totalHint != null && Number.isFinite(safeNumber(totalHint)) && safeNumber(totalHint) > 0){
+        return safeNumber(totalHint);
+      }
+      if(!(Number.isFinite(normalizedMonths) && normalizedMonths > 0)) return numericAmount;
+      if(numericAmount >= 1000 && normalizedMonths >= 3) return numericAmount;
+      return round2(numericAmount * normalizedMonths);
+    };
+
+    window.repairMsiData = async ({ owner = OWNER, batchSize = 250 } = {}) => {
       const q = query(collection(db,"expenses"), where("owner","==",owner));
       const snap = await getDocs(q);
       let repaired = 0;
       let pendingReview = 0;
+      let failed = 0;
       let processedInBatch = 0;
       let batch = writeBatch(db);
 
@@ -3107,48 +3127,74 @@
       };
 
       for(const d of snap.docs){
-        const t = d.data();
-        if(!(t?.type === "expense" && t?.isMsi === true)) continue;
+        try{
+          const t = d.data();
+          if(!(t?.type === "expense" && t?.isMsi === true)) continue;
 
-        const months = Number(t?.msiMonths || 0);
-        const hasMsiTotal = t?.msiTotal != null;
-        const updates = {};
+          const updates = { isMsi: true };
 
-        if(hasMsiTotal && Number.isFinite(months) && months > 0){
-          const monthly = round2(safeNumber(t.msiTotal) / months);
-          if(!Number.isFinite(safeNumber(t.amount)) || Math.abs(safeNumber(t.amount) - monthly) > 0.009){
+          const legacyMonths = pickLegacyField(t, ["msi_months", "months", "plazoMeses"]);
+          const rawMonths = t?.msiMonths ?? legacyMonths;
+          const months = Number(rawMonths || 0);
+          if(Number.isFinite(months) && months > 0){
+            updates.msiMonths = Math.round(months);
+          }
+
+          const legacyStart = pickLegacyField(t, ["msiStartDate", "msi_start", "startMsi"]);
+          const rawStart = t?.msiStart ?? legacyStart;
+          if(rawStart){
+            if(rawStart?.toDate || rawStart instanceof Date){
+              updates.msiStart = rawStart?.toDate ? rawStart : Timestamp.fromDate(toDate(rawStart));
+            }else{
+              const parsed = parseLocalYYYYMMDDToDate(String(rawStart));
+              if(parsed) updates.msiStart = Timestamp.fromDate(parsed);
+            }
+          }
+
+          const legacyTotal = pickLegacyField(t, ["totalAmount", "amountTotal", "originalAmount", "purchaseTotal"]);
+          const total = inferMsiTotalFallback({
+            amount: t?.amount,
+            months: updates.msiMonths || t?.msiMonths,
+            totalHint: t?.msiTotal ?? legacyTotal
+          });
+          if(Number.isFinite(total) && total > 0){
+            updates.msiTotal = round2(total);
+          }
+
+          const normalizedMonths = Number(updates.msiMonths || t?.msiMonths || 0);
+          const normalizedTotal = safeNumber(updates.msiTotal ?? t?.msiTotal);
+          const hasCore = Number.isFinite(normalizedMonths) && normalizedMonths > 0 && !!(updates.msiStart || t?.msiStart) && normalizedTotal > 0;
+
+          if(Number.isFinite(normalizedMonths) && normalizedMonths > 0 && normalizedTotal > 0){
+            const monthly = round2(normalizedTotal / normalizedMonths);
             updates.amount = monthly;
             updates.msiMonthly = monthly;
           }
-          if(t.needsReviewMsi){
-            updates.needsReviewMsi = false;
-          }
-        }else if(!hasMsiTotal){
-          const concept = String(t?.concept || "").toLowerCase();
-          const category = String(t?.category || "").toLowerCase();
-          const looksLarge = safeNumber(t?.amount) >= 3000;
-          const hasHint = concept.includes("msi") || concept.includes("pago") || category.includes("msi");
-          if(looksLarge || hasHint){
-            updates.needsReviewMsi = true;
-          }
-        }
 
-        if(Object.keys(updates).length){
-          batch.update(doc(db,"expenses",d.id), updates);
-          processedInBatch += 1;
-          if(updates.amount != null) repaired += 1;
-          if(updates.needsReviewMsi) pendingReview += 1;
-          if(processedInBatch >= batchSize){
-            await flush();
+          updates.needsReviewMsi = !hasCore;
+
+          if(Object.keys(updates).length){
+            batch.set(doc(db,"expenses",d.id), updates, { merge: true });
+            processedInBatch += 1;
+            if(updates.amount != null) repaired += 1;
+            if(updates.needsReviewMsi) pendingReview += 1;
+            if(processedInBatch >= batchSize){
+              await flush();
+            }
           }
+        }catch(err){
+          failed += 1;
+          console.warn("repairMsiData item error", d.id, err);
         }
       }
 
       await flush();
-      console.info("repairMsiFields", { repaired, pendingReview, owner });
-      showToast(`MSI reparados: ${repaired}. Pendientes de revisión: ${pendingReview}.`, { tone: "info", duration: 3200 });
-      return { repaired, pendingReview, owner };
+      console.info("repairMsiData", { repaired, pendingReview, failed, owner });
+      showToast(`MSI reparados: ${repaired}. Revisar: ${pendingReview}. Fallidos: ${failed}.`, { tone: "info", duration: 3600 });
+      return { repaired, pendingReview, failed, owner };
     };
+
+    window.repairMsiFields = window.repairMsiData;
 
     // =========================
     // ✅ RESUMEN POR MES (UI + DATA)
@@ -3499,14 +3545,18 @@
           const statementPurchases = [];
           const statementAbonos = [];
           itemsByOwner.forEach((item) => {
-            if(item?.cardId !== context.selectedCardId) return;
             const date = toDate(item?.date);
             const amount = getMsiPaymentDetails(item, context.anchorDate).amount;
             const isIncome = item?.type === "income" || item?.type === "payment";
-            if(!isIncome && date >= context.statement.statementStart && date < context.statement.statementEndExclusive){
-              statementPurchases.push({ ...item, computedAmount: amount });
+            if(!isIncome){
+              if(item?.cardId !== context.selectedCardId) return;
+              if(date >= context.statement.statementStart && date < context.statement.statementEndExclusive){
+                statementPurchases.push({ ...item, computedAmount: amount });
+              }
+              return;
             }
-            if(isIncome && date >= context.statement.abonosStart && date < context.statement.abonosEndExclusive){
+            if(!matchesTargetCard(item, context.selectedCardId)) return;
+            if(date >= context.statement.abonosStart && date < context.statement.abonosEndExclusive){
               statementAbonos.push({ ...item, computedAmount: amount });
             }
           });
@@ -5597,22 +5647,33 @@
       const months = Number(transaction?.msiMonths || 0);
       const isMsiExpense = transaction?.type === "expense" && transaction?.isMsi === true;
       if(!isMsiExpense){
-        return { amount, subtitle: "", incomplete: false };
+        return { amount, subtitle: "", incomplete: false, needsReview: false };
       }
 
-      const hasCompleteMsi = Number.isFinite(months) && months > 0 && transaction?.msiTotal != null;
-      if(!hasCompleteMsi){
-        return { amount, subtitle: "MSI", incomplete: true };
+      const startRaw = transaction?.msiStart?.toDate ? transaction.msiStart.toDate() : transaction?.msiStart;
+      const hasStart = !!startRaw;
+      const hasMonths = Number.isFinite(months) && months > 0;
+      const hasTotal = transaction?.msiTotal != null && safeNumber(transaction?.msiTotal) > 0;
+      const needsReview = !!transaction?.needsReviewMsi;
+
+      if(!(hasMonths && hasStart && hasTotal)){
+        const trulyIncomplete = !hasMonths;
+        return {
+          amount,
+          subtitle: "MSI",
+          incomplete: trulyIncomplete,
+          needsReview: !trulyIncomplete || needsReview
+        };
       }
 
       const total = safeNumber(transaction.msiTotal);
-      const startRaw = transaction?.msiStart?.toDate ? transaction.msiStart.toDate() : transaction?.msiStart;
-      const startDate = startRaw ? toDate(startRaw) : toDate(transaction?.date);
+      const startDate = toDate(startRaw);
       const installmentNumber = getMsiPaymentIndex(startDate, anchorDate, months);
       return {
         amount,
         subtitle: `MSI ${months} • Pago ${installmentNumber}/${months} • Total ${formatMoney(total)}`,
-        incomplete: false
+        incomplete: false,
+        needsReview: false
       };
     };
 
@@ -5697,7 +5758,8 @@
                     <div class="fw-bold">${t.concept}${tagMsi}</div>
                     <small class="text-muted">${d.toLocaleDateString()} • ${paymentInfo.cardName} • ${t.category}</small>
                     ${msiDetails.subtitle ? `<div class="text-muted small">${msiDetails.subtitle}</div>` : ""}
-                    ${msiDetails.incomplete ? `<div class="text-warning small fw-semibold">MSI incompleto</div>` : ""}
+                    ${msiDetails.needsReview ? `<div class="text-warning small fw-semibold">MSI revisar</div>` : ""}
+                    ${msiDetails.incomplete ? `<div class="text-danger small fw-semibold">MSI incompleto</div>` : ""}
                   </div>
                 </div>
                 <div class="d-flex align-items-center gap-2">
@@ -5785,15 +5847,16 @@
         const compras = [];
         const abonos = [];
         scopedTrans.forEach((t) => {
-          if(t.cardId !== context.cardFilter) return;
           if(!baseMatches(t)) return;
           const d = toDate(t.date);
           const isIncome = t?.type === "income" || t?.type === "payment";
           if(!isIncome){
+            if(t.cardId !== context.cardFilter) return;
             if(!matchesHistoryMsiFilter(t, msiFilter)) return;
             if(d >= context.statement.statementStart && d < context.statement.statementEndExclusive) compras.push(t);
             return;
           }
+          if(!matchesTargetCard(t, context.cardFilter)) return;
           if(d >= context.statement.abonosStart && d < context.statement.abonosEndExclusive) abonos.push(t);
         });
         return { context, compras, abonos };
@@ -5808,7 +5871,7 @@
         }
 
         let matchesCard = true;
-        if(context.cardFilter !== 'all') matchesCard = (t.cardId === context.cardFilter);
+        if(context.cardFilter !== 'all') matchesCard = matchesTargetCard(t, context.cardFilter);
         const matchesMsi = matchesHistoryMsiFilter(t, msiFilter);
         return matchesDate && matchesCard && matchesMsi;
       });
@@ -6278,13 +6341,38 @@
         t.cardName = t.cardName || payment.cardName;
       }
 
+      if((t.type === "income" || t.type === "payment") && !t.targetCardId && t.cardId && !isNonCardFilter(t.cardId)){
+        t.targetCardId = t.cardId;
+        t.targetCardName = t.cardName || null;
+      }
+
       if(t.type === "expense" && t.isMsi === true){
-        const months = Number(t.msiMonths || 0);
+        const rawMonths = t.msiMonths ?? pickLegacyField(t, ["msi_months", "months", "plazoMeses"]);
+        const months = Number(rawMonths || 0);
+        if(Number.isFinite(months) && months > 0) t.msiMonths = Math.round(months);
+
+        const rawStart = t.msiStart ?? pickLegacyField(t, ["msiStartDate", "msi_start", "startMsi"]);
+        if(rawStart){
+          if(rawStart?.toDate || rawStart instanceof Date) t.msiStart = rawStart;
+          else {
+            const parsedStart = parseLocalYYYYMMDDToDate(String(rawStart));
+            if(parsedStart) t.msiStart = Timestamp.fromDate(parsedStart);
+          }
+        }
+
+        if(t.msiTotal == null){
+          const totalHint = pickLegacyField(t, ["totalAmount", "amountTotal", "originalAmount", "purchaseTotal"]);
+          const fallbackTotal = inferMsiTotalFallback({ amount: t.amount, months: t.msiMonths, totalHint });
+          if(Number.isFinite(fallbackTotal) && fallbackTotal > 0) t.msiTotal = round2(fallbackTotal);
+        }
+
         const hasMsiTotal = t.msiTotal != null;
-        if(hasMsiTotal && Number.isFinite(months) && months > 0){
-          t.msiMonthly = round2(safeNumber(t.msiTotal) / months);
+        if(hasMsiTotal && Number.isFinite(Number(t.msiMonths || 0)) && Number(t.msiMonths) > 0){
+          t.msiMonthly = round2(safeNumber(t.msiTotal) / Number(t.msiMonths));
           t.amount = t.msiMonthly;
         }
+
+        t.needsReviewMsi = !(Number(t.msiMonths || 0) > 0 && !!t.msiStart && safeNumber(t.msiTotal) > 0);
       }
       return t;
     }
@@ -6297,6 +6385,8 @@
         amount: t.amount,
         cardId: t.cardId,
         cardName: t.cardName,
+        targetCardId: t.targetCardId || null,
+        targetCardName: t.targetCardName || null,
         paymentMethod: normalizePaymentMethod(t),
         concept: t.concept,
         category: t.category,
@@ -6584,6 +6674,8 @@
           paymentMethod,
           cardId: paymentMethod === 'card' ? cid : paymentDisplay.id,
           cardName: paymentMethod === 'card' ? cObj.name : paymentDisplay.name,
+          targetCardId: type === 'payment' && cid ? cid : null,
+          targetCardName: type === 'payment' && cObj ? cObj.name : null,
           concept: document.getElementById('t-concept').value,
           category: document.getElementById('t-cat').value,
           date: Timestamp.fromDate(parseLocalYYYYMMDDToDate(document.getElementById('t-date').value) || new Date()),
