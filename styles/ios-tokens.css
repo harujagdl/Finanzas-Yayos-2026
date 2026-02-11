@@ -1,0 +1,36 @@
+:root{
+  --bg: #0B1220;
+  --surface: rgba(255,255,255,.06);
+  --surface2: rgba(255,255,255,.09);
+  --surface3: rgba(255,255,255,.12);
+  --border: rgba(255,255,255,.10);
+  --border2: rgba(255,255,255,.14);
+
+  --text: rgba(255,255,255,.92);
+  --muted: rgba(255,255,255,.62);
+  --muted2: rgba(255,255,255,.44);
+
+  --accent: #2F7CFF;
+  --success: #34C759;
+  --danger: #FF3B30;
+  --warning: #FFCC00;
+
+  --shadow: 0 10px 30px rgba(0,0,0,.35);
+  --shadow2: 0 6px 18px rgba(0,0,0,.25);
+
+  --r-xl: 28px;
+  --r-lg: 22px;
+  --r-md: 16px;
+  --r-sm: 12px;
+
+  --pad-xl: 22px;
+  --pad-lg: 18px;
+  --pad-md: 14px;
+  --pad-sm: 10px;
+
+  --gap-lg: 14px;
+  --gap-md: 10px;
+  --gap-sm: 8px;
+
+  --ring: 0 0 0 3px rgba(47,124,255,.25);
+}

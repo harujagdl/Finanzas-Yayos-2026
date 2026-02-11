@@ -17,6 +17,7 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800&display=swap" rel="stylesheet" />
+  <link href="./styles/ios-tokens.css" rel="stylesheet" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
   <style>
@@ -447,6 +448,7 @@
       .quick-sheet, .quick-sheet-backdrop, .swipe-item{transition:none;}
     }
   </style>
+  <link href="./styles/ios-components.css" rel="stylesheet" />
 </head>
 
 <body>
@@ -465,8 +467,8 @@
         ✅ INICIO
   ======================= -->
   <div id="view-home" class="view-section active p-3">
-    <div class="topbar mb-4">
-      <div class="topbar-left">
+    <div class="topbar topbar-ios mb-4">
+      <div class="topbar-left topbarLeft">
         <div>
         <h5 class="fw-black m-0">Control Total</h5>
         <div class="d-flex align-items-center gap-2 flex-wrap mt-1">
@@ -477,8 +479,8 @@
       </div>
       </div>
 
-      <div class="topbar-right">
-        <div class="owner-pill">
+      <div class="topbar-right topbarRight">
+        <div class="owner-pill ownerPill">
           <select id="owner-select" class="form-select form-select-sm owner-select" title="¿Quién está usando la app?">
             <option value="yair">Yair</option>
             <option value="haru">Haru</option>
@@ -523,7 +525,7 @@
           <i class="fas fa-eye" id="eye-icon"></i>
         </button>
 
-        <button class="btn btn-sm btn-outline-secondary rounded-circle topbar-icon-btn hamburger"
+        <button class="btn btn-sm btn-outline-secondary rounded-circle topbar-icon-btn hamburger hamburgerBtn"
           type="button"
           title="Abrir menú"
           aria-label="Abrir menú"
@@ -568,14 +570,14 @@
       </div>
     </section>
 
-    <section id="dashboard-summary" class="card-box">
+    <section id="dashboard-summary" class="card-box card">
       <div class="d-flex justify-content-between align-items-center mb-3">
         <h6 class="fw-bold m-0"><i class="fas fa-gauge-high me-2"></i>Resumen</h6>
       </div>
       <div id="dashboard-summary-body" class="text-muted small">Cargando resumen...</div>
     </section>
 
-    <section id="prediction-section" class="card-box">
+    <section id="prediction-section" class="card-box card">
       <div class="d-flex justify-content-between align-items-center mb-2">
         <h6 class="fw-bold m-0"><i class="fas fa-chart-line me-2"></i>Predicción del mes</h6>
         <span id="prediction-status" class="badge-status bg-neutral-light">Sin datos</span>
@@ -583,7 +585,7 @@
       <div id="prediction-body" class="text-muted small">Calculando predicción...</div>
     </section>
 
-    <section id="simulation-section" class="card-box">
+    <section id="simulation-section" class="card-box card">
       <div class="d-flex justify-content-between align-items-center mb-2">
         <h6 class="fw-bold m-0"><i class="fas fa-vial me-2"></i>Simular gasto</h6>
         <span id="simulation-status" class="badge-status bg-warning-light d-none">SIMULADO</span>
@@ -669,7 +671,7 @@
       </div>
     </div>
 
-    <div class="card-box">
+    <div class="card-box card">
       <div class="d-flex justify-content-between align-items-center mb-3">
         <h6 class="fw-bold m-0">Distribución de Gastos</h6>
         <select id="chart-month-filter" class="form-select form-select-sm w-auto py-1" onchange="updateChart()"></select>
@@ -699,7 +701,7 @@
       <span id="summary-status" class="text-muted small"></span>
     </div>
 
-    <div class="card-box">
+    <div class="card-box card">
       <div class="row g-2 mb-3">
         <div class="col-6">
           <select id="summary-period-mode" class="form-select" onchange="handleSummaryPeriodModeChange()">
@@ -728,7 +730,7 @@
       <div id="summary-statement-meta" class="text-muted small mt-2 d-none"></div>
     </div>
 
-    <div class="card-box">
+    <div class="card-box card">
       <div class="d-flex justify-content-between align-items-center mb-3">
         <h6 class="fw-bold m-0">Totales del mes</h6>
       </div>
@@ -737,7 +739,7 @@
       <div id="summary-estimated-payment" class="mt-3 d-none"></div>
     </div>
 
-    <div class="card-box">
+    <div class="card-box card">
       <div class="d-flex justify-content-between align-items-center mb-3">
         <h6 class="fw-bold m-0">Desglose por tarjeta</h6>
         <span class="text-muted small" id="summary-card-count">0 tarjetas</span>
@@ -763,7 +765,7 @@
   ======================= -->
   <div id="view-add" class="view-section p-3">
     <h4 class="fw-black mb-4">Registrar Movimiento</h4>
-    <div class="card-box">
+    <div class="card-box card">
       <form id="form-trans">
         <input type="hidden" id="trans-id" />
 
@@ -937,7 +939,7 @@
     </div>
 
     <div id="hist-period-hint" class="text-muted small mb-2 d-none"></div>
-    <div id="hist-period-totals" class="card-box p-3 mb-3"></div>
+    <div id="hist-period-totals" class="card-box card p-3 mb-3"></div>
 
     <div id="hist-list"></div>
   </div>
@@ -1054,27 +1056,27 @@
   <!-- =======================
         ✅ NAV
   ======================= -->
-  <div class="nav-bottom">
+  <div class="nav-bottom bottomNav">
     <div class="nav-container-item">
-      <button class="nav-btn active" onclick="nav('view-home')" id="nav-home"><i class="fas fa-chart-pie"></i> Inicio</button>
+      <button class="nav-btn navItem active" onclick="nav('view-home')" id="nav-home"><i class="fas fa-chart-pie"></i> Inicio</button>
     </div>
     <div class="nav-container-item">
-      <button class="nav-btn" onclick="nav('view-summary')" id="nav-summary"><i class="fas fa-calendar-days"></i> Resumen</button>
+      <button class="nav-btn navItem" onclick="nav('view-summary')" id="nav-summary"><i class="fas fa-calendar-days"></i> Resumen</button>
     </div>
     <div class="nav-container-item">
-      <button class="nav-btn" onclick="nav('view-cards')" id="nav-cards"><i class="fas fa-wallet"></i> Tarjetas</button>
+      <button class="nav-btn navItem" onclick="nav('view-cards')" id="nav-cards"><i class="fas fa-wallet"></i> Tarjetas</button>
     </div>
     <div class="nav-container-item">
       <div class="fab-main" onclick="nav('view-add'); resetForm();"><i class="fas fa-plus"></i></div>
     </div>
     <div class="nav-container-item">
-      <button class="nav-btn" onclick="nav('view-msi')" id="nav-msi"><i class="fas fa-layer-group"></i> MSI</button>
+      <button class="nav-btn navItem" onclick="nav('view-msi')" id="nav-msi"><i class="fas fa-layer-group"></i> MSI</button>
     </div>
     <div class="nav-container-item">
-      <button class="nav-btn" onclick="nav('view-hist')" id="nav-hist"><i class="fas fa-list-ul"></i> Historial</button>
+      <button class="nav-btn navItem" onclick="nav('view-hist')" id="nav-hist"><i class="fas fa-list-ul"></i> Historial</button>
     </div>
     <div class="nav-container-item">
-      <button class="nav-btn" onclick="nav('view-goals')" id="nav-goals">
+      <button class="nav-btn navItem" onclick="nav('view-goals')" id="nav-goals">
         <span class="nav-emoji trophy-icon">🏆</span> Metas
       </button>
     </div>
@@ -3503,12 +3505,12 @@
         const net = safeNumber(card?.net);
         const netTone = net >= 0 ? "text-success" : "text-danger";
         return `
-          <div class="summary-card-item">
-            <div class="summary-card-main">
-              <div class="summary-card-title">${card?.cardName || "Sin tarjeta"}</div>
-              <div class="summary-card-subline">Gasto: <span class="sensitive-data">${formatCurrency(expense)}</span> · Abono: <span class="sensitive-data">${formatCurrency(income)}</span></div>
+          <div class="summary-card-item breakRow">
+            <div class="summary-card-main breakLeft">
+              <div class="summary-card-title breakTitle">${card?.cardName || "Sin tarjeta"}</div>
+              <div class="summary-card-subline breakSub">Gasto: <span class="sensitive-data">${formatCurrency(expense)}</span> · Abono: <span class="sensitive-data">${formatCurrency(income)}</span></div>
             </div>
-            <div class="summary-card-net sensitive-data ${netTone}">${formatCurrency(net)}</div>
+            <div class="summary-card-net breakRight breakNet sensitive-data ${netTone}">${formatCurrency(net)}</div>
           </div>
         `;
       }).join("");
