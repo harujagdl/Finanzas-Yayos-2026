@@ -449,6 +449,45 @@
     .themeOption{width:100%; background:var(--surface); border:1px solid var(--border); border-radius:18px; padding:14px 12px; color:var(--text); font-weight:600; display:flex; align-items:center; justify-content:center;}
     .themeOption.active{border-color:rgba(47,124,255,.45); box-shadow:var(--ring);}
 
+    :root{
+      --text: #0b0f1a;
+      --muted: rgba(11,15,26,.65);
+      --surface: #ffffff;
+      --surface2: #f2f4f7;
+      --border: rgba(0,0,0,.12);
+    }
+
+    :root[data-theme="dark"]{
+      --text: #f4f6fb;
+      --muted: rgba(244,246,251,.65);
+      --surface: rgba(22,27,36,.92);
+      --surface2: rgba(22,27,36,.72);
+      --border: rgba(255,255,255,.14);
+    }
+
+    .month-picker,
+    .month-picker select,
+    .month-picker option,
+    select.month-select,
+    select.month-select option,
+    #chart-month-filter,
+    #summary-month-select,
+    #hist-month-filter,
+    #msi-filter,
+    #t-msi-months{
+      color: var(--text);
+      background: var(--surface);
+      border: 1px solid var(--border);
+    }
+
+    .month-list, .month-popover{
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .month-list .item{ color: var(--text); }
+    .month-list .item small{ color: var(--muted); }
+
     .pill, .chip, .badge, .bullet, .badge-status, .sync-pill, .net-badge, .msi-pill{
       display:inline-flex; align-items:center; justify-content:center; gap:8px; line-height:1; white-space:nowrap;
     }
@@ -1242,6 +1281,51 @@
       query, orderBy, writeBatch, Timestamp, enableIndexedDbPersistence, where, getDocs, getDoc, setDoc,
       serverTimestamp, increment, limit, startAfter
     } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
+
+    // ===== Theme helpers (GLOBAL) =====
+    window.getThemeMode = function getThemeMode(){
+      const dt = document.documentElement.getAttribute("data-theme");
+      const ls = localStorage.getItem("theme") || localStorage.getItem("fy_theme");
+      if (dt) return dt;
+      if (ls && ls !== "system") return ls;
+      return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
+        ? "dark" : "light";
+    };
+
+    window.isDarkMode = function isDarkMode(){
+      return window.getThemeMode() === "dark";
+    };
+
+    window.onThemeChange = function onThemeChange(cb){
+      const mq = window.matchMedia("(prefers-color-scheme: dark)");
+      try { mq.addEventListener("change", cb); } catch(e){ mq.addListener(cb); }
+    };
+
+    window.safeRenderChart = function safeRenderChart({ canvasId, renderFn, tries = 12 }){
+      let attempt = 0;
+      function tick(){
+        const el = document.getElementById(canvasId);
+        if (!el) {
+          attempt++;
+          if (attempt <= tries) return requestAnimationFrame(tick);
+          console.warn("chart_error Error: canvas_not_ready", { canvasId, reason: "not_found" });
+          return;
+        }
+        const rect = el.getBoundingClientRect();
+        if (rect.width < 40 || rect.height < 40) {
+          attempt++;
+          if (attempt <= tries) return requestAnimationFrame(tick);
+          console.warn("chart_error Error: canvas_not_ready", { canvasId, reason: "zero_size", rect });
+          return;
+        }
+        try {
+          renderFn(el);
+        } catch (e) {
+          console.error("chart_error", e);
+        }
+      }
+      requestAnimationFrame(tick);
+    };
 
     // =========================
     // ✅ CONFIG SHEETS
@@ -4027,8 +4111,11 @@
         const t = (theme === "light" || theme === "dark") ? theme : "system";
         apply(t === "system" ? null : t);
         localStorage.setItem(KEY, t);
+        localStorage.setItem("theme", t);
         window.updateThemeUI?.();
         window.renderCharts?.();
+        window.renderSummaryView?.({ force: true });
+        window.renderMsi?.();
       };
 
       window.getTheme = function(){
@@ -4043,6 +4130,12 @@
 
       window.loadTheme();
     })();
+
+    window.onThemeChange(() => {
+      if (window.renderSummaryView) window.renderSummaryView({ force: true });
+      if (window.renderMsi) window.renderMsi();
+      window.renderCharts?.();
+    });
 
     const isProbablyIOS = () => {
       const ua = navigator.userAgent || "";
@@ -5640,33 +5733,40 @@
           return;
         }
 
-        const isDark = isDarkMode();
+        const isDark = window.isDarkMode();
         const textColor=isDark ? '#f9fafb' : '#6b7280';
 
-        await waitForCanvasReady(canvas);
-
+        ensureCanvasHostMinHeight('msiChart');
         canvas.style.display='block';
         noData.classList.add('d-none');
 
-        msiChartInstance = await chartManager.renderBarChart({
+        window.safeRenderChart({
           canvasId: 'msiChart',
-          labels,
-          values,
-          datasetLabel: 'Meses restantes',
-          options: {
-            indexAxis: 'y',
-            plugins:{ legend:{ display:false }, tooltip:{ enabled:true } },
-            scales: {
-              x: { beginAtZero:true, ticks: { color:textColor } },
-              y: { ticks: { color:textColor, precision:0 } }
+          renderFn: (chartCanvas) => {
+            const key = chartCanvas.id;
+            if (window.__charts[key]) {
+              try { window.__charts[key].destroy(); } catch(e){}
+              window.__charts[key] = null;
             }
+            msiChartInstance = new Chart(chartCanvas.getContext("2d"), {
+              type: "bar",
+              data: { labels, datasets: [{ label: 'Meses restantes', data: values }] },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                indexAxis: 'y',
+                plugins:{ legend:{ display:false }, tooltip:{ enabled:true } },
+                scales: {
+                  x: { beginAtZero:true, ticks: { color:textColor } },
+                  y: { ticks: { color:textColor, precision:0 } }
+                }
+              }
+            });
+            window.__charts[key] = msiChartInstance;
+            window.__charts["bar-msi"] = msiChartInstance;
           }
         });
-        if(!msiChartInstance){
-          noData.classList.remove('d-none');
-          return;
-        }
-        window.__charts["bar-msi"] = msiChartInstance;
       } catch (err) {
         console.error("chart_error", err);
         destroyChart("bar-msi");
@@ -6158,76 +6258,13 @@
       if (key === "bar-msi") msiChartInstance = null;
     };
 
-    const chartManager = {
-      getCanvasSafe(canvasId){
-        const canvas = document.getElementById(canvasId);
-        if(!canvas) return null;
-        const parent = canvas.parentElement;
-        if(parent){
-          const rect = parent.getBoundingClientRect();
-          if((rect?.height || 0) < 120) parent.style.minHeight = "260px";
-        }
-        return canvas;
-      },
-      destroyChartIfAny(canvas){
-        if(!canvas || typeof Chart === "undefined") return;
-        const existing = Chart.getChart?.(canvas);
-        if(existing) existing.destroy();
-      },
-      renderDonutChart({ canvasId, labels = [], values = [], options = {} } = {}){
-        const canvas = this.getCanvasSafe(canvasId);
-        if(!canvas) return Promise.resolve(null);
-        this.destroyChartIfAny(canvas);
-        return new Promise((resolve) => {
-          requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-              const chart = new Chart(canvas.getContext("2d"), {
-                type: "doughnut",
-                data: { labels, datasets: [{ data: values, backgroundColor: ["#2563eb", "#ef4444", "#10b981", "#f59e0b", "#8b5cf6", "#ec4899", "#6366f1"], borderWidth: 0 }] },
-                options: {
-                  responsive: true,
-                  maintainAspectRatio: false,
-                  animation: false,
-                  plugins: { legend: { display: false } },
-                  ...options
-                }
-              });
-              resolve(chart);
-            });
-          });
-        });
-      },
-      renderBarChart({ canvasId, labels = [], values = [], datasetLabel = "", options = {} } = {}){
-        const canvas = this.getCanvasSafe(canvasId);
-        if(!canvas) return Promise.resolve(null);
-        this.destroyChartIfAny(canvas);
-        return new Promise((resolve) => {
-          requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-              const chart = new Chart(canvas.getContext("2d"), {
-                type: "bar",
-                data: { labels, datasets: [{ label: datasetLabel, data: values }] },
-                options: { responsive: true, maintainAspectRatio: false, animation: false, ...options }
-              });
-              resolve(chart);
-            });
-          });
-        });
-      }
+    const ensureCanvasHostMinHeight = (canvasId, minHeight = 260) => {
+      const canvas = document.getElementById(canvasId);
+      const parent = canvas?.parentElement;
+      if(!parent) return;
+      const rect = parent.getBoundingClientRect();
+      if((rect?.height || 0) < 120) parent.style.minHeight = `${minHeight}px`;
     };
-
-    const waitForCanvasReady = (canvas, timeoutMs = 1200) =>
-      new Promise((resolve, reject) => {
-        const start = performance.now();
-        const tick = () => {
-          const rect = canvas?.getBoundingClientRect?.();
-          const ok = rect && rect.width > 20 && rect.height > 20 && canvas?.isConnected;
-          if (ok) return resolve(rect);
-          if (performance.now() - start > timeoutMs) return reject(new Error("canvas_not_ready"));
-          requestAnimationFrame(tick);
-        };
-        requestAnimationFrame(tick);
-      });
 
     const getCategoryAggCacheKey = ({ owner, periodKey, scopeFilter }) =>
       `${owner}|${periodKey}|${scopeFilter}`;
@@ -6328,8 +6365,6 @@
       setChartLoading(true);
       setChartUiState({ showCanvas: false, showSkeleton: true, showNoData: false, showError: false });
       try {
-        await waitForCanvasReady(canvas);
-
         if (!trans.length) {
           destroyChart("pie-expenses");
           setChartUiState({ showCanvas: false, showSkeleton: false, showNoData: true, showError: false });
@@ -6374,27 +6409,43 @@
         }
 
         destroyChart("pie-expenses");
-        const isDark = isDarkMode();
+        const isDark = window.isDarkMode();
         const textColor = isDark ? "#f9fafb" : "#6b7280";
 
-        chartInstance = await chartManager.renderDonutChart({
+        ensureCanvasHostMinHeight("expensesChart");
+        window.safeRenderChart({
           canvasId: "expensesChart",
-          labels,
-          values,
-          options: {
-            plugins: { legend: { position: "right", labels: { boxWidth: 10, font: { size: 10 }, color: textColor } } }
+          renderFn: (chartCanvas) => {
+            const key = chartCanvas.id;
+            if (window.__charts[key]) {
+              try { window.__charts[key].destroy(); } catch(e){}
+              window.__charts[key] = null;
+            }
+            chartInstance = new Chart(chartCanvas.getContext("2d"), {
+              type: "doughnut",
+              data: {
+                labels,
+                datasets: [{
+                  data: values,
+                  backgroundColor: ["#2563eb", "#ef4444", "#10b981", "#f59e0b", "#8b5cf6", "#ec4899", "#6366f1"],
+                  borderWidth: 0
+                }]
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                plugins: { legend: { position: "right", labels: { boxWidth: 10, font: { size: 10 }, color: textColor } } }
+              }
+            });
+            window.__charts[key] = chartInstance;
+            window.__charts["pie-expenses"] = chartInstance;
           }
         });
-        if(!chartInstance) throw new Error("chart_create_failed");
-        window.__charts["pie-expenses"] = chartInstance;
         setChartUiState({ showCanvas: true, showSkeleton: false, showNoData: false, showError: false });
       } catch (err) {
         console.error("chart_error", err);
         destroyChart("pie-expenses");
-        if ((err?.message || "") === "canvas_not_ready") {
-          setChartUiState({ showCanvas: false, showSkeleton: false, showNoData: true, showError: false });
-          return;
-        }
         setChartUiState({ showCanvas: false, showSkeleton: false, showNoData: false, showError: true });
         showToast("No se pudo renderizar la gráfica. Reintenta.", { tone: "warning", duration: 2600 });
       } finally {
