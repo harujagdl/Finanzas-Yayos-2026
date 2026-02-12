@@ -1858,11 +1858,48 @@
       });
     };
 
+    const getTxDateMs = (tx = {}) => {
+      const raw = tx?.date ?? tx?.fecha ?? tx?.ts ?? tx?.createdAt ?? tx?.when;
+      if(raw == null) return null;
+      if(typeof raw === "number") return Number.isFinite(raw) ? raw : null;
+      if(raw?.toMillis) {
+        const ms = raw.toMillis();
+        return Number.isFinite(ms) ? ms : null;
+      }
+      if(raw?.toDate) {
+        const ms = raw.toDate()?.getTime?.();
+        return Number.isFinite(ms) ? ms : null;
+      }
+      if(raw instanceof Date) return Number.isFinite(raw.getTime()) ? raw.getTime() : null;
+      if(typeof raw === "string"){
+        const direct = Date.parse(raw);
+        if(Number.isFinite(direct)) return direct;
+        const parsedLocal = parseLocalYYYYMMDDToDate(raw);
+        const localMs = parsedLocal?.getTime?.();
+        return Number.isFinite(localMs) ? localMs : null;
+      }
+      const guessed = new Date(raw);
+      const ms = guessed.getTime();
+      return Number.isFinite(ms) ? ms : null;
+    };
+
     const toDate = (value) => {
+      if(value && typeof value === "object" && !(value instanceof Date)){
+        const ms = getTxDateMs(value);
+        if(Number.isFinite(ms)) return new Date(ms);
+      }
       if (value && typeof value.toDate === "function") return value.toDate();
       if (value instanceof Date) return value;
       const d = new Date(value);
       return Number.isNaN(d.getTime()) ? new Date(0) : d;
+    };
+
+    const isExpenseTransaction = (tx = {}) => {
+      const kind = String(tx?.type ?? tx?.kind ?? tx?.tipo ?? "").toLowerCase();
+      if(["expense", "gasto"].includes(kind)) return true;
+      if(["income", "payment", "abono", "ingreso", "transfer"].includes(kind)) return false;
+      const amount = Number(tx?.amount ?? tx?.monto ?? 0);
+      return Number.isFinite(amount) && amount < 0;
     };
 
     const startOfMonth = (date = new Date()) => {
@@ -5501,23 +5538,23 @@
       return Math.max(0, diff);
     }
 
-    function getMsiTransactions(activeFilter = 'active', cardFilter = 'all'){
-      const now=new Date();
+    function selectMsiPurchases({ activeFilter = 'active', cardFilter = 'all' } = {}){
+      const now = new Date();
       const items = trans
         .filter((t) => {
-          if(t?.type !== "expense" || t?.isMsi !== true) return false;
-          if(cardFilter !== 'all' && t?.cardId !== cardFilter) return false;
+          if(!isExpenseTransaction(t) || t?.isMsi !== true) return false;
+          if(cardFilter !== 'all' && (t?.cardId || 'other') !== cardFilter) return false;
           return true;
         })
-        .map(t => {
-          const start = t.msiStart?.toDate ? t.msiStart.toDate() : new Date(t.msiStart || t.date);
-          const totalMonths = parseInt(t.msiMonths, 10) || 0;
-          const passed = monthsBetween(start, now);
-          const remaining = Math.max(totalMonths - passed, 0);
-          const total = Number(t.msiTotal ?? t.amount ?? 0);
-          const monthly = (total / Math.max(totalMonths,1));
-          const msiIncomplete = !(totalMonths > 0 && t?.msiStart && total > 0);
-
+        .map((t) => {
+          const startMs = getTxDateMs({ date: t?.msiStart ?? t?.date, fecha: t?.msiStartDate ?? null });
+          const start = Number.isFinite(startMs) ? new Date(startMs) : toDate(t?.msiStart || t?.date);
+          const totalMonths = parseInt(t?.msiMonths ?? t?.months ?? 0, 10) || 0;
+          const total = Number(t?.msiTotal ?? t?.totalAmount ?? t?.amount ?? 0);
+          const hasCoreFields = totalMonths > 0 && Number.isFinite(start.getTime()) && total > 0;
+          const passed = hasCoreFields ? monthsBetween(start, now) : 0;
+          const remaining = hasCoreFields ? Math.max(totalMonths - passed, 0) : 0;
+          const monthly = totalMonths > 0 ? (total / Math.max(totalMonths, 1)) : 0;
           return {
             ...t,
             start,
@@ -5526,7 +5563,7 @@
             remaining,
             monthly,
             msiTotalComputed: total,
-            msiIncomplete
+            msiIncomplete: !hasCoreFields
           };
         })
         .sort((a,b)=> b.remaining - a.remaining);
@@ -5551,7 +5588,7 @@
 
       try {
         const mode = document.getElementById('msi-filter')?.value || 'active';
-        const items = getMsiTransactions(mode);
+        const items = selectMsiPurchases({ activeFilter: mode });
         if(count) count.textContent = `${items.length} compras`;
 
         // List
@@ -6228,21 +6265,22 @@
     const computeCategoryAgg = (items, selYear, selMonth) => {
       const totals = new Map();
       let expensesCount = 0;
-      const monthStart = new Date(selYear, selMonth - 1, 1);
+      const monthStart = new Date(selYear, selMonth - 1, 1, 0, 0, 0, 0);
       const monthEnd = new Date(selYear, selMonth, 0, 23, 59, 59, 999);
+      const startMs = monthStart.getTime();
+      const endMs = monthEnd.getTime();
       const sourceItems = [
-        ...items.filter((t) => !(t?.type === "expense" && t?.isMsi === true)),
-        ...items.filter((t) => t?.type === "expense" && t?.isMsi === true).flatMap((t) => expandMsiToMonthlyCharges(t, monthStart, monthEnd))
+        ...items.filter((t) => !(isExpenseTransaction(t) && t?.isMsi === true)),
+        ...items.filter((t) => isExpenseTransaction(t) && t?.isMsi === true).flatMap((t) => expandMsiToMonthlyCharges(t, monthStart, monthEnd))
       ];
       sourceItems.forEach((t) => {
-        if (t.type !== "expense") return;
-        const rawDate = t.date?.toDate ? t.date.toDate() : t.date;
-        if (!rawDate) return;
-        const d = rawDate instanceof Date ? rawDate : new Date(rawDate);
-        if (d.getMonth() + 1 !== selMonth || d.getFullYear() !== selYear) return;
+        if (!isExpenseTransaction(t)) return;
+        const ms = getTxDateMs(t);
+        if(!Number.isFinite(ms)) return;
+        if(ms < startMs || ms > endMs) return;
         expensesCount += 1;
         const category = (t.category || "Sin categoría").trim() || "Sin categoría";
-        totals.set(category, (totals.get(category) || 0) + getEffectiveAmount(t));
+        totals.set(category, (totals.get(category) || 0) + Math.abs(getEffectiveAmount(t)));
       });
 
       const sorted = Array.from(totals.entries()).sort((a, b) => b[1] - a[1]);
