@@ -765,7 +765,7 @@
           <select id="t-payment-method" class="form-select" onchange="uiTogglePaymentMethod()">
             <option value="card">Tarjeta</option>
             <option value="cash">Efectivo</option>
-            <option value="transfer">Transferencia</option>
+            <option value="transfer">Pago c/ Transferencia</option>
           </select>
         </div>
 
@@ -1927,7 +1927,7 @@
 
     const PAYMENT_METHOD_SENTINELS = {
       cash: { id: "__cash", name: "Efectivo" },
-      transfer: { id: "__transfer", name: "Transferencia" }
+      transfer: { id: "__transfer", name: "Pago c/ Transferencia" }
     };
 
     const normalizePaymentMethod = (transaction = {}) => {
@@ -2056,10 +2056,36 @@
     };
 
     const computePeriodTotals = (periodData = {}) => {
-      const monthCurrentTotal = sumExpenses(periodData?.month?.current || []);
-      const monthPreviousTotal = sumExpenses(periodData?.month?.previous || []);
-      const yearCurrentTotal = sumExpenses(periodData?.year?.current || []);
-      const yearPreviousTotal = sumExpenses(periodData?.year?.previous || []);
+      const now = new Date();
+      const monthCurrentStart = startOfMonth(now);
+      const monthCurrentEnd = endOfMonth(now);
+      const prevMonthDate = previousMonth(now);
+      const monthPreviousStart = startOfMonth(prevMonthDate);
+      const monthPreviousEnd = endOfMonth(prevMonthDate);
+      const yearCurrentStart = startOfYear(now);
+      const yearCurrentEnd = endOfYear(now);
+      const prevYearDate = new Date(now.getFullYear() - 1, 0, 1);
+      const yearPreviousStart = startOfYear(prevYearDate);
+      const yearPreviousEnd = endOfYear(prevYearDate);
+      const scoped = FEATURES.coupleMode ? applyScopeFilter(trans, getActiveScopeFilter()) : trans;
+      const owner = getActiveOwner();
+      const ownerTx = scoped.filter((t) => !t?.owner || t.owner === owner);
+      const normalExpenses = ownerTx.filter((t) => t?.type === "expense" && t?.isMsi !== true);
+      const msiBase = ownerTx.filter((t) => t?.type === "expense" && t?.isMsi === true);
+
+      const collectPeriod = (startDate, endDate) => {
+        const regular = normalExpenses.filter((t) => {
+          const d = toDate(t?.date);
+          return d >= startDate && d <= endDate;
+        });
+        const msiMonthly = msiBase.flatMap((t) => expandMsiToMonthlyCharges(t, startDate, endDate));
+        return [...regular, ...msiMonthly];
+      };
+
+      const monthCurrentTotal = sumExpenses(collectPeriod(monthCurrentStart, monthCurrentEnd));
+      const monthPreviousTotal = sumExpenses(collectPeriod(monthPreviousStart, monthPreviousEnd));
+      const yearCurrentTotal = sumExpenses(collectPeriod(yearCurrentStart, yearCurrentEnd));
+      const yearPreviousTotal = sumExpenses(collectPeriod(yearPreviousStart, yearPreviousEnd));
 
       return {
         month: {
@@ -3582,13 +3608,16 @@
         if(context.mode === "statement" && context.statement){
           const statementPurchases = [];
           const statementAbonos = [];
+          const statementMsiBase = [];
           itemsByOwner.forEach((item) => {
             const date = toDate(item?.date);
             const amount = getMsiPaymentDetails(item, context.anchorDate).amount;
             const isIncome = item?.type === "income" || item?.type === "payment";
             if(!isIncome){
               if(item?.cardId !== context.selectedCardId) return;
-              if(date >= context.statement.statementStart && date < context.statement.statementEndExclusive){
+              if(item?.isMsi === true){
+                statementMsiBase.push(item);
+              }else if(date >= context.statement.statementStart && date < context.statement.statementEndExclusive){
                 statementPurchases.push({ ...item, computedAmount: amount });
               }
               return;
@@ -3598,6 +3627,10 @@
               statementAbonos.push({ ...item, computedAmount: amount });
             }
           });
+          const statementMsiMonthly = statementMsiBase.flatMap((item) =>
+            expandMsiToMonthlyCharges(item, context.statement.statementStart, context.statement.statementEndInclusive)
+          );
+          statementPurchases.push(...statementMsiMonthly);
           const comprasCiclo = round2(statementPurchases.reduce((acc, item) => acc + safeNumber(item.computedAmount), 0));
           const abonosTotal = round2(statementAbonos.reduce((acc, item) => acc + safeNumber(item.computedAmount), 0));
           const saldoEstimado = round2(comprasCiclo - abonosTotal);
@@ -3615,7 +3648,12 @@
             const d = toDate(item?.date);
             return context.range ? (d >= context.range.startDate && d < context.range.endExclusive) : true;
           });
-          const filtered = context.selectedCardId === "all" ? ranged : ranged.filter((item) => item?.cardId === context.selectedCardId);
+          const monthMsiMonthly = itemsByOwner
+            .filter((item) => item?.type === "expense" && item?.isMsi === true)
+            .flatMap((item) => expandMsiToMonthlyCharges(item, context.range.startDate, new Date(context.range.endExclusive.getTime() - 1)));
+          const nonMsiRanged = ranged.filter((item) => !(item?.type === "expense" && item?.isMsi === true));
+          const filteredBase = [...nonMsiRanged, ...monthMsiMonthly];
+          const filtered = context.selectedCardId === "all" ? filteredBase : filteredBase.filter((item) => item?.cardId === context.selectedCardId);
           summary = buildMonthlyCardSummary(filtered, { owner, periodKey: currentSelected, anchorDate: context.anchorDate });
         }
 
@@ -5463,17 +5501,22 @@
       return Math.max(0, diff);
     }
 
-    function getMsiItems(){
+    function getMsiTransactions(activeFilter = 'active', cardFilter = 'all'){
       const now=new Date();
       const items = trans
-        .filter(t => t.type === "expense" && t.isMsi === true && t.msiMonths && t.msiStart)
+        .filter((t) => {
+          if(t?.type !== "expense" || t?.isMsi !== true) return false;
+          if(cardFilter !== 'all' && t?.cardId !== cardFilter) return false;
+          return true;
+        })
         .map(t => {
-          const start = t.msiStart?.toDate ? t.msiStart.toDate() : new Date(t.msiStart);
+          const start = t.msiStart?.toDate ? t.msiStart.toDate() : new Date(t.msiStart || t.date);
           const totalMonths = parseInt(t.msiMonths, 10) || 0;
           const passed = monthsBetween(start, now);
           const remaining = Math.max(totalMonths - passed, 0);
           const total = Number(t.msiTotal ?? t.amount ?? 0);
           const monthly = (total / Math.max(totalMonths,1));
+          const msiIncomplete = !(totalMonths > 0 && t?.msiStart && total > 0);
 
           return {
             ...t,
@@ -5482,15 +5525,14 @@
             passed,
             remaining,
             monthly,
-            msiTotalComputed: total
+            msiTotalComputed: total,
+            msiIncomplete
           };
         })
         .sort((a,b)=> b.remaining - a.remaining);
 
-      const mode = document.getElementById('msi-filter')?.value || 'active';
-
-      if(mode === 'active') return items.filter(x => x.remaining > 0);
-      if(mode === 'done') return items.filter(x => x.remaining === 0);
+      if(activeFilter === 'active') return items.filter(x => x.remaining > 0 || x.msiIncomplete);
+      if(activeFilter === 'done') return items.filter(x => x.remaining === 0 && !x.msiIncomplete);
       return items;
     }
 
@@ -5508,7 +5550,8 @@
       noData.classList.add('d-none');
 
       try {
-        const items = getMsiItems();
+        const mode = document.getElementById('msi-filter')?.value || 'active';
+        const items = getMsiTransactions(mode);
         if(count) count.textContent = `${items.length} compras`;
 
         // List
@@ -5525,7 +5568,8 @@
                 <div class="d-flex justify-content-between align-items-start">
                   <div>
                     <div class="fw-bold">${t.concept || 'Compra MSI'}</div>
-                    <small class="text-muted">${t.cardName || ''} • Inicio: ${t.start.toLocaleDateString()} • ${t.totalMonths} MSI</small>
+                    <small class="text-muted">${t.cardName || ''} • Inicio: ${t.start.toLocaleDateString()} • ${t.totalMonths || '?'} MSI</small>
+                    ${t.msiIncomplete ? '<div class="text-warning small fw-semibold">MSI incompleto</div>' : ''}
                   </div>
                   <div class="text-end">
                     <div class="fw-black sensitive-data">${t.remaining === 0 ? '✅ Liquidada' : `${t.remaining} meses`}</div>
@@ -5567,34 +5611,24 @@
         canvas.style.display='block';
         noData.classList.add('d-none');
 
-        msiChartInstance = new Chart(canvas, {
-          type: 'bar',
-          data: {
-            labels,
-            datasets: [{
-              label: 'Meses restantes',
-              data: values
-            }]
-          },
+        msiChartInstance = await chartManager.renderBarChart({
+          canvasId: 'msiChart',
+          labels,
+          values,
+          datasetLabel: 'Meses restantes',
           options: {
             indexAxis: 'y',
-            responsive:true,
-            maintainAspectRatio:false,
-            plugins:{
-              legend:{ display:false },
-              tooltip:{ enabled:true }
-            },
+            plugins:{ legend:{ display:false }, tooltip:{ enabled:true } },
             scales: {
-              x: {
-                beginAtZero:true,
-                ticks: { color:textColor }
-              },
-              y: {
-                ticks: { color:textColor, precision:0 }
-              }
+              x: { beginAtZero:true, ticks: { color:textColor } },
+              y: { ticks: { color:textColor, precision:0 } }
             }
           }
         });
+        if(!msiChartInstance){
+          noData.classList.remove('d-none');
+          return;
+        }
         window.__charts["bar-msi"] = msiChartInstance;
       } catch (err) {
         console.error("chart_error", err);
@@ -5639,6 +5673,32 @@
     function monthsBetweenYM(y1, m1, y2, m2){
       return (y2 - y1) * 12 + (m2 - m1);
     }
+
+    const expandMsiToMonthlyCharges = (tx, periodStart, periodEnd) => {
+      if(tx?.type !== "expense" || tx?.isMsi !== true) return [];
+      const months = Number(tx?.msiMonths || 0);
+      const startDate = toDate(tx?.msiStart || tx?.date);
+      const total = safeNumber(tx?.msiTotal ?? tx?.amount ?? 0);
+      if(!months || Number.isNaN(startDate.getTime()) || !total) return [];
+      const monthAmount = round2(safeNumber(tx?.msiMonthly) || (total / months));
+      const rangeStart = toDate(periodStart);
+      const rangeEnd = toDate(periodEnd);
+      const charges = [];
+      for(let idx = 0; idx < months; idx += 1){
+        const chargeDate = new Date(startDate.getFullYear(), startDate.getMonth() + idx, Math.min(startDate.getDate(), 28));
+        if(chargeDate < rangeStart || chargeDate > rangeEnd) continue;
+        charges.push({
+          ...tx,
+          id: `${tx.id || tx.concept || "msi"}-installment-${idx + 1}`,
+          date: chargeDate,
+          amount: monthAmount,
+          computedAmount: monthAmount,
+          isVirtualMsiInstallment: true,
+          msiInstallmentIndex: idx + 1
+        });
+      }
+      return charges;
+    };
 
     const getMsiPaymentIndex = (msiStart, periodAnchorEndInclusive, msiMonths = 1) => {
       const startDate = toDate(msiStart || new Date());
@@ -5855,19 +5915,24 @@
       if(context.mode === "statement" && context.statement){
         const compras = [];
         const abonos = [];
+        const msiBase = [];
         scopedTrans.forEach((t) => {
           if(!baseMatches(t)) return;
           const d = toDate(t.date);
           const isIncome = t?.type === "income" || t?.type === "payment";
           if(!isIncome){
             if(t.cardId !== context.cardFilter) return;
+            if(t.isMsi === true) msiBase.push(t);
             if(!matchesHistoryMsiFilter(t, msiFilter)) return;
-            if(d >= context.statement.statementStart && d < context.statement.statementEndExclusive) compras.push(t);
+            if(t.isMsi !== true && d >= context.statement.statementStart && d < context.statement.statementEndExclusive) compras.push(t);
             return;
           }
           if(!matchesTargetCard(t, context.cardFilter)) return;
           if(d >= context.statement.abonosStart && d < context.statement.abonosEndExclusive) abonos.push(t);
         });
+        const msiMonthly = msiBase.flatMap((t) => expandMsiToMonthlyCharges(t, context.statement.statementStart, context.statement.statementEndInclusive));
+        const filteredMsiMonthly = msiMonthly.filter((t) => matchesHistoryMsiFilter(t, msiFilter));
+        compras.push(...filteredMsiMonthly);
         return { context, compras, abonos };
       }
 
@@ -6056,6 +6121,64 @@
       if (key === "bar-msi") msiChartInstance = null;
     };
 
+    const chartManager = {
+      getCanvasSafe(canvasId){
+        const canvas = document.getElementById(canvasId);
+        if(!canvas) return null;
+        const parent = canvas.parentElement;
+        if(parent){
+          const rect = parent.getBoundingClientRect();
+          if((rect?.height || 0) < 120) parent.style.minHeight = "260px";
+        }
+        return canvas;
+      },
+      destroyChartIfAny(canvas){
+        if(!canvas || typeof Chart === "undefined") return;
+        const existing = Chart.getChart?.(canvas);
+        if(existing) existing.destroy();
+      },
+      renderDonutChart({ canvasId, labels = [], values = [], options = {} } = {}){
+        const canvas = this.getCanvasSafe(canvasId);
+        if(!canvas) return Promise.resolve(null);
+        this.destroyChartIfAny(canvas);
+        return new Promise((resolve) => {
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              const chart = new Chart(canvas.getContext("2d"), {
+                type: "doughnut",
+                data: { labels, datasets: [{ data: values, backgroundColor: ["#2563eb", "#ef4444", "#10b981", "#f59e0b", "#8b5cf6", "#ec4899", "#6366f1"], borderWidth: 0 }] },
+                options: {
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  animation: false,
+                  plugins: { legend: { display: false } },
+                  ...options
+                }
+              });
+              resolve(chart);
+            });
+          });
+        });
+      },
+      renderBarChart({ canvasId, labels = [], values = [], datasetLabel = "", options = {} } = {}){
+        const canvas = this.getCanvasSafe(canvasId);
+        if(!canvas) return Promise.resolve(null);
+        this.destroyChartIfAny(canvas);
+        return new Promise((resolve) => {
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              const chart = new Chart(canvas.getContext("2d"), {
+                type: "bar",
+                data: { labels, datasets: [{ label: datasetLabel, data: values }] },
+                options: { responsive: true, maintainAspectRatio: false, animation: false, ...options }
+              });
+              resolve(chart);
+            });
+          });
+        });
+      }
+    };
+
     const waitForCanvasReady = (canvas, timeoutMs = 1200) =>
       new Promise((resolve, reject) => {
         const start = performance.now();
@@ -6105,7 +6228,13 @@
     const computeCategoryAgg = (items, selYear, selMonth) => {
       const totals = new Map();
       let expensesCount = 0;
-      items.forEach((t) => {
+      const monthStart = new Date(selYear, selMonth - 1, 1);
+      const monthEnd = new Date(selYear, selMonth, 0, 23, 59, 59, 999);
+      const sourceItems = [
+        ...items.filter((t) => !(t?.type === "expense" && t?.isMsi === true)),
+        ...items.filter((t) => t?.type === "expense" && t?.isMsi === true).flatMap((t) => expandMsiToMonthlyCharges(t, monthStart, monthEnd))
+      ];
+      sourceItems.forEach((t) => {
         if (t.type !== "expense") return;
         const rawDate = t.date?.toDate ? t.date.toDate() : t.date;
         if (!rawDate) return;
@@ -6210,22 +6339,15 @@
         const isDark = isDarkMode();
         const textColor = isDark ? "#f9fafb" : "#6b7280";
 
-        chartInstance = new Chart(canvas, {
-          type: "doughnut",
-          data: {
-            labels,
-            datasets: [{
-              data: values,
-              backgroundColor: ["#2563eb", "#ef4444", "#10b981", "#f59e0b", "#8b5cf6", "#ec4899", "#6366f1"],
-              borderWidth: 0
-            }]
-          },
+        chartInstance = await chartManager.renderDonutChart({
+          canvasId: "expensesChart",
+          labels,
+          values,
           options: {
-            responsive: true,
-            maintainAspectRatio: false,
             plugins: { legend: { position: "right", labels: { boxWidth: 10, font: { size: 10 }, color: textColor } } }
           }
         });
+        if(!chartInstance) throw new Error("chart_create_failed");
         window.__charts["pie-expenses"] = chartInstance;
         setChartUiState({ showCanvas: true, showSkeleton: false, showNoData: false, showError: false });
       } catch (err) {
