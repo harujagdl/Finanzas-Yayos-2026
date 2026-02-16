@@ -61,6 +61,28 @@
     .bg-danger-light{background:rgba(239,68,68,.15); color:var(--danger);}
     .bg-success-light{background:rgba(16,185,129,.15); color:var(--success);}
     .bg-warning-light{background:rgba(245,158,11,.15); color:var(--warning);}
+    .category-pill{
+      display:inline-flex;
+      align-items:center;
+      border-radius:12px;
+      padding:4px 10px;
+      font-weight:600;
+      line-height:1;
+      background:var(--bg-body);
+      border:1px solid var(--border-color);
+      color:var(--text-main);
+    }
+    .category-ahsoka {
+      background: rgba(245,158,11,0.15);
+      color: #F59E0B;
+      border-radius: 12px;
+      padding: 4px 10px;
+      font-weight: 600;
+      border: 1px solid rgba(245,158,11,0.35);
+    }
+    [data-theme="dark"] .category-ahsoka {
+      background: rgba(245,158,11,0.22);
+    }
     .net-badge{
       display:inline-flex; align-items:center; gap:6px;
       padding:3px 8px; border-radius:999px;
@@ -4300,6 +4322,83 @@
     const quickCategory = document.getElementById("quick-category");
     let quickAddPending = false;
 
+    const CATEGORY_DEFS = {
+      expense: [
+        { id: "supermercado", label: "Supermercado", icon: "cart", color: "#2563EB" },
+        { id: "comida", label: "Comida", icon: "burger", color: "#EF4444" },
+        { id: "transporte", label: "Transporte", icon: "fuel", color: "#10B981" },
+        { id: "hormiga", label: "Hormiga", icon: "ant", color: "#8B5CF6" },
+        { id: "servicios", label: "Servicios", icon: "bulb", color: "#EC4899" },
+        { id: "compras", label: "Compras", icon: "box", color: "#6366F1" },
+        { id: "salud", label: "Salud", icon: "pill", color: "#06B6D4" },
+        { id: "educacion", label: "Educación", icon: "graduation", color: "#14B8A6" },
+        { id: "mama", label: "Mamá", icon: "woman", color: "#F97316" },
+        { id: "ahsoka", label: "Ahsoka", icon: "dog", color: "#F59E0B" }
+      ],
+      income: [
+        { id: "abono-capital", label: "Abono Capital", icon: "money", color: "#10B981" },
+        { id: "sueldo", label: "Sueldo/Ingreso", icon: "salary", color: "#2563EB" },
+        { id: "transferencia", label: "Transferencia", icon: "transfer", color: "#8B5CF6" }
+      ]
+    };
+
+    const CATEGORY_ICON_MAP = {
+      cart: "🛒",
+      burger: "🍔",
+      fuel: "⛽",
+      ant: "🐜",
+      bulb: "💡",
+      box: "📦",
+      pill: "💊",
+      graduation: "🎓",
+      woman: "👩‍🦰",
+      dog: "🐶",
+      money: "💵",
+      salary: "💰",
+      transfer: "🔄"
+    };
+
+    const getCategoryDefs = (type = "expense") => CATEGORY_DEFS[type] || [];
+    const getCategoryOptionLabel = (category = {}) => {
+      const icon = CATEGORY_ICON_MAP[category.icon] || "";
+      return `${icon ? `${icon} ` : ""}${category.label || ""}`.trim();
+    };
+    const cleanCategoryLabel = (value = "") => String(value || "").trim().replace(/^[^\p{L}\p{N}]+\s*/u, "").toLowerCase();
+    const getCategoryByValue = (value = "") => {
+      const raw = String(value || "").trim().toLowerCase();
+      const cleaned = cleanCategoryLabel(value);
+      const defs = [...getCategoryDefs("expense"), ...getCategoryDefs("income")];
+      return defs.find((item) => {
+        const optionLabel = getCategoryOptionLabel(item).toLowerCase();
+        const label = (item.label || "").toLowerCase();
+        return raw === item.id || raw === optionLabel || raw === label || cleaned === label;
+      }) || null;
+    };
+    const hexToRgba = (hex = "#2563eb", alpha = 1) => {
+      const match = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+      if (!match) return `rgba(37,99,235,${alpha})`;
+      const [, r, g, b] = match;
+      return `rgba(${parseInt(r, 16)},${parseInt(g, 16)},${parseInt(b, 16)},${alpha})`;
+    };
+    const getCategoryChartColors = (value = "") => {
+      const category = getCategoryByValue(value);
+      if (category?.id === "ahsoka") {
+        return {
+          backgroundColor: "rgba(245,158,11,0.9)",
+          borderColor: "rgba(245,158,11,1)"
+        };
+      }
+      const baseColor = category?.color || "#2563eb";
+      return {
+        backgroundColor: hexToRgba(baseColor, 0.9),
+        borderColor: hexToRgba(baseColor, 1)
+      };
+    };
+    const getCategoryClassName = (value = "") => {
+      const category = getCategoryByValue(value);
+      return category?.id === "ahsoka" ? "category-pill category-ahsoka" : "category-pill";
+    };
+
     (() => {
       document.addEventListener("keydown", (event) => {
         if(event.key !== "Escape") return;
@@ -4361,6 +4460,22 @@
       updateChart();
     };
 
+    window.syncQuickCategories = () => {
+      if (!quickCategory) return;
+      const selected = quickCategory.value;
+      quickCategory.innerHTML = "";
+      getCategoryDefs("expense").forEach((cat) => {
+        const label = getCategoryOptionLabel(cat);
+        const option = document.createElement("option");
+        option.value = label;
+        option.textContent = label;
+        quickCategory.appendChild(option);
+      });
+      if ([...quickCategory.options].some((opt) => opt.value === selected)) {
+        quickCategory.value = selected;
+      }
+    };
+
     // Filters
     function initFilters(){
       const chartSel=document.getElementById('chart-month-filter');
@@ -4409,8 +4524,11 @@
       selCard.appendChild(transferOpt);
 
       selCat.innerHTML = `<option value="all">Categoría: Todas</option>`;
-      const cats = [...new Set(trans.map(t => (t.category || '').trim()).filter(Boolean))]
-        .sort((a,b)=>a.localeCompare(b,"es"));
+      const configuredExpenseCats = getCategoryDefs("expense").map((cat) => getCategoryOptionLabel(cat));
+      const cats = [...new Set([
+        ...configuredExpenseCats,
+        ...trans.map(t => (t.category || '').trim()).filter(Boolean)
+      ])].sort((a,b)=>a.localeCompare(b,"es"));
       cats.forEach(c=>{
         const opt=document.createElement('option');
         opt.value=c;
@@ -5962,7 +6080,7 @@
                   <div class="me-3 text-muted"><i class="fas ${isExp ? "fa-shopping-cart" : "fa-hand-holding-usd"}"></i></div>
                   <div>
                     <div class="fw-bold">${t.concept}${tagMsi}</div>
-                    <small class="text-muted">${d.toLocaleDateString()} • ${paymentInfo.cardName} • ${t.category}</small>
+                    <small class="text-muted d-flex flex-wrap align-items-center gap-1">${d.toLocaleDateString()} • ${paymentInfo.cardName} • <span class="${getCategoryClassName(t.category)}">${t.category}</span></small>
                     ${msiDetails.subtitle ? `<div class="text-muted small">${msiDetails.subtitle}</div>` : ""}
                     ${msiDetails.needsReview ? `<div class="text-warning small fw-semibold">MSI revisar</div>` : ""}
                     ${msiDetails.incomplete ? `<div class="text-danger small fw-semibold">MSI incompleto</div>` : ""}
@@ -6427,8 +6545,9 @@
                 labels,
                 datasets: [{
                   data: values,
-                  backgroundColor: ["#2563eb", "#ef4444", "#10b981", "#f59e0b", "#8b5cf6", "#ec4899", "#6366f1"],
-                  borderWidth: 0
+                  backgroundColor: labels.map((label) => getCategoryChartColors(label).backgroundColor),
+                  borderColor: labels.map((label) => getCategoryChartColors(label).borderColor),
+                  borderWidth: 1
                 }]
               },
               options: {
@@ -6483,10 +6602,14 @@
       const type=document.querySelector('input[name="ttype"]:checked').value;
       const s=document.getElementById('t-cat');
       s.innerHTML='';
-      const opts = type==='expense'
-        ? ['🛒 Supermercado','🍔 Comida','⛽ Transporte','🐜 Hormiga','💡 Servicios','📦 Compras','💊 Salud','🎓 Educación','👩‍🦰 Mamá']
-        : ['💵 Abono Capital','💰 Sueldo/Ingreso','🔄 Transferencia'];
-      opts.forEach(o=> s.innerHTML += `<option>${o}</option>`);
+      const opts = getCategoryDefs(type === 'expense' ? 'expense' : 'income')
+        .map((category) => getCategoryOptionLabel(category));
+      opts.forEach((o) => {
+        const option = document.createElement('option');
+        option.value = o;
+        option.textContent = o;
+        s.appendChild(option);
+      });
       if(typeof syncQuickCategories === "function") syncQuickCategories();
     };
 
@@ -6926,6 +7049,7 @@
           targetCardName: type === 'payment' && cObj ? cObj.name : null,
           concept: document.getElementById('t-concept').value,
           category: document.getElementById('t-cat').value,
+          subCategory: null,
           date: Timestamp.fromDate(parseLocalYYYYMMDDToDate(document.getElementById('t-date').value) || new Date()),
           scope: scopeValue,
 
