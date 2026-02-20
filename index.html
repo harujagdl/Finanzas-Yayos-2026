@@ -201,9 +201,11 @@
 
     .nav-bottom{
       position:fixed; bottom:0; width:100%;
-      background:var(--bg-card);
+      background:var(--nav-bg);
       display:grid; grid-template-columns:repeat(7, 1fr);
-      padding:10px 0; border-top:1px solid var(--border-color);
+      padding:10px 0; border-top:1px solid var(--nav-border);
+      backdrop-filter: blur(var(--blur));
+      -webkit-backdrop-filter: blur(var(--blur));
       z-index:100; padding-bottom:max(10px, env(safe-area-inset-bottom));
     }
     .nav-container-item{display:flex; justify-content:center; align-items:center; position:relative; height:100%;}
@@ -291,7 +293,7 @@
     .action-menu.is-open{display:block;}
 
     .form-control,.form-select{
-      background:var(--bg-body); border:1px solid var(--border-color);
+      background:var(--input-bg); border:1px solid var(--input-border);
       color:var(--text-main); padding:12px; border-radius:10px;
     }
     .form-control:focus,.form-select:focus{
@@ -471,21 +473,6 @@
     .themeOption{width:100%; background:var(--surface); border:1px solid var(--border); border-radius:18px; padding:14px 12px; color:var(--text); font-weight:600; display:flex; align-items:center; justify-content:center;}
     .themeOption.active{border-color:rgba(47,124,255,.45); box-shadow:var(--ring);}
 
-    :root{
-      --text: #0b0f1a;
-      --muted: rgba(11,15,26,.65);
-      --surface: #ffffff;
-      --surface2: #f2f4f7;
-      --border: rgba(0,0,0,.12);
-    }
-
-    :root[data-theme="dark"]{
-      --text: #f4f6fb;
-      --muted: rgba(244,246,251,.65);
-      --surface: rgba(22,27,36,.92);
-      --surface2: rgba(22,27,36,.72);
-      --border: rgba(255,255,255,.14);
-    }
 
     .month-picker,
     .month-picker select,
@@ -513,9 +500,9 @@
     .pill, .chip, .badge, .bullet, .badge-status, .sync-pill, .net-badge, .msi-pill{
       display:inline-flex; align-items:center; justify-content:center; gap:8px; line-height:1; white-space:nowrap;
     }
-    .segment{display:flex; background:var(--surface); border:1px solid var(--border); border-radius:999px; padding:4px; gap:4px;}
-    .segment button{flex:1; display:flex; align-items:center; justify-content:center; line-height:1; padding:10px 0; border-radius:999px; border:0; background:transparent; color:var(--muted); font-weight:600;}
-    .segment button.active{background:var(--surface2); color:var(--text); box-shadow:var(--shadow2);}
+    .segment{display:flex; background:var(--pill-bg); border:1px solid var(--border); border-radius:999px; padding:4px; gap:4px;}
+    .segment button{flex:1; display:flex; align-items:center; justify-content:center; line-height:1; padding:10px 0; border-radius:999px; border:0; background:transparent; color:var(--pill-text); font-weight:600;}
+    .segment button.active{background:var(--pill-bg-active); color:var(--pill-text-active); border:1px solid rgba(10,132,255,0.25);}
     .kpiRow,.kpi{display:flex; align-items:center; justify-content:space-between;}
     .kpiValue{display:flex; align-items:baseline; gap:6px;}
     .center{display:flex; align-items:center; justify-content:center;}
@@ -1284,19 +1271,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
-  <script>
-(function(){
-  const KEY="fy_theme";
-  const saved=localStorage.getItem(KEY);
-  const root=document.documentElement;
-  function apply(t){
-    if(t==="light"||t==="dark") root.setAttribute("data-theme", t);
-    else root.removeAttribute("data-theme");
-  }
-  if(saved){ apply(saved==="system" ? null : saved); }
-})();
-</script>
-
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
     import {
@@ -1306,42 +1280,113 @@
     } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
 
     // ===== Theme helpers (GLOBAL) =====
-    window.getThemeMode = function getThemeMode(){
-      const dt = document.documentElement.getAttribute("data-theme");
-      const ls = localStorage.getItem("theme") || localStorage.getItem("fy_theme");
-      if (dt) return dt;
-      if (ls && ls !== "system") return ls;
-      return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
-        ? "dark" : "light";
-    };
+    const Theme = (() => {
+      const KEY = "ct_theme";
+      const LEGACY_KEYS = ["fy_theme", "theme"];
+      const root = document.documentElement;
 
-    window.isDarkMode = function isDarkMode(){
-      return window.getThemeMode() === "dark";
-    };
+      function getSaved() {
+        const current = localStorage.getItem(KEY);
+        if (current) return current;
+        const legacy = LEGACY_KEYS.map((k) => localStorage.getItem(k)).find(Boolean);
+        return legacy || "system";
+      }
 
+      function systemPrefersDark() {
+        return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      }
+
+      function resolve(mode) {
+        if (mode === "dark") return "dark";
+        if (mode === "light") return "light";
+        return systemPrefersDark() ? "dark" : "light";
+      }
+
+      function apply(mode = getSaved()) {
+        const resolved = resolve(mode);
+        root.setAttribute("data-theme", resolved);
+        root.setAttribute("data-theme-mode", mode);
+        window.__isDark = resolved === "dark";
+        return resolved;
+      }
+
+      function set(mode) {
+        localStorage.setItem(KEY, mode);
+        LEGACY_KEYS.forEach((k) => localStorage.setItem(k, mode));
+        const resolved = apply(mode);
+        document.dispatchEvent(new CustomEvent("theme:changed", { detail: { mode, resolved } }));
+        return resolved;
+      }
+
+      function isDark() {
+        return root.getAttribute("data-theme") === "dark";
+      }
+
+      if (window.matchMedia) {
+        window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+          if (getSaved() === "system") set("system");
+        });
+      }
+
+      return { getSaved, apply, set, isDark };
+    })();
+
+    window.Theme = Theme;
+    window.getTheme = () => Theme.getSaved();
+    window.getThemeMode = () => document.documentElement.getAttribute("data-theme") || Theme.apply();
+    window.isDarkMode = () => Theme.isDark();
+    window.setTheme = (mode) => Theme.set(mode === "light" || mode === "dark" ? mode : "system");
+    window.loadTheme = () => Theme.apply();
     window.onThemeChange = function onThemeChange(cb){
-      const mq = window.matchMedia("(prefers-color-scheme: dark)");
-      try { mq.addEventListener("change", cb); } catch(e){ mq.addListener(cb); }
+      document.addEventListener("theme:changed", cb);
     };
+
+    function getCssVar(name) {
+      return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    }
+
+    function chartTheme() {
+      return {
+        text: getCssVar("--text"),
+        text2: getCssVar("--text-2"),
+        grid: getCssVar("--border"),
+        surface: getCssVar("--surface"),
+        accent: getCssVar("--accent")
+      };
+    }
+
+    function applyChartDefaults() {
+      const t = chartTheme();
+      if (!window.Chart) return;
+      Chart.defaults.color = t.text2;
+      Chart.defaults.borderColor = t.grid;
+      Chart.defaults.plugins.tooltip.backgroundColor = t.surface;
+      Chart.defaults.plugins.tooltip.titleColor = t.text;
+      Chart.defaults.plugins.tooltip.bodyColor = t.text2;
+      Chart.defaults.plugins.tooltip.borderColor = t.grid;
+      Chart.defaults.plugins.tooltip.borderWidth = 1;
+    }
+
+    async function ensureCanvasReady(canvas) {
+      if (!canvas) return false;
+      await new Promise(requestAnimationFrame);
+      const rect = canvas.getBoundingClientRect();
+      return rect.width > 10 && rect.height > 10;
+    }
 
     window.safeRenderChart = function safeRenderChart({ canvasId, renderFn, tries = 12 }){
       let attempt = 0;
-      function tick(){
+      async function tick(){
         const el = document.getElementById(canvasId);
-        if (!el) {
+        const ready = await ensureCanvasReady(el);
+        if (!ready) {
           attempt++;
           if (attempt <= tries) return requestAnimationFrame(tick);
-          console.warn("chart_error Error: canvas_not_ready", { canvasId, reason: "not_found" });
-          return;
-        }
-        const rect = el.getBoundingClientRect();
-        if (rect.width < 40 || rect.height < 40) {
-          attempt++;
-          if (attempt <= tries) return requestAnimationFrame(tick);
-          console.warn("chart_error Error: canvas_not_ready", { canvasId, reason: "zero_size", rect });
+          console.warn("chart_error Error: canvas_not_ready", { canvasId, reason: el ? "zero_size" : "not_found" });
           return;
         }
         try {
+          applyChartDefaults();
           renderFn(el);
         } catch (e) {
           console.error("chart_error", e);
@@ -4139,44 +4184,21 @@
       if(vid === 'view-hist') renderHistory();
     };
 
-    (function themeInit(){
-      const KEY="fy_theme";
-      const root=document.documentElement;
+    window.updateThemeUI = function(){
+      const saved = window.getTheme?.() || "system";
+      document.querySelectorAll(".themeOption[data-theme]").forEach((btn)=>{
+        btn.classList.toggle("active", btn.dataset.theme === saved);
+      });
+    };
 
-      function apply(theme){
-        if(theme === "light" || theme === "dark") root.setAttribute("data-theme", theme);
-        else root.removeAttribute("data-theme");
-      }
-
-      window.setTheme = function(theme){
-        const t = (theme === "light" || theme === "dark") ? theme : "system";
-        apply(t === "system" ? null : t);
-        localStorage.setItem(KEY, t);
-        localStorage.setItem("theme", t);
-        window.updateThemeUI?.();
-        window.renderCharts?.();
-        window.renderSummaryView?.({ force: true });
-        window.renderMsi?.();
-      };
-
-      window.getTheme = function(){
-        return localStorage.getItem(KEY) || "system";
-      };
-
-      window.loadTheme = function(){
-        const saved = window.getTheme();
-        apply(saved === "system" ? null : saved);
-        window.updateThemeUI?.();
-      };
-
-      window.loadTheme();
-    })();
-
-    window.onThemeChange(() => {
-      if (window.renderSummaryView) window.renderSummaryView({ force: true });
-      if (window.renderMsi) window.renderMsi();
+    document.addEventListener("theme:changed", () => {
+      window.updateThemeUI?.();
+      window.renderSummaryView?.({ force: true });
+      window.renderMsi?.();
       window.renderCharts?.();
     });
+
+    Theme.apply();
 
     const isProbablyIOS = () => {
       const ua = navigator.userAgent || "";
@@ -4307,13 +4329,6 @@
     window.closeThemeSheet = function(e){
       if(e && e.target && e.target.id !== "themeSheetOverlay") return;
       document.getElementById("themeSheetOverlay")?.classList.add("hidden");
-    };
-
-    window.updateThemeUI = function(){
-      const saved = window.getTheme?.() || "system";
-      document.querySelectorAll(".themeOption[data-theme]").forEach((btn)=>{
-        btn.classList.toggle("active", btn.dataset.theme === saved);
-      });
     };
 
     window.openMenuSheet = function(){
@@ -5873,8 +5888,7 @@
           return;
         }
 
-        const isDark = window.isDarkMode();
-        const textColor=isDark ? '#f9fafb' : '#6b7280';
+        const t = chartTheme();
 
         ensureCanvasHostMinHeight('msiChart');
         canvas.style.display='block';
@@ -5896,10 +5910,20 @@
                 maintainAspectRatio: false,
                 animation: false,
                 indexAxis: 'y',
-                plugins:{ legend:{ display:false }, tooltip:{ enabled:true } },
+                plugins:{
+                  legend:{ display:false },
+                  tooltip:{
+                    enabled:true,
+                    backgroundColor: t.surface,
+                    titleColor: t.text,
+                    bodyColor: t.text2,
+                    borderColor: t.grid,
+                    borderWidth: 1
+                  }
+                },
                 scales: {
-                  x: { beginAtZero:true, ticks: { color:textColor } },
-                  y: { ticks: { color:textColor, precision:0 } }
+                  x: { beginAtZero:true, ticks: { color:t.text2 }, grid: { color: t.grid } },
+                  y: { ticks: { color:t.text2, precision:0 }, grid: { color: t.grid } }
                 }
               }
             });
@@ -6549,8 +6573,7 @@
         }
 
         destroyChart("pie-expenses");
-        const isDark = window.isDarkMode();
-        const textColor = isDark ? "#f9fafb" : "#6b7280";
+        const t = chartTheme();
 
         ensureCanvasHostMinHeight("expensesChart");
         window.safeRenderChart({
@@ -6576,7 +6599,16 @@
                 responsive: true,
                 maintainAspectRatio: false,
                 animation: false,
-                plugins: { legend: { position: "right", labels: { boxWidth: 10, font: { size: 10 }, color: textColor } } }
+                plugins: {
+                  legend: { position: "right", labels: { boxWidth: 10, font: { size: 10 }, color: t.text2 } },
+                  tooltip: {
+                    backgroundColor: t.surface,
+                    titleColor: t.text,
+                    bodyColor: t.text2,
+                    borderColor: t.grid,
+                    borderWidth: 1
+                  }
+                }
               }
             });
             window.__charts[key] = chartInstance;
