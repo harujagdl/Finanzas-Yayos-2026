@@ -10,9 +10,7 @@
 
 *{ box-sizing: border-box; }
 html, body{
-  background: radial-gradient(1200px 700px at 20% -10%, rgba(47,124,255,.18), transparent 60%),
-              radial-gradient(900px 600px at 90% 20%, rgba(52,199,89,.10), transparent 55%),
-              var(--bg);
+  background: var(--bg);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -23,8 +21,8 @@ body{padding-bottom:120px;}
 h4,.h4{font-size:1.95rem;font-weight:800;letter-spacing:-.02em;}
 h5,.h5{font-size:1.45rem;font-weight:700;}
 h6,.h6{font-size:1.12rem;font-weight:650;}
-small, .small, label{font-size:12.5px; color:var(--muted);}
-.helper{ color: var(--muted2); font-size: 12px; }
+small, .small, label{font-size:12.5px; color:var(--text-2);}
+.helper{ color: var(--text-3); font-size: 12px; }
 
 .card,
 .card-box,
@@ -51,8 +49,8 @@ select,
 textarea,
 .form-control,
 .form-select{
-  background: var(--surface2);
-  border: 1px solid var(--border);
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
   border-radius: var(--r-lg);
   color: var(--text);
   padding: 12px 14px;
@@ -85,7 +83,7 @@ textarea:focus,
 .btnGhost,
 .btn-outline-secondary,
 .btn-light{
-  background: rgba(255,255,255,.06);
+  background: var(--pill-bg);
   border: 1px solid var(--border);
   color: var(--text);
   border-radius: var(--r-lg);
@@ -120,8 +118,8 @@ textarea:focus,
   position: fixed;
   left:0; right:0; bottom:0;
   padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
-  background: rgba(10,16,28,.55);
-  border-top: 1px solid rgba(255,255,255,.10);
+  background: var(--nav-bg);
+  border-top: 1px solid var(--nav-border);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
 }
@@ -129,7 +127,7 @@ textarea:focus,
 .navItem.active,
 .nav-btn.active{ color: var(--accent); }
 .navItem,
-.nav-btn{ color: rgba(255,255,255,.72); }
+.nav-btn{ color: var(--text-2); }
 
 .topbar{
   display:flex;
@@ -142,7 +140,7 @@ textarea:focus,
 .topbar-left{ display:flex; align-items:center; gap: 10px; min-width:0; }
 .ownerPill,
 .owner-pill{
-  background: rgba(255,255,255,.06);
+  background: var(--pill-bg);
   border: 1px solid var(--border);
   border-radius: 999px;
   padding: 0;
@@ -157,7 +155,7 @@ textarea:focus,
 
 .mobile-menu-backdrop{background:rgba(0,0,0,.35);backdrop-filter:blur(1px);}
 .mobile-menu-sheet{
-  background: rgba(10,16,28,.78);
+  background: var(--bg-elev);
   border-left:1px solid var(--border2);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
@@ -177,7 +175,7 @@ textarea:focus,
 
 @media (hover:hover){
   .card:hover,
-  .card-box:hover{ background: rgba(255,255,255,.075); }
+  .card-box:hover{ background: var(--surface-2); }
 }
 
 @media (prefers-reduced-motion: reduce){
