@@ -2091,6 +2091,8 @@
       if(!requiresCard(next.paymentMethod)){
         next.cardId = null;
         next.cardName = null;
+        next.targetCardId = null;
+        next.targetCardName = null;
         if(Object.prototype.hasOwnProperty.call(next, "msiId")) next.msiId = null;
       }
       return next;
@@ -6697,19 +6699,23 @@
       document.getElementById('t-amount').value = monthly ? monthly.toFixed(2) : "";
     }
 
-    function uiTogglePaymentMethod(){
+    function syncCardFieldVisibility(){
       const method = document.getElementById('t-payment-method')?.value || 'card';
       const cardWrap = document.getElementById('t-card-wrap');
       const cardSelect = document.getElementById('t-card');
       const cardNote = document.getElementById('t-card-note');
       const needsCard = requiresCard(method);
-      if(cardWrap) cardWrap.style.display = '';
+      if(cardWrap) cardWrap.style.display = needsCard ? '' : 'none';
       if(cardSelect){
         cardSelect.required = needsCard;
         cardSelect.disabled = !needsCard;
         if(!needsCard) cardSelect.value = '';
       }
       if(cardNote) cardNote.classList.toggle('d-none', needsCard);
+    }
+
+    function uiTogglePaymentMethod(){
+      syncCardFieldVisibility();
     }
 
 
