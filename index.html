@@ -833,6 +833,7 @@
         <div class="mb-3" id="t-card-wrap">
           <label class="small fw-bold text-muted mb-1">Tarjeta</label>
           <select id="t-card" class="form-select"></select>
+          <small id="t-card-note" class="text-muted d-none">No requiere tarjeta</small>
         </div>
 
         <div class="mb-3">
@@ -2078,6 +2079,21 @@
       if(raw === "cash" || transaction?.cardId === PAYMENT_METHOD_SENTINELS.cash.id) return "cash";
       if(raw === "transfer" || transaction?.cardId === PAYMENT_METHOD_SENTINELS.transfer.id) return "transfer";
       return "card";
+    };
+
+    const requiresCard = (paymentMethod = "") => {
+      const method = String(paymentMethod || "").toLowerCase();
+      return method === "card" || method === "msi";
+    };
+
+    const normalizeMovementInput = (draft = {}) => {
+      const next = { ...draft };
+      if(!requiresCard(next.paymentMethod)){
+        next.cardId = null;
+        next.cardName = null;
+        if(Object.prototype.hasOwnProperty.call(next, "msiId")) next.msiId = null;
+      }
+      return next;
     };
 
     const resolvePaymentDisplay = (transaction = {}) => {
@@ -3483,6 +3499,7 @@
         else totals.expense += amount;
 
         const payment = resolvePaymentDisplay(item);
+        if(!requiresCard(payment.paymentMethod)) return;
         const cardId = payment.cardId || "sin-tarjeta";
         if(!byCard[cardId]){
           byCard[cardId] = {
@@ -4660,6 +4677,10 @@
         const prevSel=select.value;
 
         select.innerHTML='';
+        const placeholderOpt = document.createElement('option');
+        placeholderOpt.value = '';
+        placeholderOpt.textContent = 'Selecciona tarjeta';
+        select.appendChild(placeholderOpt);
         const optG_Y=document.createElement('optgroup'); optG_Y.label="Tarjetas de Yair";
         const optG_H=document.createElement('optgroup'); optG_H.label="Tarjetas de Haru";
         const optG_B=document.createElement('optgroup'); optG_B.label="Compartidas";
@@ -4722,7 +4743,6 @@
         if(optG_B.children.length) select.appendChild(optG_B);
 
         if(prevSel) select.value=prevSel;
-        if(!select.value && select.options.length) select.selectedIndex=0;
 
         document.getElementById('total-debt').innerText=formatMoney(tDebt);
         document.getElementById('total-avail').innerText=formatMoney(tLimit-tDebt);
@@ -6681,9 +6701,15 @@
       const method = document.getElementById('t-payment-method')?.value || 'card';
       const cardWrap = document.getElementById('t-card-wrap');
       const cardSelect = document.getElementById('t-card');
-      const isCard = method === 'card';
-      if(cardWrap) cardWrap.style.display = isCard ? '' : 'none';
-      if(cardSelect) cardSelect.required = isCard;
+      const cardNote = document.getElementById('t-card-note');
+      const needsCard = requiresCard(method);
+      if(cardWrap) cardWrap.style.display = '';
+      if(cardSelect){
+        cardSelect.required = needsCard;
+        cardSelect.disabled = !needsCard;
+        if(!needsCard) cardSelect.value = '';
+      }
+      if(cardNote) cardNote.classList.toggle('d-none', needsCard);
     }
 
 
@@ -6704,9 +6730,9 @@
 
       const payment = resolvePaymentDisplay(t);
       t.paymentMethod = payment.paymentMethod;
-      if(t.paymentMethod !== "card"){
-        t.cardId = payment.cardId;
-        t.cardName = payment.cardName;
+      if(!requiresCard(t.paymentMethod)){
+        t.cardId = null;
+        t.cardName = null;
       }else{
         t.cardId = t.cardId || payment.cardId;
         t.cardName = t.cardName || payment.cardName;
@@ -6964,9 +6990,6 @@
       const type=document.querySelector('input[name="ttype"]:checked')?.value;
       const paymentMethod = document.getElementById('t-payment-method')?.value || 'card';
       const cid=document.getElementById('t-card').value;
-      const paymentDisplay = paymentMethod === 'card'
-        ? null
-        : (paymentMethod === 'cash' ? PAYMENT_METHOD_SENTINELS.cash : PAYMENT_METHOD_SENTINELS.transfer);
       const dateValue = document.getElementById('t-date').value;
       const isMsi = (type === 'expense') && document.getElementById('t-msi').checked;
       const msiTotal = isMsi ? parseFloat(document.getElementById('t-msi-total').value || 0) : null;
@@ -6992,7 +7015,7 @@
         haptic("error");
         return;
       }
-      if(paymentMethod === 'card' && !cid){
+      if(requiresCard(paymentMethod) && !cid){
         showToast("Selecciona una tarjeta para guardar.", { tone: "warning", duration: 2400 });
         haptic("error");
         return;
@@ -7002,8 +7025,8 @@
 
       try{
         const tid=document.getElementById('trans-id').value;
-        const cObj=paymentMethod === 'card' ? cards.find(c=>c.id===cid) : null;
-        if(paymentMethod === 'card' && !cObj) throw new Error("Tarjeta no encontrada");
+        const cObj=requiresCard(paymentMethod) ? cards.find(c=>c.id===cid) : null;
+        if(requiresCard(paymentMethod) && !cObj) throw new Error("Tarjeta no encontrada");
         const previousTrans = tid ? trans.find(t=>t.id===tid) : null;
 
         const batch=writeBatch(db);
@@ -7019,7 +7042,7 @@
           registerCardDelta(previousTrans.cardId, prevDelta);
         }
 
-        if(paymentMethod === 'card'){
+        if(requiresCard(paymentMethod)){
           const currDelta = type === 'expense' ? amountApplied : -amountApplied;
           registerCardDelta(cid, currDelta);
         }
@@ -7038,13 +7061,13 @@
           ? normalizeScope(document.querySelector('input[name="tscope"]:checked')?.value)
           : null;
 
-        const payload = {
+        const payloadDraft = {
           owner: OWNER,
           amount: amountApplied,
           type,
           paymentMethod,
-          cardId: paymentMethod === 'card' ? cid : paymentDisplay.id,
-          cardName: paymentMethod === 'card' ? cObj.name : paymentDisplay.name,
+          cardId: requiresCard(paymentMethod) ? cid : null,
+          cardName: requiresCard(paymentMethod) ? cObj.name : null,
           targetCardId: type === 'payment' && cid ? cid : null,
           targetCardName: type === 'payment' && cObj ? cObj.name : null,
           concept: document.getElementById('t-concept').value,
@@ -7060,6 +7083,10 @@
           msiMonthly: isMsi ? amountApplied : null,
           msiInstallmentNumber: isMsi ? msiInstallmentNumber : null
         };
+        const payload = normalizeMovementInput(payloadDraft);
+        if(requiresCard(payload.paymentMethod) && !payload.cardId){
+          throw new Error("Selecciona una tarjeta");
+        }
 
         if(tid){
           batch.update(doc(db,"expenses",tid), payload);
@@ -7140,7 +7167,11 @@
           resetForm();
         nav('view-home');
       }catch(e){
-        showToast("No se pudo guardar. Intenta de nuevo.", { tone: "warning", duration: 2600 });
+        if(e?.message === "Selecciona una tarjeta"){
+          showToast("Selecciona una tarjeta para guardar.", { tone: "warning", duration: 2400 });
+        }else{
+          showToast("No se pudo guardar. Intenta de nuevo.", { tone: "warning", duration: 2600 });
+        }
         haptic("error");
       }finally{
         if(!saveSuccess) quickAddPending = false;
