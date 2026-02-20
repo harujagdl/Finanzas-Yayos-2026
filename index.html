@@ -2083,7 +2083,7 @@
 
     const requiresCard = (paymentMethod = "") => {
       const method = String(paymentMethod || "").toLowerCase();
-      return method === "card" || method === "msi";
+      return method.includes("tarjeta") || method.includes("msi") || method === "card";
     };
 
     const normalizeMovementInput = (draft = {}) => {
@@ -6699,24 +6699,44 @@
       document.getElementById('t-amount').value = monthly ? monthly.toFixed(2) : "";
     }
 
-    function syncCardFieldVisibility(){
-      const method = document.getElementById('t-payment-method')?.value || 'card';
-      const cardWrap = document.getElementById('t-card-wrap');
-      const cardSelect = document.getElementById('t-card');
-      const cardNote = document.getElementById('t-card-note');
+    function syncCardRequirement(){
+      const methodEl = document.getElementById('t-payment-method');
+      const method = methodEl?.value || 'card';
       const needsCard = requiresCard(method);
-      if(cardWrap) cardWrap.style.display = needsCard ? '' : 'none';
-      if(cardSelect){
-        cardSelect.required = needsCard;
-        cardSelect.disabled = !needsCard;
-        if(!needsCard) cardSelect.value = '';
+
+      const cardWrap = document.getElementById('t-card-wrap');
+      const cardEl =
+        document.getElementById('cardSelect') ||
+        document.getElementById('card') ||
+        document.getElementById('cardId') ||
+        document.getElementById('t-card');
+      const cardNote = document.getElementById('t-card-note');
+
+      if(!cardEl) return;
+
+      if(!needsCard){
+        if(cardWrap) cardWrap.style.display = 'none';
+        cardEl.required = false;
+        cardEl.disabled = true;
+        cardEl.value = '';
+        if(typeof cardEl.setCustomValidity === 'function') cardEl.setCustomValidity('');
+      }else{
+        if(cardWrap) cardWrap.style.display = '';
+        cardEl.disabled = false;
+        cardEl.required = true;
+        if(typeof cardEl.setCustomValidity === 'function') cardEl.setCustomValidity('');
       }
+
       if(cardNote) cardNote.classList.toggle('d-none', needsCard);
     }
 
     function uiTogglePaymentMethod(){
-      syncCardFieldVisibility();
+      syncCardRequirement();
     }
+
+    document.getElementById('t-payment-method')?.addEventListener('change', () => {
+      syncCardRequirement();
+    });
 
 
     document.getElementById('t-msi-total').addEventListener('input', uiCalcMsiMonthly);
@@ -7090,6 +7110,12 @@
           msiInstallmentNumber: isMsi ? msiInstallmentNumber : null
         };
         const payload = normalizeMovementInput(payloadDraft);
+        if(!requiresCard(payload.paymentMethod)){
+          payload.cardId = null;
+          payload.cardName = null;
+          payload.card = null;
+          payload.msiId = null;
+        }
         if(requiresCard(payload.paymentMethod) && !payload.cardId){
           throw new Error("Selecciona una tarjeta");
         }
