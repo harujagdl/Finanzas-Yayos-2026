@@ -6306,61 +6306,82 @@
       };
     };
 
-    const getHistoryContext = () => {
-      const dateFilter = document.getElementById('hist-month-filter')?.value || "all";
-      const cardFilter = document.getElementById('hist-card-filter')?.value || "all";
+const getHistoryContext = () => {
+  const dateFilter = document.getElementById('hist-month-filter')?.value || "all";
+  const cardFilter = document.getElementById('hist-card-filter')?.value || "all";
+  const modeEl = document.getElementById('hist-period-mode');
+  const statementOption = modeEl?.querySelector('option[value="statement"]');
+  if (statementOption) statementOption.disabled = cardFilter === "all" || isNonCardFilter(cardFilter);
+  historyPeriodMode = modeEl?.value || historyPeriodMode || "month";
+
+  let range = null;
+  let anchorDate = new Date();
+  let warning = "";
+  let statementConfigError = false;
+  let statement = null;
+  const selectedCard = cards.find((c) => c.id === cardFilter);
+
+  if (historyPeriodMode === "statement") {
+    if (cardFilter === "all") {
+      warning = "Selecciona una tarjeta para ver su estado de cuenta";
+    } else if (isNonCardFilter(cardFilter)) {
+      warning = "Estado de cuenta solo aplica a tarjetas";
+      historyPeriodMode = "month";
       const modeEl = document.getElementById('hist-period-mode');
-      const statementOption = modeEl?.querySelector('option[value="statement"]');
-      if(statementOption) statementOption.disabled = cardFilter === "all" || isNonCardFilter(cardFilter);
-      historyPeriodMode = modeEl?.value || historyPeriodMode || "month";
+      if (modeEl) modeEl.value = 'month';
+      showToast("Estado de cuenta solo aplica a tarjetas", { tone: "warning", duration: 2400 });
+    } else {
+      const hasCutDay = Number.isFinite(Number(selectedCard?.closingDay ?? selectedCard?.cutDay));
+      if (!selectedCard || !hasCutDay) {
+        warning = "Tarjeta sin día de corte configurado";
+        statementConfigError = true;
+      } else {
+        const monthRange = getMonthRange(
+          dateFilter === "all" ? getPeriodKeyFromDate(new Date()) : dateFilter
+        );
 
-      let range = null;
-      let anchorDate = new Date();
-      let warning = "";
-      let statementConfigError = false;
-      let statement = null;
-      const selectedCard = cards.find((c) => c.id === cardFilter);
+        anchorDate = new Date(monthRange.startDate);
 
-      if(historyPeriodMode === "statement"){
-        if(cardFilter === "all"){
-          warning = "Selecciona una tarjeta para ver su estado de cuenta";
-        }else if(isNonCardFilter(cardFilter)){
-          warning = "Estado de cuenta solo aplica a tarjetas";
-          historyPeriodMode = "month";
-          const modeEl = document.getElementById('hist-period-mode');
-          if(modeEl) modeEl.value = 'month';
-          showToast("Estado de cuenta solo aplica a tarjetas", { tone: "warning", duration: 2400 });
-        }else{
-          const hasCutDay = Number.isFinite(Number(selectedCard?.closingDay ?? selectedCard?.cutDay));
-          if(!selectedCard || !hasCutDay){
-            warning = "Tarjeta sin día de corte configurado";
-            statementConfigError = true;
-          }else{
-            const monthRange = getMonthRange(dateFilter === "all" ? getPeriodKeyFromDate(new Date()) : dateFilter);
-            anchorDate = new Date(monthRange.startDate);
-            range = getStatementRange(anchorDate, Number(selectedCard.closingDay ?? selectedCard.cutDay), Number(selectedCard?.dueDay ?? selectedCard?.payDay || 1), abonosMode);
-            anchorDate = range.endDate;
-            statement = {
-              statementStart: range.startDate,
-              statementEndInclusive: range.endDate,
-              statementEndExclusive: range.endExclusive,
-              abonosStart: range.abonosWindow.abonosStart,
-              abonosEndExclusive: range.abonosWindow.abonosEndExclusive,
-              abonosLabel: range.abonosWindow.label,
-              mode: abonosMode
-            };
-          }
-        }
+        // ✅ FIX: no mezclar ?? con ||, y corregir separadores de argumentos
+        range = getStatementRange(
+          anchorDate,
+          Number(selectedCard.closingDay ?? selectedCard.cutDay),
+          Number(selectedCard?.dueDay ?? selectedCard?.payDay ?? 1),
+          abonosMode
+        );
+
+        anchorDate = range.endDate;
+
+        statement = {
+          statementStart: range.startDate,
+          statementEndInclusive: range.endDate,
+          statementEndExclusive: range.endExclusive,
+          abonosStart: range.abonosWindow.abonosStart,
+          abonosEndExclusive: range.abonosWindow.abonosEndExclusive,
+          abonosLabel: range.abonosWindow.label,
+          mode: abonosMode
+        };
       }
+    }
+  }
 
-      if(historyPeriodMode !== "statement" && dateFilter !== "all"){
-        range = getMonthRange(dateFilter);
-        anchorDate = new Date(range.endExclusive.getTime() - 1);
-      }
+  if (historyPeriodMode !== "statement" && dateFilter !== "all") {
+    range = getMonthRange(dateFilter);
+    anchorDate = new Date(range.endExclusive.getTime() - 1);
+  }
 
-      return { mode: historyPeriodMode, dateFilter, cardFilter, range, anchorDate, warning, selectedCard, statementConfigError, statement };
-    };
-
+  return {
+    mode: historyPeriodMode,
+    dateFilter,
+    cardFilter,
+    range,
+    anchorDate,
+    warning,
+    selectedCard,
+    statementConfigError,
+    statement
+  };
+};
     const renderTimeline = (grouped = [], anchorDate = new Date()) => grouped.map((group) => `
       <div class="timeline-day">
         <div class="timeline-header">
