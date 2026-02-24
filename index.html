@@ -627,6 +627,26 @@
       <div id="dashboard-summary-body" class="text-muted small">Cargando resumen...</div>
     </section>
 
+    <section id="cards-cycle-budget" class="card-box card">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h6 class="fw-bold m-0"><i class="fas fa-credit-card me-2"></i>Tarjetas del ciclo</h6>
+        <span class="text-muted small" id="cards-cycle-month">--</span>
+      </div>
+      <div class="row g-2 align-items-end mb-2">
+        <div class="col-12 col-md-5">
+          <label class="small text-muted fw-bold mb-1">Disponible para pago</label>
+          <input type="number" id="cards-available-input" class="form-control" step="0.01" min="0" placeholder="0.00" />
+        </div>
+        <div class="col-12 col-md-7">
+          <div class="kpi-label">Balance disponible - por pagar</div>
+          <div id="cards-cycle-balance" class="kpi-value sensitive-data">$0.00</div>
+          <small id="cards-available-status" class="text-muted"></small>
+        </div>
+      </div>
+      <div id="cards-cycle-summary" class="text-muted small">Calculando ciclo actual...</div>
+      <div class="text-muted small mt-2">Basado en ciclos de corte por tarjeta. Las tarjetas sin ciclo configurado usan mes calendario.</div>
+    </section>
+
     <section id="prediction-section" class="card-box card">
       <div class="d-flex justify-content-between align-items-center mb-2">
         <h6 class="fw-bold m-0"><i class="fas fa-chart-line me-2"></i>Predicción del mes</h6>
@@ -1142,14 +1162,19 @@
               <input type="text" id="c-name" class="form-control" placeholder="Ej: Visa Gold" required />
             </div>
 
+            <div class="form-check form-switch mb-2">
+              <input class="form-check-input" type="checkbox" id="c-cycle-billing">
+              <label class="form-check-label small text-muted fw-bold" for="c-cycle-billing">Usar ciclo de corte</label>
+            </div>
+
             <div class="row g-2 mb-3">
               <div class="col-6">
                 <label class="small text-muted fw-bold">Día Corte</label>
-                <input type="number" id="c-cut" class="form-control" placeholder="1-31" required />
+                <input type="number" id="c-cut" class="form-control" placeholder="1-31" min="1" max="31" />
               </div>
               <div class="col-6">
                 <label class="small text-muted fw-bold">Día Pago</label>
-                <input type="number" id="c-pay" class="form-control" placeholder="1-31" required />
+                <input type="number" id="c-pay" class="form-control" placeholder="1-31" min="1" max="31" />
               </div>
             </div>
 
@@ -1274,6 +1299,7 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
     import { getLocalMonthKey, isValidMonthKey, addMonths } from "./utils/monthKey.js";
+    import { getCycleWindow } from "./utils/billingCycle.js";
     import {
       getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc,
       query, orderBy, writeBatch, Timestamp, enableIndexedDbPersistence, where, getDocs, getDoc, setDoc,
@@ -1653,6 +1679,8 @@
 
     // State
     let cards=[], trans=[], goals=[];
+    let cardsBudgetState = { monthKey: getLocalMonthKey(), availableForCards: 0 };
+    let cardsBudgetSaveTimer = null;
     let privacy=false, chartInstance=null;
     let cardModal=null;
     let goalModal=null;
@@ -3033,6 +3061,7 @@
         renderDashboardSummary(null);
         renderInsights([]);
         renderPrediction(null);
+        await refreshCardsCycleBudget({ monthKey: getLocalMonthKey(), silent: true });
         logRenderDebug(`${source}:empty`, periodData, {
           owner: resolvedOwner,
           scopeFilter: dataState.scopeFilter,
@@ -3047,7 +3076,7 @@
       renderDashboardSummary(metrics);
       renderInsights(insights);
       renderPrediction(prediction);
-
+      await refreshCardsCycleBudget({ monthKey: getLocalMonthKey(), silent: true });
 
       logRenderDebug(`${source}:render`, renderData, {
         owner: resolvedOwner,
@@ -3678,12 +3707,12 @@
           showToast("Estado de cuenta solo aplica a tarjetas", { tone: "warning", duration: 2400 });
         }else{
           const selectedCard = cards.find((c) => c.id === selectedCardId);
-          const hasCutDay = Number.isFinite(Number(selectedCard?.cutDay));
+          const hasCutDay = Number.isFinite(Number(selectedCard?.closingDay ?? selectedCard?.cutDay));
           if(!selectedCard || !hasCutDay){
             warning = "Tarjeta sin día de corte configurado";
             statementConfigError = true;
           }else{
-            range = getStatementRange(monthAnchor, Number(selectedCard.cutDay), Number(selectedCard?.payDay || 1), abonosMode);
+            range = getStatementRange(monthAnchor, Number(selectedCard.closingDay ?? selectedCard.cutDay), Number(selectedCard?.dueDay ?? selectedCard?.payDay || 1), abonosMode);
             anchorDate = range.endDate;
             statement = {
               card: selectedCard,
@@ -4713,7 +4742,7 @@
             await addDoc(collection(db,"cards"), {
               name:c.name,
               owner:c.owner,
-              cutDay:1, payDay:1, limit:0, balance:0, payGoal:0
+              cutDay:1, payDay:1, closingDay:1, dueDay:1, cycleMode:"calendar", limit:0, balance:0, payGoal:0
             });
             bucket.add(nm);
           }
@@ -4751,7 +4780,16 @@
           firstSnapshot = false;
         }
         const tempAll=[];
-        snap.forEach(d=>{ const c=d.data(); c.id=d.id; tempAll.push(c); });
+        snap.forEach(d=>{
+          const c=d.data();
+          c.id=d.id;
+          const normalizedClosingDay = Number(c.closingDay ?? c.cutDay ?? NaN);
+          const normalizedDueDay = Number(c.dueDay ?? c.payDay ?? NaN);
+          c.closingDay = Number.isFinite(normalizedClosingDay) ? normalizedClosingDay : null;
+          c.dueDay = Number.isFinite(normalizedDueDay) ? normalizedDueDay : null;
+          c.cycleMode = c.cycleMode === "billing" ? "billing" : "calendar";
+          tempAll.push(c);
+        });
 
         const temp=tempAll.filter(c=>c.owner===OWNER);
 
@@ -4784,8 +4822,8 @@
           tDebt+=debt; tLimit+=limit;
 
           const today=new Date().getDate();
-          const cut=parseInt(c.cutDay||1);
-          let diff=parseInt(c.payDay||1)-today; if(diff<0) diff+=30;
+          const cut=parseInt(c.closingDay ?? c.cutDay ?? 1);
+          let diff=parseInt(c.dueDay ?? c.payDay ?? 1)-today; if(diff<0) diff+=30;
 
           let status={text:'NORMAL', bg:'bg-warning-light'};
           if(diff<=5) status={text:`VENCE EN ${diff} DÍAS`, bg:'bg-danger-light'};
@@ -4808,11 +4846,13 @@
             </div>
           `;
 
+          const needsCycleConfig = !(c.cycleMode === "billing" && Number.isFinite(Number(c.closingDay)) && Number.isFinite(Number(c.dueDay)));
           listManage.innerHTML += `
             <div class="list-item" onclick="editCard('${c.id}')">
               <div class="fw-bold">
                 ${c.name}
                 ${hasAlert ? '<span class="badge-status bg-danger-light ms-2">ALERTA</span>' : ''}
+                ${needsCycleConfig ? '<span class="badge-status bg-warning-light ms-2">Configura ciclo para precisión</span>' : ''}
               </div>
               <i class="fas fa-chevron-right text-muted"></i>
             </div>
@@ -4849,6 +4889,7 @@
         updatePaymentMonitor();
         updateAlerts();
         fillHistFilters();
+        refreshCardsCycleBudget({ monthKey: getLocalMonthKey(), silent: true });
 
       }, (err)=>{
         console.error("Cards snapshot error:", err);
@@ -4874,6 +4915,7 @@
         handlePendingWrites(snap.metadata.hasPendingWrites);
         fillHistFilters();
         emit("DATA_LOADED", { owner: OWNER, count: trans.length });
+        refreshCardsCycleBudget({ monthKey: getLocalMonthKey(), silent: true });
 
         if(privacy) togglePrivacy();
       }, (err)=>{
@@ -5516,8 +5558,8 @@
 
     function getCardAlerts(card, now){
       const alerts = [];
-      const payDay = parseInt(card.payDay || 1, 10);
-      const cutDay = parseInt(card.cutDay || 1, 10);
+      const payDay = parseInt(card.dueDay ?? card.payDay ?? 1, 10);
+      const cutDay = parseInt(card.closingDay ?? card.cutDay ?? 1, 10);
 
       const payDate = getNextOccurrence(now, payDay);
       const cutDate = getNextOccurrence(now, cutDay);
@@ -5554,6 +5596,124 @@
       const d = toDate(date);
       return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
     }
+
+    const normalizeCycleMode = (value) => value === "billing" ? "billing" : "calendar";
+    const parseCycleDay = (value) => {
+      const day = Number(value);
+      if(!Number.isFinite(day)) return null;
+      const normalized = Math.trunc(day);
+      if(normalized < 1 || normalized > 31) return null;
+      return normalized;
+    };
+
+    const getCardCycleWindow = (card, now = new Date()) => {
+      const cycleMode = normalizeCycleMode(card?.cycleMode);
+      const closingDay = parseCycleDay(card?.closingDay ?? card?.cutDay);
+      if(cycleMode === "billing" && closingDay){
+        const window = getCycleWindow(now, closingDay);
+        return { ...window, source: "billing" };
+      }
+      const monthKey = getPeriodKeyFromDate(now);
+      const monthRange = getMonthRange(monthKey);
+      return { start: monthRange.startDate, endExclusive: monthRange.endExclusive, source: "calendar" };
+    };
+
+    const getMonthBudgetRef = (monthKey) => doc(db, "budgets", monthKey);
+
+    const renderCardsCycleBudget = ({ monthKey = getLocalMonthKey(), availableForCards = 0, cardsDueThisCycle = 0, fallbackCards = [] } = {}) => {
+      const monthEl = document.getElementById("cards-cycle-month");
+      const summaryEl = document.getElementById("cards-cycle-summary");
+      const balanceEl = document.getElementById("cards-cycle-balance");
+      const inputEl = document.getElementById("cards-available-input");
+      if(!monthEl || !summaryEl || !balanceEl || !inputEl) return;
+
+      monthEl.textContent = formatPeriodLabel(monthKey);
+      const balance = round2(safeNumber(availableForCards) - safeNumber(cardsDueThisCycle));
+      balanceEl.textContent = formatMoney(balance);
+      balanceEl.classList.toggle("text-danger", balance < 0);
+      balanceEl.classList.toggle("text-success", balance >= 0);
+
+      if(document.activeElement !== inputEl){
+        inputEl.value = safeNumber(availableForCards) ? safeNumber(availableForCards).toFixed(2) : "";
+      }
+
+      const fallbackText = fallbackCards.length
+        ? `<div class="mt-1"><span class="badge-status bg-warning-light">${fallbackCards.length} tarjeta(s) usan mes calendario</span></div>`
+        : "";
+      summaryEl.innerHTML = `
+        <div>Disponible para pago: <strong class="sensitive-data">${formatMoney(availableForCards)}</strong></div>
+        <div>Total por pagar en ciclo actual: <strong class="sensitive-data text-danger">${formatMoney(cardsDueThisCycle)}</strong></div>
+        <div>Balance: <strong class="sensitive-data ${balance < 0 ? "text-danger" : "text-success"}">${formatMoney(balance)}</strong></div>
+        ${fallbackText}
+      `;
+      if(privacy) togglePrivacy();
+    };
+
+    const computeCardsDueThisCycle = ({ now = new Date(), owner = OWNER } = {}) => {
+      const scopeFilter = getActiveScopeFilter();
+      const scoped = FEATURES.coupleMode ? applyScopeFilter(trans, scopeFilter) : trans;
+      const ownerItems = scoped.filter((item) => !item?.owner || item.owner === owner);
+      const fallbackCards = [];
+      let total = 0;
+
+      cards.forEach((card) => {
+        const window = getCardCycleWindow(card, now);
+        if(window.source === "calendar") fallbackCards.push(card.name || "Tarjeta");
+        const endInclusive = new Date(window.endExclusive.getTime() - 1);
+
+        const cardExpenses = ownerItems.filter((item) => {
+          if(item?.type !== "expense") return false;
+          if(item?.cardId !== card.id) return false;
+          return true;
+        });
+
+        let cardTotal = 0;
+        cardExpenses.forEach((item) => {
+          if(item?.isMsi === true){
+            const expanded = expandMsiToMonthlyCharges(item, window.start, endInclusive);
+            cardTotal += expanded.reduce((acc, row) => acc + safeNumber(row.computedAmount), 0);
+            return;
+          }
+          const d = toDate(item?.date);
+          if(d >= window.start && d < window.endExclusive){
+            cardTotal += getEffectiveAmount(item);
+          }
+        });
+
+        total += cardTotal;
+      });
+
+      return { cardsDueThisCycle: round2(total), fallbackCards };
+    };
+
+    const refreshCardsCycleBudget = async ({ monthKey = getLocalMonthKey(), silent = false } = {}) => {
+      try{
+        const budgetSnap = await getDoc(getMonthBudgetRef(monthKey));
+        const availableForCards = budgetSnap.exists() ? safeNumber(budgetSnap.data()?.availableForCards) : 0;
+        cardsBudgetState = { monthKey, availableForCards };
+        const computed = computeCardsDueThisCycle({ owner: OWNER });
+        renderCardsCycleBudget({ monthKey, availableForCards, ...computed });
+      }catch(err){
+        if(!silent){
+          showToast("No se pudo cargar Disponible para pago.", { tone: "warning", duration: 2600 });
+        }
+      }
+    };
+
+    const saveAvailableForCards = async (value) => {
+      const monthKey = getLocalMonthKey();
+      await setDoc(getMonthBudgetRef(monthKey), {
+        monthKey,
+        availableForCards: round2(safeNumber(value)),
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+      const statusEl = document.getElementById("cards-available-status");
+      if(statusEl) statusEl.textContent = "Guardado";
+      setTimeout(() => {
+        if(statusEl) statusEl.textContent = "";
+      }, 1600);
+      await refreshCardsCycleBudget({ monthKey, silent: true });
+    };
 
     function getMonthRange(periodKey){
       if(!periodKey){
@@ -6144,14 +6304,14 @@
           if(modeEl) modeEl.value = 'month';
           showToast("Estado de cuenta solo aplica a tarjetas", { tone: "warning", duration: 2400 });
         }else{
-          const hasCutDay = Number.isFinite(Number(selectedCard?.cutDay));
+          const hasCutDay = Number.isFinite(Number(selectedCard?.closingDay ?? selectedCard?.cutDay));
           if(!selectedCard || !hasCutDay){
             warning = "Tarjeta sin día de corte configurado";
             statementConfigError = true;
           }else{
             const monthRange = getMonthRange(dateFilter === "all" ? getPeriodKeyFromDate(new Date()) : dateFilter);
             anchorDate = new Date(monthRange.startDate);
-            range = getStatementRange(anchorDate, Number(selectedCard.cutDay), Number(selectedCard?.payDay || 1), abonosMode);
+            range = getStatementRange(anchorDate, Number(selectedCard.closingDay ?? selectedCard.cutDay), Number(selectedCard?.dueDay ?? selectedCard?.payDay || 1), abonosMode);
             anchorDate = range.endDate;
             statement = {
               statementStart: range.startDate,
@@ -6850,6 +7010,17 @@
       if(on) document.getElementById('t-msi-start').value = document.getElementById('t-date').value;
     });
 
+    const cardsAvailableInput = document.getElementById('cards-available-input');
+    cardsAvailableInput?.addEventListener('input', () => {
+      const value = safeNumber(cardsAvailableInput.value);
+      const computed = computeCardsDueThisCycle({ owner: OWNER });
+      renderCardsCycleBudget({ monthKey: getLocalMonthKey(), availableForCards: value, ...computed });
+      const statusEl = document.getElementById('cards-available-status');
+      if(statusEl) statusEl.textContent = 'Sin guardar';
+      clearTimeout(cardsBudgetSaveTimer);
+      cardsBudgetSaveTimer = setTimeout(() => saveAvailableForCards(value), 700);
+    });
+
     // =========================
     // Helpers plain
     // =========================
@@ -6934,6 +7105,9 @@
         name: c.name,
         cutDay: Number(c.cutDay||1),
         payDay: Number(c.payDay||1),
+        closingDay: Number(c.closingDay ?? c.cutDay ?? 1),
+        dueDay: Number(c.dueDay ?? c.payDay ?? 1),
+        cycleMode: normalizeCycleMode(c.cycleMode),
         limit: Number(c.limit||0),
         balance: Number(c.balance||0),
         payGoal: Number(c.payGoal||0)
@@ -6975,8 +7149,9 @@
       }
       document.getElementById('c-id').value=id;
       document.getElementById('c-name').value=c.name;
-      document.getElementById('c-cut').value=c.cutDay;
-      document.getElementById('c-pay').value=c.payDay;
+      document.getElementById('c-cut').value=c.closingDay ?? c.cutDay ?? '';
+      document.getElementById('c-pay').value=c.dueDay ?? c.payDay ?? '';
+      document.getElementById('c-cycle-billing').checked = normalizeCycleMode(c.cycleMode) === 'billing';
       document.getElementById('c-limit').value=c.limit;
       document.getElementById('c-bal').value=c.balance;
       document.getElementById('c-goal').value=c.payGoal||0;
@@ -6989,10 +7164,23 @@
       e.preventDefault();
       const id=document.getElementById('c-id').value; if(!id) return;
 
+      const rawClosing = parseCycleDay(document.getElementById('c-cut').value);
+      const rawDue = parseCycleDay(document.getElementById('c-pay').value);
+      const wantsBilling = document.getElementById('c-cycle-billing').checked;
+      const cycleMode = (wantsBilling && rawClosing && rawDue) ? 'billing' : 'calendar';
+
+      if((document.getElementById('c-cut').value && !rawClosing) || (document.getElementById('c-pay').value && !rawDue)){
+        showToast('Día de corte/pago debe estar entre 1 y 31.', { tone: 'warning', duration: 2600 });
+        return;
+      }
+
       const payload={
         name: document.getElementById('c-name').value,
-        cutDay: parseInt(document.getElementById('c-cut').value||1),
-        payDay: parseInt(document.getElementById('c-pay').value||1),
+        cutDay: rawClosing || 1,
+        payDay: rawDue || 1,
+        closingDay: rawClosing,
+        dueDay: rawDue,
+        cycleMode,
         limit: parseFloat(document.getElementById('c-limit').value||0),
         balance: parseFloat(document.getElementById('c-bal').value||0),
         payGoal: parseFloat(document.getElementById('c-goal').value||0)
