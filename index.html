@@ -1273,6 +1273,7 @@
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
+    import { getLocalMonthKey, isValidMonthKey, addMonths } from "./utils/monthKey.js";
     import {
       getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc,
       query, orderBy, writeBatch, Timestamp, enableIndexedDbPersistence, where, getDocs, getDoc, setDoc,
@@ -3067,6 +3068,46 @@
     // ✅ HUELLA MENSUAL + YO VS YO
     // =========================
     const MONTHLY_SUMMARY_COLLECTION = "monthly_summaries";
+    const ACTIVE_MONTH_KEY = "finance_active_month";
+    const ACTIVE_MONTH_USER_FIXED_KEY = "finance_active_month_user_fixed";
+    const LEGACY_ACTIVE_MONTH_KEYS = ["selectedMonth", "period", "month"];
+
+    const getStoredActiveMonth = () => localStorage.getItem(ACTIVE_MONTH_KEY);
+    const isActiveMonthUserFixed = () => localStorage.getItem(ACTIVE_MONTH_USER_FIXED_KEY) === "true";
+    const setActiveMonthOverride = (monthKey, { userFixed = false } = {}) => {
+      if(!isValidMonthKey(monthKey)) return;
+      localStorage.setItem(ACTIVE_MONTH_KEY, monthKey);
+      localStorage.setItem(ACTIVE_MONTH_USER_FIXED_KEY, userFixed ? "true" : "false");
+    };
+    const clearActiveMonthOverride = () => {
+      localStorage.removeItem(ACTIVE_MONTH_KEY);
+      localStorage.removeItem(ACTIVE_MONTH_USER_FIXED_KEY);
+    };
+
+    const migrateLegacyActiveMonthKey = () => {
+      if(getStoredActiveMonth()) return;
+      const legacyValue = LEGACY_ACTIVE_MONTH_KEYS
+        .map((key) => localStorage.getItem(key))
+        .find((value) => isValidMonthKey(value || ""));
+      if(!legacyValue) return;
+      setActiveMonthOverride(legacyValue, { userFixed: false });
+      LEGACY_ACTIVE_MONTH_KEYS.forEach((key) => localStorage.removeItem(key));
+    };
+
+    const resolveActiveMonthKey = () => {
+      migrateLegacyActiveMonthKey();
+      const current = getLocalMonthKey();
+      const override = getStoredActiveMonth();
+      if(!override) return current;
+      if(!isValidMonthKey(override)){
+        clearActiveMonthOverride();
+        return current;
+      }
+      if(override === current) return override;
+      if(isActiveMonthUserFixed()) return override;
+      clearActiveMonthOverride();
+      return current;
+    };
     const SUMMARY_SAVE_DEBOUNCE_MS = 8000;
     const summarySaveState = new Map();
     const summarySaveLocks = new Map();
@@ -3216,10 +3257,14 @@
       });
     };
 
-    const maybeGenerateMonthlySummary = async (owner, { force = false, scopeFilter = getActiveScopeFilter() } = {}) => {
+    const maybeGenerateMonthlySummary = async (owner, {
+      force = false,
+      scopeFilter = getActiveScopeFilter(),
+      activeMonthKey = resolveActiveMonthKey()
+    } = {}) => {
       const o = getActiveOwner(owner);
       if(!isValidAppOwner(o)) return null;
-      const periodKey = getMonthKey(previousMonth(new Date()));
+      const periodKey = isValidMonthKey(activeMonthKey) ? activeMonthKey : getLocalMonthKey();
       const summaryId = buildMonthlySummaryId(o, periodKey, scopeFilter);
       const docRef = doc(db, MONTHLY_SUMMARY_COLLECTION, summaryId);
 
@@ -3228,7 +3273,13 @@
         if(existing.exists()) return existing.data();
       }
 
-      const monthExpenses = await loadExpensesMonthOffset(o, 1, { force });
+      const periodRange = getMonthRange(periodKey);
+      const monthExpenses = await loadExpensesByPeriod(o, {
+        start: periodRange.startDate,
+        end: new Date(periodRange.endExclusive.getTime() - 1),
+        periodKey: `month-${periodKey}`,
+        force
+      });
       const normalizedAll = monthExpenses.map((item) => ({ ...item, scope: normalizeScope(item?.scope) }));
       const scopedExpenses = applyScopeFilter(normalizedAll, scopeFilter);
 
@@ -3277,7 +3328,7 @@
       return { avg6, best, prevTotal };
     };
 
-    const renderMonthlyFootprint = (summary, comparisons) => {
+    const renderMonthlyFootprint = (summary, comparisons, activeMonthKey) => {
       const section = document.getElementById("monthly-footprint-section");
       const body = document.getElementById("monthly-footprint-body");
       const periodEl = document.getElementById("monthly-footprint-period");
@@ -3289,7 +3340,9 @@
         return;
       }
 
-      const periodText = summary.periodKey ? `Cierre ${summary.periodKey}` : "Cierre del mes anterior";
+      const periodText = summary?.periodKey
+        ? `Cierre ${summary.periodKey}`
+        : (activeMonthKey ? `Cierre ${activeMonthKey}` : "Cierre del mes anterior");
       if(periodEl) periodEl.textContent = periodText;
 
       const scopeTotals = summary.totals?.byScope || { shared: 0, personal: 0 };
@@ -3346,21 +3399,40 @@
       body.innerHTML = '<small class="text-muted">Generando resumen...</small>';
       const owner = getActiveOwner();
       const scopeFilter = getActiveScopeFilter();
+      const activeMonthKey = resolveActiveMonthKey();
+      lastResolvedMonthlyFootprintKey = activeMonthKey;
       try{
-        const summary = await maybeGenerateMonthlySummary(owner, { force, scopeFilter });
+        const summary = await maybeGenerateMonthlySummary(owner, { force, scopeFilter, activeMonthKey });
         const summaries = await loadMonthlySummaries(owner, 6, scopeFilter);
         const comparisons = summary ? computeComparisons(summary, summaries) : null;
-        renderMonthlyFootprint(summary, comparisons);
+        renderMonthlyFootprint(summary, comparisons, activeMonthKey);
       }catch(err){
         console.warn("No se pudo actualizar huella mensual.", err);
         body.innerHTML = '<small class="text-muted">No se pudo actualizar el resumen por ahora.</small>';
       }
     }
 
+    let monthlyFootprintMonthWatcher = null;
+    let lastResolvedMonthlyFootprintKey = resolveActiveMonthKey();
+    const ensureMonthlyFootprintMonthWatcher = () => {
+      if(monthlyFootprintMonthWatcher) return;
+      monthlyFootprintMonthWatcher = setInterval(() => {
+        if(isActiveMonthUserFixed()) return;
+        const resolvedNow = resolveActiveMonthKey();
+        if(resolvedNow === lastResolvedMonthlyFootprintKey) return;
+        lastResolvedMonthlyFootprintKey = resolvedNow;
+        updateMonthlyFootprint().catch((err) => console.warn("Month watcher failed", err));
+      }, 60000);
+    };
+
     window.manualCloseMonth = async () => {
+      const activeMonthKey = resolveActiveMonthKey();
       await updateMonthlyFootprint({ force: true });
+      setActiveMonthOverride(addMonths(activeMonthKey, 1), { userFixed: false });
       showToast("Resumen mensual actualizado.", { tone: "success", duration: 2000 });
     };
+
+    ensureMonthlyFootprintMonthWatcher();
 
     const pickLegacyField = (obj, keys = []) => {
       for(const key of keys){
