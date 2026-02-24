@@ -3712,7 +3712,15 @@
             warning = "Tarjeta sin día de corte configurado";
             statementConfigError = true;
           }else{
-            range = getStatementRange(monthAnchor, Number(selectedCard.closingDay ?? selectedCard.cutDay), Number(selectedCard?.dueDay ?? selectedCard?.payDay || 1), abonosMode);
+            const closingDay = Number(selectedCard.closingDay ?? selectedCard.cutDay);
+const dueDay = Number((selectedCard?.dueDay ?? selectedCard?.payDay) ?? 1);
+
+            range = getStatementRange(
+            monthAnchor,
+            closingDay,
+            dueDay,
+            abonosMode
+          );
             anchorDate = range.endDate;
             statement = {
               card: selectedCard,
