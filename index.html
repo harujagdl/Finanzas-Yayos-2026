@@ -3128,12 +3128,31 @@
       const current = getLocalMonthKey();
       const override = getStoredActiveMonth();
       if(!override) return current;
+
       if(!isValidMonthKey(override)){
         clearActiveMonthOverride();
         return current;
       }
+
       if(override === current) return override;
-      if(isActiveMonthUserFixed()) return override;
+
+      // Si el mes guardado quedó atrás (ej. enero) y ya estamos en el nuevo mes (ej. febrero),
+      // avanzamos automáticamente para evitar "atorarse" en el mes anterior.
+      const parseKey = (k) => {
+        const [y,m] = String(k).split("-").map(Number);
+        return { y, m };
+      };
+      const a = parseKey(override);
+      const b = parseKey(current);
+      const diff = (a.y - b.y) * 12 + (a.m - b.m); // negativo => override es más viejo
+
+      if(diff < 0){
+        // Si está atrás, siempre nos movemos al mes actual y soltamos el "userFixed"
+        setActiveMonthOverride(current, { userFixed: false });
+        return current;
+      }
+
+      // Si por alguna razón está en el futuro, limpiamos.
       clearActiveMonthOverride();
       return current;
     };
@@ -3713,14 +3732,14 @@
             statementConfigError = true;
           }else{
             const closingDay = Number(selectedCard.closingDay ?? selectedCard.cutDay);
-const dueDay = Number((selectedCard?.dueDay ?? selectedCard?.payDay) ?? 1);
+            const dueDay = Number(selectedCard?.dueDay ?? selectedCard?.payDay ?? 1);
 
             range = getStatementRange(
-            monthAnchor,
-            closingDay,
-            dueDay,
-            abonosMode
-          );
+              monthAnchor,
+              closingDay,
+              dueDay,
+              abonosMode
+            );
             anchorDate = range.endDate;
             statement = {
               card: selectedCard,
