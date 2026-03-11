@@ -635,7 +635,7 @@
       <div class="row g-2 align-items-end mb-2">
         <div class="col-12 col-md-5">
           <label class="small text-muted fw-bold mb-1">Disponible para pago</label>
-          <input type="number" id="cards-available-input" class="form-control" step="0.01" min="0" placeholder="0.00" />
+          <input type="number" id="cards-available-input" class="form-control" step="0.01" inputmode="decimal" min="0" placeholder="0.00" />
         </div>
         <div class="col-12 col-md-7">
           <div class="kpi-label">Balance disponible - por pagar</div>
@@ -825,7 +825,7 @@
 
         <div class="mb-3">
           <label class="small fw-bold text-muted mb-1" id="t-amount-label">Monto</label>
-          <input type="number" id="t-amount" class="form-control fw-bold" style="font-size:1.5rem;" placeholder="0.00" step="0.01" required />
+          <input type="number" id="t-amount" class="form-control fw-bold" style="font-size:1.5rem;" placeholder="0.00" step="0.01" inputmode="decimal" required />
         </div>
 
         <div class="mb-3">
@@ -881,7 +881,7 @@
           <div id="msi-fields" style="display:none;">
             <div class="mb-2">
               <label class="small fw-bold text-muted mb-1">Monto total de la compra (total)</label>
-              <input type="number" id="t-msi-total" class="form-control" placeholder="0.00" step="0.01" />
+              <input type="number" id="t-msi-total" class="form-control" placeholder="0.00" step="0.01" inputmode="decimal" />
             </div>
             <div class="row g-2">
               <div class="col-6">
@@ -1103,7 +1103,7 @@
     <div class="row g-2">
       <div class="col-6">
         <label class="small fw-bold text-muted mb-1">Monto</label>
-        <input type="number" id="quick-amount" class="form-control fw-bold" placeholder="0.00" step="0.01" />
+        <input type="number" id="quick-amount" class="form-control fw-bold" placeholder="0.00" step="0.01" inputmode="decimal" />
       </div>
       <div class="col-6">
         <label class="small fw-bold text-muted mb-1">Categoría</label>
@@ -1180,17 +1180,17 @@
 
             <div class="mb-3 p-3 rounded-3" style="background-color:var(--bg-body);border:1px dashed var(--border-color);">
               <label class="small text-danger fw-bold">Pago para no generar intereses</label>
-              <input type="number" id="c-goal" class="form-control mt-1" value="0" />
+              <input type="number" id="c-goal" class="form-control mt-1" value="0" step="0.01" inputmode="decimal" />
             </div>
 
             <div class="mb-3">
               <label class="small text-muted fw-bold">Límite Total</label>
-              <input type="number" id="c-limit" class="form-control" required />
+              <input type="number" id="c-limit" class="form-control" step="0.01" inputmode="decimal" required />
             </div>
 
             <div class="mb-3">
               <label class="small text-muted fw-bold">Deuda Total</label>
-              <input type="number" id="c-bal" class="form-control" value="0" required />
+              <input type="number" id="c-bal" class="form-control" value="0" step="0.01" inputmode="decimal" required />
             </div>
 
             <button type="submit" class="btn btn-primary w-100 py-2 rounded-3 fw-bold">Guardar</button>
@@ -1216,7 +1216,7 @@
             </div>
             <div class="mb-3">
               <label class="small text-muted fw-bold">Monto objetivo</label>
-              <input type="number" id="goal-target" class="form-control" placeholder="0" min="0" step="0.01" required />
+              <input type="number" id="goal-target" class="form-control" placeholder="0" min="0" step="0.01" inputmode="decimal" required />
             </div>
             <div class="mb-3">
               <label class="small text-muted fw-bold">Prioridad</label>
@@ -1246,7 +1246,7 @@
             <input type="hidden" id="goal-contribution-id" />
             <div class="mb-3">
               <label class="small text-muted fw-bold">Monto</label>
-              <input type="number" id="goal-contribution-amount" class="form-control" placeholder="0" min="0" step="0.01" required />
+              <input type="number" id="goal-contribution-amount" class="form-control" placeholder="0" min="0" step="0.01" inputmode="decimal" required />
             </div>
             <div class="mb-3">
               <label class="small text-muted fw-bold">Owner</label>
