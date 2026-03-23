@@ -838,9 +838,10 @@
         </div>
 
         <div class="mb-3" id="t-card-wrap">
-          <label class="small fw-bold text-muted mb-1">Tarjeta</label>
+          <label class="small fw-bold text-muted mb-1" id="t-card-label">Tarjeta</label>
           <select id="t-card" class="form-select"></select>
           <small id="t-card-note" class="text-muted d-none">No requiere tarjeta</small>
+          <small id="t-card-help" class="text-muted d-none">Selecciona la tarjeta a la que estás abonando</small>
         </div>
 
         <div class="mb-3">
@@ -2230,6 +2231,11 @@
 
     const normalizeMovementInput = (draft = {}) => {
       const next = { ...draft };
+      if(isCardPaymentMovement(next)){
+        next.cardId = null;
+        next.cardName = null;
+        if(Object.prototype.hasOwnProperty.call(next, "msiId")) next.msiId = null;
+      }
       if(!requiresCardSelection(next.type, next.paymentMethod)){
         next.cardId = null;
         next.cardName = null;
@@ -4901,7 +4907,8 @@
         select.innerHTML='';
         const placeholderOpt = document.createElement('option');
         placeholderOpt.value = '';
-        placeholderOpt.textContent = 'Selecciona tarjeta';
+        const isAbonoMovement = (document.querySelector('input[name="ttype"]:checked')?.value || 'expense') === "payment";
+        placeholderOpt.textContent = isAbonoMovement ? 'Selecciona tarjeta abonada' : 'Selecciona tarjeta';
         select.appendChild(placeholderOpt);
         const optG_Y=document.createElement('optgroup'); optG_Y.label="Tarjetas de Yair";
         const optG_H=document.createElement('optgroup'); optG_H.label="Tarjetas de Haru";
@@ -4967,6 +4974,7 @@
         if(optG_B.children.length) select.appendChild(optG_B);
 
         if(prevSel) select.value=prevSel;
+        updateCardFieldContext();
 
         document.getElementById('total-debt').innerText=formatMoney(tDebt);
         document.getElementById('total-avail').innerText=formatMoney(tLimit-tDebt);
@@ -7122,10 +7130,26 @@ const getHistoryContext = () => {
       document.getElementById('t-amount').value = monthly ? monthly.toFixed(2) : "";
     }
 
+    function updateCardFieldContext(){
+      const type = document.querySelector('input[name="ttype"]:checked')?.value || 'expense';
+      const isAbonoMovement = type === "payment" || type === "card_payment";
+      const cardLabel = document.getElementById('t-card-label');
+      const cardHelp = document.getElementById('t-card-help');
+      const cardSelect = document.getElementById('t-card');
+      const defaultOption = cardSelect?.querySelector('option[value=""]');
+      const placeholderText = isAbonoMovement ? 'Selecciona tarjeta abonada' : 'Selecciona tarjeta';
+
+      if(cardLabel) cardLabel.textContent = isAbonoMovement ? "Tarjeta abonada" : "Tarjeta";
+      if(defaultOption) defaultOption.textContent = placeholderText;
+      if(cardSelect) cardSelect.setAttribute('aria-label', isAbonoMovement ? "Tarjeta abonada" : "Tarjeta");
+      if(cardHelp) cardHelp.classList.toggle('d-none', !isAbonoMovement);
+    }
+
     function syncCardRequirement(){
       const methodEl = document.getElementById('t-payment-method');
       const method = methodEl?.value || 'card';
       const type = document.querySelector('input[name="ttype"]:checked')?.value || 'expense';
+      const isAbonoMovement = type === "payment" || type === "card_payment";
       const needsCard = requiresCardSelection(type, method);
 
       const cardWrap = document.getElementById('t-card-wrap');
@@ -7151,7 +7175,8 @@ const getHistoryContext = () => {
         if(typeof cardEl.setCustomValidity === 'function') cardEl.setCustomValidity('');
       }
 
-      if(cardNote) cardNote.classList.toggle('d-none', needsCard);
+      if(cardNote) cardNote.classList.toggle('d-none', needsCard || isAbonoMovement);
+      updateCardFieldContext();
     }
 
     function uiTogglePaymentMethod(){
@@ -7194,10 +7219,11 @@ const getHistoryContext = () => {
       const t = { ...raw };
       if(id) t.id = id;
       t.scope = normalizeScope(t.scope);
+      const isAbonoMovement = isCardPaymentMovement(t);
 
       const payment = resolvePaymentDisplay(t);
       t.paymentMethod = payment.paymentMethod;
-      if(!requiresCardSelection(t.type, t.paymentMethod)){
+      if(!requiresCardSelection(t.type, t.paymentMethod) || isAbonoMovement){
         t.cardId = null;
         t.cardName = null;
       }else{
@@ -7209,7 +7235,7 @@ const getHistoryContext = () => {
         t.targetCardId = t.cardId;
         t.targetCardName = t.cardName || null;
       }
-      if(isCardPaymentMovement(t)) t.isCardPayment = true;
+      if(isAbonoMovement) t.isCardPayment = true;
 
       if(t.type === "expense" && t.isMsi === true){
         const rawMonths = t.msiMonths ?? pickLegacyField(t, ["msi_months", "months", "plazoMeses"]);
@@ -7476,6 +7502,7 @@ const getHistoryContext = () => {
       const type=document.querySelector('input[name="ttype"]:checked')?.value;
       const paymentMethod = document.getElementById('t-payment-method')?.value || 'card';
       const cid=document.getElementById('t-card').value;
+      const isAbonoMovement = type === "payment";
       const dateValue = document.getElementById('t-date').value;
       const isMsi = (type === 'expense') && document.getElementById('t-msi').checked;
       const msiTotal = isMsi ? parseFloat(document.getElementById('t-msi-total').value || 0) : null;
@@ -7501,7 +7528,12 @@ const getHistoryContext = () => {
         haptic("error");
         return;
       }
-      if(requiresCardSelection(type, paymentMethod) && !cid){
+      if(isAbonoMovement && !cid){
+        showToast("Selecciona la tarjeta abonada.", { tone: "warning", duration: 2400 });
+        haptic("error");
+        return;
+      }
+      if(!isAbonoMovement && requiresCardSelection(type, paymentMethod) && !cid){
         showToast("Selecciona una tarjeta para guardar.", { tone: "warning", duration: 2400 });
         haptic("error");
         return;
@@ -7511,8 +7543,8 @@ const getHistoryContext = () => {
 
       try{
         const tid=document.getElementById('trans-id').value;
-        const cObj=requiresCardSelection(type, paymentMethod) ? cards.find(c=>c.id===cid) : null;
-        if(requiresCardSelection(type, paymentMethod) && !cObj) throw new Error("Tarjeta no encontrada");
+        const cObj=(requiresCardSelection(type, paymentMethod) || isAbonoMovement) ? cards.find(c=>c.id===cid) : null;
+        if((requiresCardSelection(type, paymentMethod) || isAbonoMovement) && !cObj) throw new Error("Tarjeta no encontrada");
         const previousTrans = tid ? trans.find(t=>t.id===tid) : null;
 
         const batch=writeBatch(db);
@@ -7528,7 +7560,7 @@ const getHistoryContext = () => {
           registerCardDelta(previousTrans.targetCardId || previousTrans.cardId, prevDelta);
         }
 
-        if(requiresCardSelection(type, paymentMethod)){
+        if(requiresCardSelection(type, paymentMethod) || isAbonoMovement){
           const currDelta = type === 'expense' ? amountApplied : -amountApplied;
           registerCardDelta(cid, currDelta);
         }
@@ -7548,7 +7580,6 @@ const getHistoryContext = () => {
           : null;
 
         const movementType = type === "payment" ? "card_payment" : type;
-        const isAbonoMovement = movementType === "card_payment";
         const normalizedCategory = isAbonoMovement ? "Abono Capital" : document.getElementById('t-cat').value;
         const normalizedConcept = isAbonoMovement
           ? (document.getElementById('t-concept').value || `Abono a ${cObj?.name || "tarjeta"}`)
@@ -7560,8 +7591,8 @@ const getHistoryContext = () => {
           type: movementType,
           isCardPayment: isAbonoMovement,
           paymentMethod,
-          cardId: requiresCardSelection(type, paymentMethod) ? cid : null,
-          cardName: requiresCardSelection(type, paymentMethod) ? cObj.name : null,
+          cardId: (!isAbonoMovement && requiresCardSelection(type, paymentMethod)) ? cid : null,
+          cardName: (!isAbonoMovement && requiresCardSelection(type, paymentMethod)) ? cObj.name : null,
           targetCardId: isAbonoMovement && cid ? cid : null,
           targetCardName: isAbonoMovement && cObj ? cObj.name : null,
           concept: normalizedConcept,
@@ -7588,7 +7619,13 @@ const getHistoryContext = () => {
           payload.card = null;
           payload.msiId = null;
         }
-        if(requiresCardSelection(payload.type, payload.paymentMethod) && !payload.cardId){
+        if(payload.type === "card_payment"){
+          payload.cardId = null;
+          payload.cardName = null;
+          payload.card = null;
+          payload.msiId = null;
+        }
+        if(payload.type !== "card_payment" && requiresCardSelection(payload.type, payload.paymentMethod) && !payload.cardId){
           throw new Error("Selecciona una tarjeta");
         }
 
