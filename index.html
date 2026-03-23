@@ -2161,32 +2161,65 @@
     };
 
     const requiresCardSelection = (type = "", paymentMethod = "") => {
-      if(String(type || "").toLowerCase() === "payment") return true;
+      const normalizedType = normalizeText(type || "");
+      if(normalizedType === "payment" || normalizedType === "card_payment") return true;
       return requiresCard(paymentMethod);
     };
 
-    const normalizeCardRef = (value = "") => String(value || "")
-      .trim()
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "");
+    function normalizeText(value) {
+      return String(value || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .trim()
+        .toLowerCase();
+    }
+
+    function isSameCard(movement = {}, card = {}) {
+      const mId = normalizeText(movement.cardId || movement.targetCardId || "");
+      const mName = normalizeText(movement.cardName || movement.targetCardName || movement.card || "");
+      const cId = normalizeText(card.id || "");
+      const cName = normalizeText(card.name || "");
+
+      if (mId && cId) return mId === cId;
+      return mName === cName;
+    }
+
+    function isCardPayment(m = {}) {
+      const type = normalizeText(m.type || "");
+      const category = normalizeText(m.category || "");
+      const subtype = normalizeText(m.subtype || m.subCategory || "");
+
+      return (
+        m.isCardPayment === true
+        || type === "card_payment"
+        || type === "abono"
+        || category === "abono capital"
+        || subtype === "abono capital"
+      );
+    }
+
+    function toMoney(value) {
+      const num = parseFloat(value);
+      return Number.isFinite(num) ? Number(num.toFixed(2)) : 0;
+    }
+
+    function isInCurrentMonth(dateValue) {
+      const today = new Date();
+      const monthStart = new Date(today.getFullYear(), today.getMonth(), 1, 0, 0, 0, 0);
+      const nextMonthStart = new Date(today.getFullYear(), today.getMonth() + 1, 1, 0, 0, 0, 0);
+      const txDate = toDate(dateValue);
+      return txDate >= monthStart && txDate < nextMonthStart;
+    }
 
     const isCardPaymentMovement = (movement = {}) => {
-      const type = String(movement?.type || "").toLowerCase();
-      const category = String(movement?.category || "").toLowerCase();
-      const flag = movement?.isCardPayment === true;
-      return flag
-        || type === "card_payment"
-        || type === "payment"
-        || type === "abono"
-        || category === "abono capital";
+      return isCardPayment(movement) || normalizeText(movement?.type || "") === "payment";
     };
 
     const getTransactionCardRef = (movement = {}) => {
-      if(movement?.targetCardId) return { key: normalizeCardRef(movement.targetCardId), source: "targetCardId" };
-      if(movement?.cardId && !isNonCardFilter(movement.cardId)) return { key: normalizeCardRef(movement.cardId), source: "cardId" };
-      if(movement?.targetCardName) return { key: normalizeCardRef(movement.targetCardName), source: "targetCardName" };
-      if(movement?.cardName && !isNonCardFilter(movement.cardId)) return { key: normalizeCardRef(movement.cardName), source: "cardName" };
+      if(movement?.targetCardId) return { key: normalizeText(movement.targetCardId), source: "targetCardId" };
+      if(movement?.cardId && !isNonCardFilter(movement.cardId)) return { key: normalizeText(movement.cardId), source: "cardId" };
+      if(movement?.targetCardName) return { key: normalizeText(movement.targetCardName), source: "targetCardName" };
+      if(movement?.cardName && !isNonCardFilter(movement.cardId)) return { key: normalizeText(movement.cardName), source: "cardName" };
       return { key: "", source: "none" };
     };
 
@@ -2228,7 +2261,7 @@
 
       const type = mov?.type;
       const amount = safeNumber(mov?.amount);
-      if(type === "income" || type === "payment") return amount;
+      if(type === "income" || type === "payment" || type === "card_payment") return amount;
       if(type === "expense" && mov?.isMsi === true){
         return amount;
       }
@@ -3690,7 +3723,7 @@
       items.forEach((item) => {
         const amount = getEffectiveAmount(item);
         const type = item?.type;
-        const isIncome = type === "income" || type === "payment";
+        const isIncome = type === "income" || type === "payment" || type === "card_payment";
         if(isIncome) totals.income += amount;
         else totals.expense += amount;
 
@@ -3976,7 +4009,7 @@
           itemsByOwner.forEach((item) => {
             const date = toDate(item?.date);
             const amount = getMsiPaymentDetails(item, context.anchorDate).amount;
-            const isIncome = item?.type === "income" || item?.type === "payment";
+            const isIncome = item?.type === "income" || item?.type === "payment" || item?.type === "card_payment";
             if(!isIncome){
               if(item?.cardId !== context.selectedCardId) return;
               if(item?.isMsi === true){
@@ -4718,6 +4751,7 @@
       const configuredExpenseCats = getCategoryDefs("expense").map((cat) => getCategoryOptionLabel(cat));
       const cats = [...new Set([
         ...configuredExpenseCats,
+        "Abono Capital",
         ...trans.map(t => (t.category || '').trim()).filter(Boolean)
       ])].sort((a,b)=>a.localeCompare(b,"es"));
       cats.forEach(c=>{
@@ -5510,63 +5544,40 @@
       const list=document.getElementById('payment-monitor-list');
       list.innerHTML='';
       let hasGoals=false;
-      const devPaymentMonitorDebug =
-        ["localhost", "127.0.0.1"].includes(window.location.hostname)
-        || window.location.search.includes("debugPayments=1");
 
       cards.forEach(c=>{
-        const goal=parseFloat(c.payGoal||0);
-        if(goal<=0) return;
+        const requiredPayment = toMoney(parseFloat(c.payGoal || 0));
+        if(requiredPayment<=0) return;
 
         hasGoals=true;
-        const today=new Date();
-        const monthStart = new Date(today.getFullYear(), today.getMonth(), 1, 0, 0, 0, 0);
-        const nextMonthStart = new Date(today.getFullYear(), today.getMonth() + 1, 1, 0, 0, 0, 0);
+        const pagosDelMes = trans.filter((m) =>
+          isSameCard(m, c)
+          && isCardPayment(m)
+          && isInCurrentMonth(m.date)
+          && Number(m.amount || 0) > 0
+        );
 
-        const cardRef = normalizeCardRef(c.id || c.name);
-        let paid=0;
-        const included = [];
-        const discarded = [];
-        trans.forEach(t=>{
-          const txDate = toDate(t?.date);
-          const txCardRef = getTransactionCardRef(t);
-          const amount = Number(t?.amount || 0);
-          const reasons = [];
-          if(txCardRef.key !== cardRef) reasons.push(`tarjeta(${txCardRef.source})`);
-          if(!isCardPaymentMovement(t)) reasons.push("not-card-payment");
-          if(!(txDate >= monthStart && txDate < nextMonthStart)) reasons.push("out-of-month");
-          if(!(amount > 0)) reasons.push("amount<=0");
+        const totalPagado = toMoney(pagosDelMes.reduce((sum, m) => sum + Number(m.amount || 0), 0));
+        const restante = Math.max(toMoney(requiredPayment - totalPagado), 0);
+        const cubierto = restante <= 0.009;
+        const pct = requiredPayment > 0 ? Math.min((totalPagado / requiredPayment) * 100, 100) : 0;
 
-          if(!reasons.length){
-            paid += amount;
-            included.push({
-              id: t.id || null,
-              amount,
-              date: txDate,
-              method: normalizePaymentMethod(t),
-              category: t.category || null
-            });
-          }else{
-            discarded.push({ id: t.id || null, reasons });
-          }
+        console.log({
+          card: c.name,
+          requiredPayment,
+          pagosDelMes,
+          totalPagado,
+          restante
         });
-        if(devPaymentMonitorDebug){
-          console.debug("[PaymentMonitor] tarjeta evaluada", { cardId: c.id, cardName: c.name, monthStart, nextMonthStart });
-          console.debug("[PaymentMonitor] movimientos del mes encontrados", included);
-          console.debug("[PaymentMonitor] movimientos descartados y motivo", discarded);
-          console.debug("[PaymentMonitor] total pagado calculado", { cardId: c.id, paid });
-        }
 
-        const pct=Math.min((paid/goal)*100,100);
-        const remaining=Math.max(goal-paid,0);
         let color = pct>50 ? 'warning' : 'danger';
-        if(pct>=100) color='success';
+        if(cubierto) color='success';
 
         list.innerHTML += `
           <div class="mb-3">
             <div class="d-flex justify-content-between mb-1">
               <span class="small fw-bold">${c.name}</span>
-              <span class="small fw-bold text-${color} sensitive-data">${pct>=100 ? '¡CUBIERTO!' : 'Faltan ' + formatMoney(remaining)}</span>
+              <span class="small fw-bold text-${color} sensitive-data">${cubierto ? '¡CUBIERTO!' : 'Faltan ' + formatMoney(restante)}</span>
             </div>
             <div class="progress" style="height:12px;background-color:var(--bg-body);">
               <div class="progress-bar bg-${color}" role="progressbar" style="width:${pct}%"></div>
@@ -6457,6 +6468,14 @@ const getHistoryContext = () => {
             const reviewedClass = isTransactionReviewed(t.id) ? "reviewed" : "";
             const msiDetails = getMsiPaymentDetails(t, anchorDate);
             const paymentInfo = resolvePaymentDisplay(t);
+            const paymentMethod = normalizePaymentMethod(t);
+            const paymentMethodLabel = paymentMethod === "transfer"
+              ? "Pago c/ Transferencia"
+              : paymentMethod === "cash"
+                ? "Efectivo"
+                : "Tarjeta";
+            const isAbono = t.type === "payment" || t.type === "card_payment" || t.isCardPayment === true;
+            const cardTargetLabel = isAbono ? `Tarjeta destino: ${paymentInfo.cardName}` : paymentInfo.cardName;
 
             return `
               <div class="list-item swipe-item ${reviewedClass}" data-trans-id="${t.id}">
@@ -6464,7 +6483,7 @@ const getHistoryContext = () => {
                   <div class="me-3 text-muted"><i class="fas ${isExp ? "fa-shopping-cart" : "fa-hand-holding-usd"}"></i></div>
                   <div>
                     <div class="fw-bold">${t.concept}${tagMsi}</div>
-                    <small class="text-muted d-flex flex-wrap align-items-center gap-1">${d.toLocaleDateString()} • ${paymentInfo.cardName} • <span class="${getCategoryClassName(t.category)}">${t.category}</span></small>
+                    <small class="text-muted d-flex flex-wrap align-items-center gap-1">${d.toLocaleDateString()} • ${cardTargetLabel} • Método: ${paymentMethodLabel} • <span class="${getCategoryClassName(t.category)}">${t.category}</span></small>
                     ${msiDetails.subtitle ? `<div class="text-muted small">${msiDetails.subtitle}</div>` : ""}
                     ${msiDetails.needsReview ? `<div class="text-warning small fw-semibold">MSI revisar</div>` : ""}
                     ${msiDetails.incomplete ? `<div class="text-danger small fw-semibold">MSI incompleto</div>` : ""}
@@ -6543,10 +6562,17 @@ const getHistoryContext = () => {
         return { context, compras: [], abonos: [] };
       }
       const baseMatches = (t) => {
+        const paymentMethodLabel = normalizePaymentMethod(t) === "transfer"
+          ? "pago c/ transferencia"
+          : normalizePaymentMethod(t) === "cash"
+            ? "efectivo"
+            : "tarjeta";
         const matchesText =
           (t.concept || "").toLowerCase().includes(term) ||
           (t.cardName || "").toLowerCase().includes(term) ||
-          (t.category || "").toLowerCase().includes(term);
+          (t.targetCardName || "").toLowerCase().includes(term) ||
+          (t.category || "").toLowerCase().includes(term) ||
+          paymentMethodLabel.includes(term);
         const matchesCat = catFilter === 'all' ? true : (t.category === catFilter);
         return matchesText && matchesCat;
       };
@@ -6558,7 +6584,7 @@ const getHistoryContext = () => {
         scopedTrans.forEach((t) => {
           if(!baseMatches(t)) return;
           const d = toDate(t.date);
-          const isIncome = t?.type === "income" || t?.type === "payment";
+          const isIncome = t?.type === "income" || t?.type === "payment" || t?.type === "card_payment";
           if(!isIncome){
             if(t.cardId !== context.cardFilter) return;
             if(t.isMsi === true) msiBase.push(t);
@@ -6588,7 +6614,7 @@ const getHistoryContext = () => {
         const matchesMsi = matchesHistoryMsiFilter(t, msiFilter);
         return matchesDate && matchesCard && matchesMsi;
       });
-      return { context, compras: items.filter((t) => t.type === "expense"), abonos: items.filter((t) => t.type === "income" || t.type === "payment") };
+      return { context, compras: items.filter((t) => t.type === "expense"), abonos: items.filter((t) => t.type === "income" || t.type === "payment" || t.type === "card_payment") };
     };
 
     window.renderHistory = () => {
@@ -7152,7 +7178,7 @@ const getHistoryContext = () => {
         t.cardName = t.cardName || payment.cardName;
       }
 
-      if((t.type === "income" || t.type === "payment" || t.isCardPayment === true) && !t.targetCardId && t.cardId && !isNonCardFilter(t.cardId)){
+      if((t.type === "income" || t.type === "payment" || t.type === "card_payment" || t.isCardPayment === true) && !t.targetCardId && t.cardId && !isNonCardFilter(t.cardId)){
         t.targetCardId = t.cardId;
         t.targetCardName = t.cardName || null;
       }
@@ -7494,18 +7520,26 @@ const getHistoryContext = () => {
           ? normalizeScope(document.querySelector('input[name="tscope"]:checked')?.value)
           : null;
 
+        const movementType = type === "payment" ? "card_payment" : type;
+        const isAbonoMovement = movementType === "card_payment";
+        const normalizedCategory = isAbonoMovement ? "Abono Capital" : document.getElementById('t-cat').value;
+        const normalizedConcept = isAbonoMovement
+          ? (document.getElementById('t-concept').value || `Abono a ${cObj?.name || "tarjeta"}`)
+          : document.getElementById('t-concept').value;
+
         const payloadDraft = {
           owner: OWNER,
           amount: amountApplied,
-          type,
-          isCardPayment: type === 'payment',
+          type: movementType,
+          isCardPayment: isAbonoMovement,
           paymentMethod,
           cardId: requiresCardSelection(type, paymentMethod) ? cid : null,
           cardName: requiresCardSelection(type, paymentMethod) ? cObj.name : null,
-          targetCardId: type === 'payment' && cid ? cid : null,
-          targetCardName: type === 'payment' && cObj ? cObj.name : null,
-          concept: document.getElementById('t-concept').value,
-          category: document.getElementById('t-cat').value,
+          targetCardId: isAbonoMovement && cid ? cid : null,
+          targetCardName: isAbonoMovement && cObj ? cObj.name : null,
+          concept: normalizedConcept,
+          category: normalizedCategory,
+          subtype: isAbonoMovement ? "Abono Capital" : null,
           subCategory: null,
           date: Timestamp.fromDate(parseLocalYYYYMMDDToDate(document.getElementById('t-date').value) || new Date()),
           scope: scopeValue,
@@ -7635,7 +7669,7 @@ const getHistoryContext = () => {
       const transDate = t.date?.toDate ? t.date.toDate() : t.date;
       document.getElementById('t-date').value = toLocalYYYYMMDD(transDate);
 
-      if(t.type==='payment') document.getElementById('t-pay').checked=true;
+      if(t.type==='payment' || t.type === 'card_payment') document.getElementById('t-pay').checked=true;
       else document.getElementById('t-exp').checked=true;
 
       uiUpdateCats();
