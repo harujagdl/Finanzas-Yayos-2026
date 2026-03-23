@@ -2175,13 +2175,15 @@
     }
 
     function isSameCard(movement = {}, card = {}) {
-      const mId = normalizeText(movement.cardId || movement.targetCardId || "");
-      const mName = normalizeText(movement.cardName || movement.targetCardName || movement.card || "");
-      const cId = normalizeText(card.id || "");
-      const cName = normalizeText(card.name || "");
+      const targetId = normalizeText(movement.targetCardId || "");
+      const cardId = normalizeText(card.id || "");
+      if (targetId && cardId) return targetId === cardId;
 
-      if (mId && cId) return mId === cId;
-      return mName === cName;
+      const movementTargetName = normalizeText(movement.targetCardName || "");
+      const cardName = normalizeText(card.name || "");
+      if (movementTargetName && cardName) return movementTargetName === cardName;
+
+      return false;
     }
 
     function isCardPayment(m = {}) {
@@ -2190,11 +2192,14 @@
       const subtype = normalizeText(m.subtype || m.subCategory || "");
 
       return (
-        m.isCardPayment === true
-        || type === "card_payment"
-        || type === "abono"
-        || category === "abono capital"
-        || subtype === "abono capital"
+        type === "card_payment" ||
+        (
+          m.isCardPayment === true &&
+          (
+            category === "abono capital" ||
+            subtype === "abono capital"
+          )
+        )
       );
     }
 
@@ -5550,24 +5555,46 @@
         if(requiredPayment<=0) return;
 
         hasGoals=true;
-        const pagosDelMes = trans.filter((m) =>
-          isSameCard(m, c)
-          && isCardPayment(m)
-          && isInCurrentMonth(m.date)
-          && Number(m.amount || 0) > 0
+        const pagosDelMes = trans.filter((m) => {
+          const amount = Number(m.amount || 0);
+          return (
+            isSameCard(m, c) &&
+            isCardPayment(m) &&
+            isInCurrentMonth(m.date) &&
+            amount > 0
+          );
+        });
+
+        const totalPagado = toMoney(
+          pagosDelMes.reduce((sum, m) => sum + Number(m.amount || 0), 0)
         );
 
-        const totalPagado = toMoney(pagosDelMes.reduce((sum, m) => sum + Number(m.amount || 0), 0));
         const restante = Math.max(toMoney(requiredPayment - totalPagado), 0);
         const cubierto = restante <= 0.009;
         const pct = requiredPayment > 0 ? Math.min((totalPagado / requiredPayment) * 100, 100) : 0;
 
-        console.log({
+        console.log("[PAYMENT_MONITOR]", {
           card: c.name,
+          cardId: c.id,
           requiredPayment,
-          pagosDelMes,
+          pagosDelMes: pagosDelMes.map(p => ({
+            id: p.id,
+            concept: p.concept,
+            amount: p.amount,
+            type: p.type,
+            category: p.category,
+            subtype: p.subtype,
+            isCardPayment: p.isCardPayment,
+            cardId: p.cardId,
+            cardName: p.cardName,
+            targetCardId: p.targetCardId,
+            targetCardName: p.targetCardName,
+            paymentMethod: p.paymentMethod,
+            date: p.date?.toDate ? p.date.toDate().toISOString() : p.date
+          })),
           totalPagado,
-          restante
+          restante,
+          cubierto
         });
 
         let color = pct>50 ? 'warning' : 'danger';
@@ -7552,6 +7579,9 @@ const getHistoryContext = () => {
           msiInstallmentNumber: isMsi ? msiInstallmentNumber : null
         };
         const payload = normalizeMovementInput(payloadDraft);
+        if (payload.type === "card_payment" && !payload.targetCardId) {
+          throw new Error("El abono no tiene targetCardId");
+        }
         if(!requiresCardSelection(payload.type, payload.paymentMethod)){
           payload.cardId = null;
           payload.cardName = null;
