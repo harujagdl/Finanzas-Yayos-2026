@@ -2160,15 +2160,44 @@
       return method.includes("tarjeta") || method.includes("msi") || method === "card";
     };
 
+    const requiresCardSelection = (type = "", paymentMethod = "") => {
+      if(String(type || "").toLowerCase() === "payment") return true;
+      return requiresCard(paymentMethod);
+    };
+
+    const normalizeCardRef = (value = "") => String(value || "")
+      .trim()
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+
+    const isCardPaymentMovement = (movement = {}) => {
+      const type = String(movement?.type || "").toLowerCase();
+      const category = String(movement?.category || "").toLowerCase();
+      const flag = movement?.isCardPayment === true;
+      return flag
+        || type === "card_payment"
+        || type === "payment"
+        || type === "abono"
+        || category === "abono capital";
+    };
+
+    const getTransactionCardRef = (movement = {}) => {
+      if(movement?.targetCardId) return { key: normalizeCardRef(movement.targetCardId), source: "targetCardId" };
+      if(movement?.cardId && !isNonCardFilter(movement.cardId)) return { key: normalizeCardRef(movement.cardId), source: "cardId" };
+      if(movement?.targetCardName) return { key: normalizeCardRef(movement.targetCardName), source: "targetCardName" };
+      if(movement?.cardName && !isNonCardFilter(movement.cardId)) return { key: normalizeCardRef(movement.cardName), source: "cardName" };
+      return { key: "", source: "none" };
+    };
+
     const normalizeMovementInput = (draft = {}) => {
       const next = { ...draft };
-      if(!requiresCard(next.paymentMethod)){
+      if(!requiresCardSelection(next.type, next.paymentMethod)){
         next.cardId = null;
         next.cardName = null;
-        next.targetCardId = null;
-        next.targetCardName = null;
         if(Object.prototype.hasOwnProperty.call(next, "msiId")) next.msiId = null;
       }
+      if(isCardPaymentMovement(next)) next.isCardPayment = true;
       return next;
     };
 
@@ -3666,7 +3695,7 @@
         else totals.expense += amount;
 
         const payment = resolvePaymentDisplay(item);
-        if(!requiresCard(payment.paymentMethod)) return;
+        if(!requiresCardSelection(item?.type, payment.paymentMethod)) return;
         const cardId = payment.cardId || "sin-tarjeta";
         if(!byCard[cardId]){
           byCard[cardId] = {
@@ -5481,6 +5510,9 @@
       const list=document.getElementById('payment-monitor-list');
       list.innerHTML='';
       let hasGoals=false;
+      const devPaymentMonitorDebug =
+        ["localhost", "127.0.0.1"].includes(window.location.hostname)
+        || window.location.search.includes("debugPayments=1");
 
       cards.forEach(c=>{
         const goal=parseFloat(c.payGoal||0);
@@ -5488,16 +5520,42 @@
 
         hasGoals=true;
         const today=new Date();
-        const cutDay=parseInt(c.cutDay||1);
+        const monthStart = new Date(today.getFullYear(), today.getMonth(), 1, 0, 0, 0, 0);
+        const nextMonthStart = new Date(today.getFullYear(), today.getMonth() + 1, 1, 0, 0, 0, 0);
 
-        let cycleStart=new Date();
-        if(today.getDate()<cutDay) cycleStart.setMonth(cycleStart.getMonth()-1);
-        cycleStart.setDate(cutDay); cycleStart.setHours(0,0,0,0);
-
+        const cardRef = normalizeCardRef(c.id || c.name);
         let paid=0;
+        const included = [];
+        const discarded = [];
         trans.forEach(t=>{
-          if(t.cardId===c.id && t.type==='payment' && t.date.toDate()>cycleStart) paid += t.amount;
+          const txDate = toDate(t?.date);
+          const txCardRef = getTransactionCardRef(t);
+          const amount = Number(t?.amount || 0);
+          const reasons = [];
+          if(txCardRef.key !== cardRef) reasons.push(`tarjeta(${txCardRef.source})`);
+          if(!isCardPaymentMovement(t)) reasons.push("not-card-payment");
+          if(!(txDate >= monthStart && txDate < nextMonthStart)) reasons.push("out-of-month");
+          if(!(amount > 0)) reasons.push("amount<=0");
+
+          if(!reasons.length){
+            paid += amount;
+            included.push({
+              id: t.id || null,
+              amount,
+              date: txDate,
+              method: normalizePaymentMethod(t),
+              category: t.category || null
+            });
+          }else{
+            discarded.push({ id: t.id || null, reasons });
+          }
         });
+        if(devPaymentMonitorDebug){
+          console.debug("[PaymentMonitor] tarjeta evaluada", { cardId: c.id, cardName: c.name, monthStart, nextMonthStart });
+          console.debug("[PaymentMonitor] movimientos del mes encontrados", included);
+          console.debug("[PaymentMonitor] movimientos descartados y motivo", discarded);
+          console.debug("[PaymentMonitor] total pagado calculado", { cardId: c.id, paid });
+        }
 
         const pct=Math.min((paid/goal)*100,100);
         const remaining=Math.max(goal-paid,0);
@@ -7014,7 +7072,8 @@ const getHistoryContext = () => {
     function syncCardRequirement(){
       const methodEl = document.getElementById('t-payment-method');
       const method = methodEl?.value || 'card';
-      const needsCard = requiresCard(method);
+      const type = document.querySelector('input[name="ttype"]:checked')?.value || 'expense';
+      const needsCard = requiresCardSelection(type, method);
 
       const cardWrap = document.getElementById('t-card-wrap');
       const cardEl =
@@ -7049,6 +7108,12 @@ const getHistoryContext = () => {
     document.getElementById('t-payment-method')?.addEventListener('change', () => {
       syncCardRequirement();
     });
+    document.getElementById('t-exp')?.addEventListener('change', () => {
+      syncCardRequirement();
+    });
+    document.getElementById('t-pay')?.addEventListener('change', () => {
+      syncCardRequirement();
+    });
 
 
     document.getElementById('t-msi-total').addEventListener('input', uiCalcMsiMonthly);
@@ -7079,7 +7144,7 @@ const getHistoryContext = () => {
 
       const payment = resolvePaymentDisplay(t);
       t.paymentMethod = payment.paymentMethod;
-      if(!requiresCard(t.paymentMethod)){
+      if(!requiresCardSelection(t.type, t.paymentMethod)){
         t.cardId = null;
         t.cardName = null;
       }else{
@@ -7087,10 +7152,11 @@ const getHistoryContext = () => {
         t.cardName = t.cardName || payment.cardName;
       }
 
-      if((t.type === "income" || t.type === "payment") && !t.targetCardId && t.cardId && !isNonCardFilter(t.cardId)){
+      if((t.type === "income" || t.type === "payment" || t.isCardPayment === true) && !t.targetCardId && t.cardId && !isNonCardFilter(t.cardId)){
         t.targetCardId = t.cardId;
         t.targetCardName = t.cardName || null;
       }
+      if(isCardPaymentMovement(t)) t.isCardPayment = true;
 
       if(t.type === "expense" && t.isMsi === true){
         const rawMonths = t.msiMonths ?? pickLegacyField(t, ["msi_months", "months", "plazoMeses"]);
@@ -7133,6 +7199,7 @@ const getHistoryContext = () => {
         cardName: t.cardName,
         targetCardId: t.targetCardId || null,
         targetCardName: t.targetCardName || null,
+        isCardPayment: t.isCardPayment === true,
         paymentMethod: normalizePaymentMethod(t),
         concept: t.concept,
         category: t.category,
@@ -7381,7 +7448,7 @@ const getHistoryContext = () => {
         haptic("error");
         return;
       }
-      if(requiresCard(paymentMethod) && !cid){
+      if(requiresCardSelection(type, paymentMethod) && !cid){
         showToast("Selecciona una tarjeta para guardar.", { tone: "warning", duration: 2400 });
         haptic("error");
         return;
@@ -7391,8 +7458,8 @@ const getHistoryContext = () => {
 
       try{
         const tid=document.getElementById('trans-id').value;
-        const cObj=requiresCard(paymentMethod) ? cards.find(c=>c.id===cid) : null;
-        if(requiresCard(paymentMethod) && !cObj) throw new Error("Tarjeta no encontrada");
+        const cObj=requiresCardSelection(type, paymentMethod) ? cards.find(c=>c.id===cid) : null;
+        if(requiresCardSelection(type, paymentMethod) && !cObj) throw new Error("Tarjeta no encontrada");
         const previousTrans = tid ? trans.find(t=>t.id===tid) : null;
 
         const batch=writeBatch(db);
@@ -7402,13 +7469,13 @@ const getHistoryContext = () => {
           cardBalanceAdjustments.set(cardId, safeNumber(cardBalanceAdjustments.get(cardId)) + delta);
         };
 
-        if(tid && previousTrans && normalizePaymentMethod(previousTrans) === 'card'){
+        if(tid && previousTrans && requiresCardSelection(previousTrans.type, normalizePaymentMethod(previousTrans))){
           const previousAmount = safeNumber(previousTrans.amount);
           const prevDelta = previousTrans.type === 'expense' ? -previousAmount : previousAmount;
-          registerCardDelta(previousTrans.cardId, prevDelta);
+          registerCardDelta(previousTrans.targetCardId || previousTrans.cardId, prevDelta);
         }
 
-        if(requiresCard(paymentMethod)){
+        if(requiresCardSelection(type, paymentMethod)){
           const currDelta = type === 'expense' ? amountApplied : -amountApplied;
           registerCardDelta(cid, currDelta);
         }
@@ -7431,9 +7498,10 @@ const getHistoryContext = () => {
           owner: OWNER,
           amount: amountApplied,
           type,
+          isCardPayment: type === 'payment',
           paymentMethod,
-          cardId: requiresCard(paymentMethod) ? cid : null,
-          cardName: requiresCard(paymentMethod) ? cObj.name : null,
+          cardId: requiresCardSelection(type, paymentMethod) ? cid : null,
+          cardName: requiresCardSelection(type, paymentMethod) ? cObj.name : null,
           targetCardId: type === 'payment' && cid ? cid : null,
           targetCardName: type === 'payment' && cObj ? cObj.name : null,
           concept: document.getElementById('t-concept').value,
@@ -7450,13 +7518,13 @@ const getHistoryContext = () => {
           msiInstallmentNumber: isMsi ? msiInstallmentNumber : null
         };
         const payload = normalizeMovementInput(payloadDraft);
-        if(!requiresCard(payload.paymentMethod)){
+        if(!requiresCardSelection(payload.type, payload.paymentMethod)){
           payload.cardId = null;
           payload.cardName = null;
           payload.card = null;
           payload.msiId = null;
         }
-        if(requiresCard(payload.paymentMethod) && !payload.cardId){
+        if(requiresCardSelection(payload.type, payload.paymentMethod) && !payload.cardId){
           throw new Error("Selecciona una tarjeta");
         }
 
@@ -7561,7 +7629,8 @@ const getHistoryContext = () => {
       const paymentMethod = normalizePaymentMethod(t);
       document.getElementById('t-payment-method').value = paymentMethod;
       uiTogglePaymentMethod();
-      if(paymentMethod === 'card') document.getElementById('t-card').value=t.cardId;
+      const cardRef = t.targetCardId || t.cardId || '';
+      if(cardRef) document.getElementById('t-card').value = cardRef;
       document.getElementById('t-concept').value=t.concept;
       const transDate = t.date?.toDate ? t.date.toDate() : t.date;
       document.getElementById('t-date').value = toLocalYYYYMMDD(transDate);
@@ -7609,8 +7678,9 @@ const getHistoryContext = () => {
       if(!t) return;
 
       const batch=writeBatch(db);
-      if(normalizePaymentMethod(t) === 'card'){
-        const cObj=cards.find(c=>c.id===t.cardId);
+      if(requiresCardSelection(t.type, normalizePaymentMethod(t))){
+        const affectedCardId = t.targetCardId || t.cardId;
+        const cObj=cards.find(c=>c.id===affectedCardId);
         if(!cObj){
           showToast("Tarjeta no encontrada para recalcular saldo.", { tone: "warning", duration: 2400 });
           return;
@@ -7618,7 +7688,7 @@ const getHistoryContext = () => {
         let newBal=parseFloat(cObj.balance||0);
         if(t.type==='expense') newBal -= t.amount;
         else newBal += t.amount;
-        batch.update(doc(db,"cards",t.cardId), { balance:newBal });
+        batch.update(doc(db,"cards",affectedCardId), { balance:newBal });
       }
       batch.delete(doc(db,"expenses",id));
       await batch.commit();
