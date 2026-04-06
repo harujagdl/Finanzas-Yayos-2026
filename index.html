@@ -5910,11 +5910,26 @@
     }
 
     const formatShortDate = (date) => toDate(date).toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" });
-    const getMovementDate = (movement = {}) => {
-      const ms = getTxDateMs(movement);
-      if(Number.isFinite(ms)) return new Date(ms);
-      return toDate(movement?.date);
+    const getMovementEffectiveDate = (movement = {}) => {
+      const candidates = [
+        movement?.movementDate,
+        movement?.fechaMovimiento,
+        movement?.date,
+        movement?.fecha,
+        movement?.createdAt,
+        movement?.timestamp,
+        movement?.ts,
+        movement?.when
+      ];
+      for(const candidate of candidates){
+        const ms = getTxDateMs({ date: candidate });
+        if(Number.isFinite(ms)) return new Date(ms);
+      }
+      const fallbackMs = getTxDateMs(movement);
+      if(Number.isFinite(fallbackMs)) return new Date(fallbackMs);
+      return new Date(0);
     };
+    const getMovementDate = (movement = {}) => getMovementEffectiveDate(movement);
 
     const getSafeCutoffDate = (year, monthIndex, cutoffDay) => {
       const normalizedCutoff = Number.isFinite(Number(cutoffDay))
@@ -5957,17 +5972,17 @@
       return null;
     };
 
-    const getCardStatementRange = ({
-      selectedMonth,
-      selectedYear,
+    const getStatementCycleRange = ({
       card,
+      referenceDate = new Date(),
       overrideCutoffDate = null
     } = {}) => {
       if(!card) return null;
       const cutoffDay = Number(card?.closingDay ?? card?.cutDay);
       if(!Number.isFinite(cutoffDay)) return null;
-      const normalizedMonth = Number.isFinite(Number(selectedMonth)) ? Number(selectedMonth) : new Date().getMonth();
-      const normalizedYear = Number.isFinite(Number(selectedYear)) ? Number(selectedYear) : new Date().getFullYear();
+      const reference = toDate(referenceDate);
+      const normalizedMonth = reference.getMonth();
+      const normalizedYear = reference.getFullYear();
 
       const monthOverride = normalizeOverrideDate(overrideCutoffDate);
       const endBase = monthOverride || getSafeCutoffDate(normalizedYear, normalizedMonth, cutoffDay);
@@ -5983,6 +5998,8 @@
       return {
         startDate,
         endDate,
+        startLabel: formatShortDate(startDate),
+        endLabel: formatShortDate(endDate),
         cutoffDayUsed: monthOverride ? endBase.getDate() : Math.trunc(cutoffDay),
         paymentDayUsed: Number.isFinite(paymentDay) ? Math.trunc(paymentDay) : 1
       };
@@ -6573,10 +6590,9 @@ const getHistoryContext = () => {
           monthRange.startDate.getFullYear(),
           monthRange.startDate.getMonth()
         );
-        const statementRange = getCardStatementRange({
-          selectedMonth: monthRange.startDate.getMonth(),
-          selectedYear: monthRange.startDate.getFullYear(),
+        const statementRange = getStatementCycleRange({
           card: selectedCard,
+          referenceDate: monthRange.startDate,
           overrideCutoffDate
         });
         if(!statementRange){
@@ -6729,6 +6745,24 @@ const getHistoryContext = () => {
       return { expenses, payments };
     };
 
+    const isStatementExpense = (movement, selectedCard, statementWindow) => {
+      if(!movement || !selectedCard || !statementWindow) return false;
+      if(movement?.cardId !== selectedCard?.id) return false;
+      const kind = getMovementKind(movement);
+      if(kind !== "expense" && kind !== "msi") return false;
+      if(movement?.isMsi === true && movement?.isVirtualMsiInstallment !== true) return false;
+      const movementDate = getMovementEffectiveDate(movement);
+      return movementDate >= statementWindow.statementStart && movementDate < statementWindow.statementEndExclusive;
+    };
+
+    const isStatementPayment = (movement, selectedCard, statementWindow) => {
+      if(!movement || !selectedCard || !statementWindow) return false;
+      if(!matchesTargetCard(movement, selectedCard.id)) return false;
+      if(getMovementKind(movement) !== "payment") return false;
+      const movementDate = getMovementEffectiveDate(movement);
+      return movementDate >= statementWindow.abonosStart && movementDate < statementWindow.abonosEndExclusive;
+    };
+
     const buildHistoryTotals = (filteredMovements = [], anchorDate = new Date()) => {
       const { expenses, payments } = splitHistoryMovements(filteredMovements);
       const expenseTotal = round2(expenses.reduce((acc, item) => acc + getMsiPaymentDetails(item, anchorDate).amount, 0));
@@ -6784,37 +6818,57 @@ const getHistoryContext = () => {
       };
 
       if(context.mode === "statement" && context.statement){
-        const compras = [];
-        const abonos = [];
-        const msiBase = [];
-        scopedTrans.forEach((t) => {
-          if(!baseMatches(t)) return;
-          const d = getMovementDate(t);
+        const selectedCard = context.selectedCard;
+        const statementWindow = context.statement;
+        const cardMovements = scopedTrans.filter((t) => {
+          if(!baseMatches(t)) return false;
           const kind = getMovementKind(t);
-          const isExpense = kind === "expense" || kind === "msi";
-          const isPayment = kind === "payment";
-          if(isExpense){
-            if(t.cardId !== context.cardFilter) return;
-            if(t.isMsi === true) msiBase.push(t);
-            if(!matchesHistoryMsiFilter(t, msiFilter)) return;
-            if(t.isMsi !== true && d >= context.statement.statementStart && d < context.statement.statementEndExclusive) compras.push(t);
-            return;
-          }
-          if(!isPayment) return;
-          if(!matchesTargetCard(t, context.cardFilter)) return;
-          if(d >= context.statement.abonosStart && d < context.statement.abonosEndExclusive) abonos.push(t);
+          if(kind === "expense" || kind === "msi") return t?.cardId === selectedCard?.id;
+          if(kind === "payment") return matchesTargetCard(t, selectedCard?.id);
+          return false;
         });
-        const msiMonthly = msiBase.flatMap((t) => expandMsiToMonthlyCharges(t, context.statement.statementStart, context.statement.statementEndInclusive));
-        const filteredMsiMonthly = msiMonthly.filter((t) => matchesHistoryMsiFilter(t, msiFilter));
-        compras.push(...filteredMsiMonthly);
+
+        const msiBase = cardMovements.filter((t) => getMovementKind(t) === "msi");
+        const cycleMsiCharges = msiBase
+          .flatMap((t) => expandMsiToMonthlyCharges(t, statementWindow.statementStart, statementWindow.statementEndInclusive))
+          .filter((t) => baseMatches(t) && matchesHistoryMsiFilter(t, msiFilter));
+
+        const cycleExpenses = [
+          ...cardMovements.filter((t) => isStatementExpense(t, selectedCard, statementWindow) && matchesHistoryMsiFilter(t, msiFilter)),
+          ...cycleMsiCharges
+        ];
+        const cyclePayments = cardMovements.filter((t) => isStatementPayment(t, selectedCard, statementWindow));
+
+        const compras = cycleExpenses;
+        const abonos = cyclePayments;
         const isDevRuntime = ["localhost", "127.0.0.1"].includes(window.location.hostname);
         if(isDevRuntime){
           const totals = buildHistoryTotals([...compras, ...abonos], context.anchorDate);
+          console.log("[EstadoCuenta] tarjeta seleccionada", selectedCard);
+          console.log("[EstadoCuenta] ciclo calculado", {
+            startDate: statementWindow.statementStart,
+            endDate: statementWindow.statementEndInclusive,
+            cutoffDayUsed: statementWindow.cutoffDayUsed
+          });
+          console.log("[EstadoCuenta] movimientos tarjeta", cardMovements.length);
+          console.log("[EstadoCuenta] expenses", cycleExpenses.length, cycleExpenses);
+          console.log("[EstadoCuenta] payments", cyclePayments.length, cyclePayments);
+          cardMovements.forEach((mov) => {
+            console.log("[EstadoCuenta] movimiento evaluado", {
+              id: mov.id,
+              title: mov.title || mov.concept,
+              type: mov.type,
+              card: mov.cardName || mov.cardId || mov.targetCardName || mov.targetCardId,
+              date: getMovementEffectiveDate(mov),
+              amount: mov.amount,
+              isExpense: isStatementExpense(mov, selectedCard, statementWindow)
+            });
+          });
           console.log("[Historial EstadoCuenta]", {
-            card: context.selectedCard?.name || context.selectedCard?.id || context.cardFilter,
-            cutoffDayUsed: context.statement.cutoffDayUsed,
-            startDate: context.statement.statementStart,
-            endDate: context.statement.statementEndInclusive,
+            card: selectedCard?.name || selectedCard?.id || context.cardFilter,
+            cutoffDayUsed: statementWindow.cutoffDayUsed,
+            startDate: statementWindow.statementStart,
+            endDate: statementWindow.statementEndInclusive,
             resultCount: compras.length + abonos.length,
             totalCompras: totals.expenseTotal,
             totalAbonos: totals.paymentTotal
