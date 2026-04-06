@@ -5864,6 +5864,83 @@
     }
 
     const formatShortDate = (date) => toDate(date).toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" });
+    const getMovementDate = (movement = {}) => {
+      const ms = getTxDateMs(movement);
+      if(Number.isFinite(ms)) return new Date(ms);
+      return toDate(movement?.date);
+    };
+
+    const getSafeCutoffDate = (year, monthIndex, cutoffDay) => {
+      const normalizedCutoff = Number.isFinite(Number(cutoffDay))
+        ? Math.max(1, Math.trunc(Number(cutoffDay)))
+        : 1;
+      const lastDayOfMonth = new Date(year, monthIndex + 1, 0).getDate();
+      const day = Math.min(normalizedCutoff, lastDayOfMonth);
+      return new Date(year, monthIndex, day, 0, 0, 0, 0);
+    };
+
+    const getMonthOverrideFromCard = (card = {}, selectedYear, selectedMonthIndex) => {
+      const key = `${selectedYear}-${String(selectedMonthIndex + 1).padStart(2, "0")}`;
+      const candidates = [
+        card?.cutoffOverrides?.[key],
+        card?.statementClosingOverrides?.[key],
+        card?.statementCutoffOverrides?.[key],
+        card?.fechaCorteRealOverrides?.[key]
+      ];
+      return candidates.find((value) => value != null) ?? null;
+    };
+
+    const normalizeOverrideDate = (value) => {
+      if(value == null) return null;
+      if(value instanceof Date && Number.isFinite(value.getTime())) return new Date(value);
+      if(typeof value === "number" && Number.isFinite(value)) {
+        const d = new Date(value);
+        return Number.isFinite(d.getTime()) ? d : null;
+      }
+      if(typeof value === "string"){
+        const parsed = toDate(value);
+        return Number.isFinite(parsed.getTime()) ? parsed : null;
+      }
+      if(typeof value === "object"){
+        const ms = getTxDateMs(value);
+        if(Number.isFinite(ms)){
+          const d = new Date(ms);
+          return Number.isFinite(d.getTime()) ? d : null;
+        }
+      }
+      return null;
+    };
+
+    const getCardStatementRange = ({
+      selectedMonth,
+      selectedYear,
+      card,
+      overrideCutoffDate = null
+    } = {}) => {
+      if(!card) return null;
+      const cutoffDay = Number(card?.closingDay ?? card?.cutDay);
+      if(!Number.isFinite(cutoffDay)) return null;
+      const normalizedMonth = Number.isFinite(Number(selectedMonth)) ? Number(selectedMonth) : new Date().getMonth();
+      const normalizedYear = Number.isFinite(Number(selectedYear)) ? Number(selectedYear) : new Date().getFullYear();
+
+      const monthOverride = normalizeOverrideDate(overrideCutoffDate);
+      const endBase = monthOverride || getSafeCutoffDate(normalizedYear, normalizedMonth, cutoffDay);
+      const endDate = new Date(endBase);
+      endDate.setHours(23, 59, 59, 999);
+
+      const previousCutoff = getSafeCutoffDate(normalizedYear, normalizedMonth - 1, cutoffDay);
+      const startDate = new Date(previousCutoff);
+      startDate.setDate(startDate.getDate() + 1);
+      startDate.setHours(0, 0, 0, 0);
+
+      const paymentDay = Number(card?.dueDay ?? card?.payDay);
+      return {
+        startDate,
+        endDate,
+        cutoffDayUsed: monthOverride ? endBase.getDate() : Math.trunc(cutoffDay),
+        paymentDayUsed: Number.isFinite(paymentDay) ? Math.trunc(paymentDay) : 1
+      };
+    };
 
     const getStatementWindow = (anchorYear, anchorMonthIndex, cutDay) => {
       const safeCutDay = Number(cutDay) || 1;
@@ -6445,24 +6522,60 @@ const getHistoryContext = () => {
         );
 
         anchorDate = new Date(monthRange.startDate);
-
-        // ✅ FIX: no mezclar ?? con ||, y corregir separadores de argumentos
-        range = getStatementRange(
-          anchorDate,
-          Number(selectedCard.closingDay ?? selectedCard.cutDay),
-          Number(selectedCard?.dueDay ?? selectedCard?.payDay ?? 1),
-          abonosMode
+        const overrideCutoffDate = getMonthOverrideFromCard(
+          selectedCard,
+          monthRange.startDate.getFullYear(),
+          monthRange.startDate.getMonth()
         );
+        const statementRange = getCardStatementRange({
+          selectedMonth: monthRange.startDate.getMonth(),
+          selectedYear: monthRange.startDate.getFullYear(),
+          card: selectedCard,
+          overrideCutoffDate
+        });
+        if(!statementRange){
+          warning = "No se pudo calcular el ciclo de estado de cuenta";
+          statementConfigError = true;
+          return {
+            mode: historyPeriodMode,
+            dateFilter,
+            cardFilter,
+            range,
+            anchorDate,
+            warning,
+            selectedCard,
+            statementConfigError,
+            statement
+          };
+        }
+        const endExclusive = new Date(statementRange.endDate);
+        endExclusive.setDate(endExclusive.getDate() + 1);
+        endExclusive.setHours(0, 0, 0, 0);
+        range = {
+          startDate: statementRange.startDate,
+          endDate: statementRange.endDate,
+          endExclusive,
+          label: `Estado de cuenta: ${formatShortDate(statementRange.startDate)} → ${formatShortDate(statementRange.endDate)}`
+        };
 
-        anchorDate = range.endDate;
+        anchorDate = statementRange.endDate;
+
+        const paymentWindow = getPaymentWindow(statementRange.endDate, statementRange.paymentDayUsed);
+        const abonosWindow = getAbonosWindow(abonosMode, {
+          statementStart: statementRange.startDate,
+          statementEndInclusive: statementRange.endDate,
+          statementEndExclusive: endExclusive
+        }, paymentWindow);
 
         statement = {
-          statementStart: range.startDate,
-          statementEndInclusive: range.endDate,
-          statementEndExclusive: range.endExclusive,
-          abonosStart: range.abonosWindow.abonosStart,
-          abonosEndExclusive: range.abonosWindow.abonosEndExclusive,
-          abonosLabel: range.abonosWindow.label,
+          statementStart: statementRange.startDate,
+          statementEndInclusive: statementRange.endDate,
+          statementEndExclusive: endExclusive,
+          abonosStart: abonosWindow.abonosStart,
+          abonosEndExclusive: abonosWindow.abonosEndExclusive,
+          abonosLabel: abonosWindow.label,
+          cutoffDayUsed: statementRange.cutoffDayUsed,
+          paymentDayUsed: statementRange.paymentDayUsed,
           mode: abonosMode
         };
       }
@@ -6618,7 +6731,7 @@ const getHistoryContext = () => {
         const msiBase = [];
         scopedTrans.forEach((t) => {
           if(!baseMatches(t)) return;
-          const d = toDate(t.date);
+          const d = getMovementDate(t);
           const isIncome = t?.type === "income" || t?.type === "payment" || t?.type === "card_payment";
           if(!isIncome){
             if(t.cardId !== context.cardFilter) return;
@@ -6633,6 +6746,19 @@ const getHistoryContext = () => {
         const msiMonthly = msiBase.flatMap((t) => expandMsiToMonthlyCharges(t, context.statement.statementStart, context.statement.statementEndInclusive));
         const filteredMsiMonthly = msiMonthly.filter((t) => matchesHistoryMsiFilter(t, msiFilter));
         compras.push(...filteredMsiMonthly);
+        const isDevRuntime = ["localhost", "127.0.0.1"].includes(window.location.hostname);
+        if(isDevRuntime){
+          const totals = computeHistoryPeriodTotals({ compras, abonos }, context.anchorDate);
+          console.log("[Historial EstadoCuenta]", {
+            card: context.selectedCard?.name || context.selectedCard?.id || context.cardFilter,
+            cutoffDayUsed: context.statement.cutoffDayUsed,
+            startDate: context.statement.statementStart,
+            endDate: context.statement.statementEndInclusive,
+            resultCount: compras.length + abonos.length,
+            totalCompras: totals.gastosTotal,
+            totalAbonos: totals.abonosTotal
+          });
+        }
         return { context, compras, abonos };
       }
 
@@ -6640,7 +6766,7 @@ const getHistoryContext = () => {
         if(!baseMatches(t)) return false;
         let matchesDate = true;
         if(context.range){
-          const d = toDate(t.date);
+          const d = getMovementDate(t);
           matchesDate = d >= context.range.startDate && d < context.range.endExclusive;
         }
 
@@ -6662,8 +6788,11 @@ const getHistoryContext = () => {
 
       const { context, compras, abonos } = getHistoryFilteredTransactions();
       if(hint){
-        hint.textContent = context.warning || "";
-        hint.classList.toggle("d-none", !context.warning);
+        const statementLegend = context.statement
+          ? `Ciclo actual: ${formatShortDate(context.statement.statementStart)} - ${formatShortDate(context.statement.statementEndInclusive)}`
+          : "";
+        hint.textContent = context.warning || statementLegend;
+        hint.classList.toggle("d-none", !(context.warning || statementLegend));
       }
 
       const totals = computeHistoryPeriodTotals({ compras, abonos }, context.anchorDate);
