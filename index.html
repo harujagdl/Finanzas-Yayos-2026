@@ -2204,6 +2204,49 @@
       );
     }
 
+    const PAYMENT_HINT_TOKENS = [
+      "abono",
+      "pago",
+      "pagado",
+      "pago aplicado",
+      "liquidacion",
+      "liquidar"
+    ];
+
+    const hasPaymentHint = (movement = {}) => {
+      const haystack = [
+        movement?.concept,
+        movement?.category,
+        movement?.subtype,
+        movement?.subCategory,
+        movement?.notes
+      ].map((value) => normalizeText(value || "")).join(" ");
+      if(!haystack) return false;
+      return PAYMENT_HINT_TOKENS.some((token) => haystack.includes(token));
+    };
+
+    const getMovementKind = (movement = {}) => {
+      const type = normalizeText(movement?.type || movement?.kind || movement?.tipo || "");
+      const amount = safeNumber(movement?.amount ?? movement?.monto ?? 0);
+      const isCardDebtPayment = Boolean(movement?.targetCardId || movement?.targetCardName);
+      const paymentMethod = normalizePaymentMethod(movement);
+
+      if(isCardPaymentMovement(movement) || type === "card_payment" || type === "payment") return "payment";
+      if(type === "transfer" && (isCardDebtPayment || hasPaymentHint(movement))) return "payment";
+      if(type === "income" && (isCardDebtPayment || hasPaymentHint(movement))) return "payment";
+      if(type === "transfer") return "transfer";
+      if(type === "income" || type === "ingreso") return "income";
+      if(type === "expense" || type === "gasto"){
+        if(movement?.isMsi === true) return "msi";
+        return "expense";
+      }
+      if(paymentMethod === "transfer" && (isCardDebtPayment || hasPaymentHint(movement))) return "payment";
+      if(isCardDebtPayment || hasPaymentHint(movement)) return "payment";
+      if(amount < 0) return movement?.isMsi === true ? "msi" : "expense";
+      if(amount > 0) return "income";
+      return "other";
+    };
+
     function toMoney(value) {
       const num = parseFloat(value);
       return Number.isFinite(num) ? Number(num.toFixed(2)) : 0;
@@ -4020,8 +4063,10 @@
           itemsByOwner.forEach((item) => {
             const date = toDate(item?.date);
             const amount = getMsiPaymentDetails(item, context.anchorDate).amount;
-            const isIncome = item?.type === "income" || item?.type === "payment" || item?.type === "card_payment";
-            if(!isIncome){
+            const movementKind = getMovementKind(item);
+            const isExpense = movementKind === "expense" || movementKind === "msi";
+            const isPayment = movementKind === "payment";
+            if(isExpense){
               if(item?.cardId !== context.selectedCardId) return;
               if(item?.isMsi === true){
                 statementMsiBase.push(item);
@@ -4030,6 +4075,7 @@
               }
               return;
             }
+            if(!isPayment) return;
             if(!matchesTargetCard(item, context.selectedCardId)) return;
             if(date >= context.statement.abonosStart && date < context.statement.abonosEndExclusive){
               statementAbonos.push({ ...item, computedAmount: amount });
@@ -6609,8 +6655,9 @@ const getHistoryContext = () => {
         </div>
         <div class="timeline-items">
           ${group.items.map((t) => {
-            const isExp = t.type === "expense";
-            const isMsiExpense = isExp && t.isMsi === true;
+            const movementKind = getMovementKind(t);
+            const isExp = movementKind === "expense" || movementKind === "msi";
+            const isMsiExpense = movementKind === "msi";
             const tagMsi = isMsiExpense ? `<span class="badge-status bg-success-light ms-2">MSI</span>` : "";
             const d = toDate(t.date);
             const reviewedClass = isTransactionReviewed(t.id) ? "reviewed" : "";
@@ -6622,7 +6669,7 @@ const getHistoryContext = () => {
               : paymentMethod === "cash"
                 ? "Efectivo"
                 : "Tarjeta";
-            const isAbono = t.type === "payment" || t.type === "card_payment" || t.isCardPayment === true;
+            const isAbono = movementKind === "payment";
             const cardTargetLabel = isAbono ? `Tarjeta destino: ${paymentInfo.cardName}` : paymentInfo.cardName;
 
             return `
@@ -6665,21 +6712,32 @@ const getHistoryContext = () => {
 
     const matchesHistoryMsiFilter = (transaction, filter) => {
       if(filter === "all") return true;
-      const isExpense = transaction?.type === "expense";
-      const isMsi = isExpense && transaction?.isMsi === true;
+      const isMsi = getMovementKind(transaction) === "msi";
       if(filter === "only") return isMsi;
       if(filter === "exclude") return !isMsi;
       return true;
     };
 
-    const computeHistoryPeriodTotals = ({ compras = [], abonos = [] } = {}, anchorDate = new Date()) => {
-      const gastosTotal = round2(compras.reduce((acc, item) => acc + getMsiPaymentDetails(item, anchorDate).amount, 0));
-      const abonosTotal = round2(abonos.reduce((acc, item) => acc + getMsiPaymentDetails(item, anchorDate).amount, 0));
+    const splitHistoryMovements = (movements = []) => {
+      const expenses = [];
+      const payments = [];
+      movements.forEach((movement) => {
+        const kind = getMovementKind(movement);
+        if(kind === "expense" || kind === "msi") expenses.push(movement);
+        if(kind === "payment") payments.push(movement);
+      });
+      return { expenses, payments };
+    };
+
+    const buildHistoryTotals = (filteredMovements = [], anchorDate = new Date()) => {
+      const { expenses, payments } = splitHistoryMovements(filteredMovements);
+      const expenseTotal = round2(expenses.reduce((acc, item) => acc + getMsiPaymentDetails(item, anchorDate).amount, 0));
+      const paymentTotal = round2(payments.reduce((acc, item) => acc + getMsiPaymentDetails(item, anchorDate).amount, 0));
       return {
-        gastosTotal,
-        abonosTotal,
-        saldoEstimado: round2(gastosTotal - abonosTotal),
-        movimientosCount: compras.length + abonos.length
+        expenseTotal,
+        paymentTotal,
+        estimatedBalance: round2(expenseTotal - paymentTotal),
+        movementCount: filteredMovements.length
       };
     };
 
@@ -6691,10 +6749,10 @@ const getHistoryContext = () => {
       box.innerHTML = `
         <div class="fw-bold mb-2">Totales del periodo</div>
         <div class="d-flex flex-wrap gap-3 small">
-          <span>Compras ciclo: <strong class="text-danger sensitive-data">-${formatMoney(totals.gastosTotal)}</strong></span>
-          <span>${abonosLabel}: <strong class="text-success sensitive-data">+${formatMoney(totals.abonosTotal)}</strong></span>
-          <span>Saldo estimado: <strong class="${totals.saldoEstimado <= 0 ? "text-success" : "text-danger"} sensitive-data">${totals.saldoEstimado <= 0 ? "-" : ""}${formatMoney(Math.abs(totals.saldoEstimado))}</strong></span>
-          <span>#Movimientos: <strong>${totals.movimientosCount}</strong></span>
+          <span>Compras ciclo: <strong class="text-danger sensitive-data">-${formatMoney(totals.expenseTotal)}</strong></span>
+          <span>${abonosLabel}: <strong class="text-success sensitive-data">+${formatMoney(totals.paymentTotal)}</strong></span>
+          <span>Saldo estimado: <strong class="${totals.estimatedBalance <= 0 ? "text-success" : "text-danger"} sensitive-data">${totals.estimatedBalance <= 0 ? "-" : ""}${formatMoney(Math.abs(totals.estimatedBalance))}</strong></span>
+          <span>#Movimientos: <strong>${totals.movementCount}</strong></span>
         </div>
       `;
     };
@@ -6732,14 +6790,17 @@ const getHistoryContext = () => {
         scopedTrans.forEach((t) => {
           if(!baseMatches(t)) return;
           const d = getMovementDate(t);
-          const isIncome = t?.type === "income" || t?.type === "payment" || t?.type === "card_payment";
-          if(!isIncome){
+          const kind = getMovementKind(t);
+          const isExpense = kind === "expense" || kind === "msi";
+          const isPayment = kind === "payment";
+          if(isExpense){
             if(t.cardId !== context.cardFilter) return;
             if(t.isMsi === true) msiBase.push(t);
             if(!matchesHistoryMsiFilter(t, msiFilter)) return;
             if(t.isMsi !== true && d >= context.statement.statementStart && d < context.statement.statementEndExclusive) compras.push(t);
             return;
           }
+          if(!isPayment) return;
           if(!matchesTargetCard(t, context.cardFilter)) return;
           if(d >= context.statement.abonosStart && d < context.statement.abonosEndExclusive) abonos.push(t);
         });
@@ -6748,15 +6809,15 @@ const getHistoryContext = () => {
         compras.push(...filteredMsiMonthly);
         const isDevRuntime = ["localhost", "127.0.0.1"].includes(window.location.hostname);
         if(isDevRuntime){
-          const totals = computeHistoryPeriodTotals({ compras, abonos }, context.anchorDate);
+          const totals = buildHistoryTotals([...compras, ...abonos], context.anchorDate);
           console.log("[Historial EstadoCuenta]", {
             card: context.selectedCard?.name || context.selectedCard?.id || context.cardFilter,
             cutoffDayUsed: context.statement.cutoffDayUsed,
             startDate: context.statement.statementStart,
             endDate: context.statement.statementEndInclusive,
             resultCount: compras.length + abonos.length,
-            totalCompras: totals.gastosTotal,
-            totalAbonos: totals.abonosTotal
+            totalCompras: totals.expenseTotal,
+            totalAbonos: totals.paymentTotal
           });
         }
         return { context, compras, abonos };
@@ -6775,7 +6836,8 @@ const getHistoryContext = () => {
         const matchesMsi = matchesHistoryMsiFilter(t, msiFilter);
         return matchesDate && matchesCard && matchesMsi;
       });
-      return { context, compras: items.filter((t) => t.type === "expense"), abonos: items.filter((t) => t.type === "income" || t.type === "payment" || t.type === "card_payment") };
+      const { expenses, payments } = splitHistoryMovements(items);
+      return { context, compras: expenses, abonos: payments };
     };
 
     window.renderHistory = () => {
@@ -6795,7 +6857,7 @@ const getHistoryContext = () => {
         hint.classList.toggle("d-none", !(context.warning || statementLegend));
       }
 
-      const totals = computeHistoryPeriodTotals({ compras, abonos }, context.anchorDate);
+      const totals = buildHistoryTotals([...compras, ...abonos], context.anchorDate);
       renderHistoryPeriodTotals(totals, context);
 
       if (context.warning || (!compras.length && !abonos.length)) {
