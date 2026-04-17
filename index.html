@@ -8295,6 +8295,24 @@ const getHistoryContext = () => {
       return raw;
     };
 
+    const getExportAnchorDate = (context = {}) => {
+      if(context?.mode === "statement"){
+        const statementEndDate = toDate(context?.range?.endDate);
+        if(!Number.isNaN(statementEndDate.getTime())) return statementEndDate;
+      }
+
+      if(context?.mode === "month" && context?.range?.endExclusive){
+        const monthEndInclusive = new Date(context.range.endExclusive.getTime() - 1);
+        if(!Number.isNaN(monthEndInclusive.getTime())) return monthEndInclusive;
+      }
+
+      if(context?.mode === "all" || context?.mode === "general" || context?.dateFilter === "all"){
+        return new Date();
+      }
+
+      return new Date();
+    };
+
     const serializeMovementForExport = (movement, context = {}) => {
       const payment = resolvePaymentDisplay(movement);
       const rawDate = movement?.date?.toDate ? movement.date.toDate() : toDate(movement?.date);
@@ -8302,7 +8320,7 @@ const getHistoryContext = () => {
         periodStart: context?.range?.startDate || null,
         periodEnd: context?.range?.endExclusive || null
       });
-      const msiMeta = getMsiExportMeta(movement, context?.anchorDate || new Date());
+      const msiMeta = getMsiExportMeta(movement, getExportAnchorDate(context));
       const financialFlags = getFinancialFlags(movement);
       const originalMovementAmount = msiMeta.isMsi
         ? msiMeta.originalAmount
