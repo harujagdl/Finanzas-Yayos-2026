@@ -6515,36 +6515,109 @@
       return k;
     };
 
-    const getMsiPaymentDetails = (transaction, anchorDate = new Date()) => {
-      const amount = getEffectiveAmount(transaction);
-      const months = Number(transaction?.msiMonths || 0);
+    const getMsiMeta = (transaction, anchorDate = new Date()) => {
       const isMsiExpense = transaction?.type === "expense" && transaction?.isMsi === true;
       if(!isMsiExpense){
-        return { amount, subtitle: "", incomplete: false, needsReview: false };
-      }
-
-      const startRaw = transaction?.msiStart?.toDate ? transaction.msiStart.toDate() : transaction?.msiStart;
-      const hasStart = !!startRaw;
-      const hasMonths = Number.isFinite(months) && months > 0;
-      const hasTotal = transaction?.msiTotal != null && safeNumber(transaction?.msiTotal) > 0;
-      const needsReview = !!transaction?.needsReviewMsi;
-
-      if(!(hasMonths && hasStart && hasTotal)){
-        const trulyIncomplete = !hasMonths;
         return {
-          amount,
-          subtitle: "MSI",
-          incomplete: trulyIncomplete,
-          needsReview: !trulyIncomplete || needsReview
+          isMsi: false,
+          term: null,
+          currentInstallment: null,
+          remainingInstallments: null,
+          monthlyAmount: null,
+          originalAmount: null,
+          isComplete: false,
+          needsReview: false
         };
       }
 
-      const total = safeNumber(transaction.msiTotal);
-      const startDate = toDate(startRaw);
-      const installmentNumber = getMsiPaymentIndex(startDate, anchorDate, months);
+      const parsePositiveInt = (value) => {
+        const parsed = Number.parseInt(value, 10);
+        return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+      };
+
+      const rawTerm = transaction?.msiMonths
+        ?? transaction?.installments
+        ?? transaction?.msiTerm
+        ?? transaction?.mesesSinIntereses
+        ?? pickLegacyField(transaction, ["msi_months", "months", "plazoMeses"]);
+      const term = parsePositiveInt(rawTerm);
+
+      const startRaw = transaction?.msiStart
+        ?? transaction?.msiStartDate
+        ?? transaction?.msi_start
+        ?? transaction?.startMsi
+        ?? pickLegacyField(transaction, ["msiStartDate", "msi_start", "startMsi"]);
+      const startDate = startRaw?.toDate ? startRaw.toDate() : toDate(startRaw || transaction?.date);
+      const hasValidStartDate = startDate instanceof Date && !Number.isNaN(startDate.getTime());
+
+      const rawCurrentInstallment = transaction?.msiInstallmentIndex
+        ?? transaction?.msiInstallmentNumber
+        ?? transaction?.currentInstallment
+        ?? transaction?.pagoActual;
+      let currentInstallment = parsePositiveInt(rawCurrentInstallment);
+      if(currentInstallment == null && term && hasValidStartDate){
+        currentInstallment = getMsiPaymentIndex(startDate, anchorDate, term);
+      }
+      if(term && currentInstallment != null){
+        currentInstallment = Math.min(Math.max(currentInstallment, 1), term);
+      }
+
+      const rawOriginalAmount = transaction?.msiTotal
+        ?? transaction?.totalAmount
+        ?? transaction?.originalAmount
+        ?? transaction?.montoTotal
+        ?? pickLegacyField(transaction, ["msiTotal", "totalAmount", "montoTotal"]);
+      const originalAmount = safeNumber(rawOriginalAmount) > 0 ? safeNumber(rawOriginalAmount) : null;
+
+      const rawMonthlyAmount = transaction?.msiMonthly
+        ?? transaction?.monthlyPayment
+        ?? transaction?.msiAmount
+        ?? transaction?.montoMensual;
+      let monthlyAmount = safeNumber(rawMonthlyAmount);
+      if(!(monthlyAmount > 0) && originalAmount && term){
+        monthlyAmount = round2(originalAmount / term);
+      }
+      if(!(monthlyAmount > 0)){
+        const visibleAmount = safeNumber(getEffectiveAmount(transaction));
+        monthlyAmount = visibleAmount > 0 ? round2(visibleAmount) : null;
+      }
+      if(!(monthlyAmount > 0)) monthlyAmount = null;
+
+      const remainingInstallments = (term && currentInstallment != null)
+        ? Math.max(term - currentInstallment, 0)
+        : null;
+
+      return {
+        isMsi: true,
+        term,
+        currentInstallment,
+        remainingInstallments,
+        monthlyAmount,
+        originalAmount,
+        isComplete: !!(term && currentInstallment != null && monthlyAmount != null && originalAmount != null),
+        needsReview: !!transaction?.needsReviewMsi
+      };
+    };
+
+    const getMsiPaymentDetails = (transaction, anchorDate = new Date()) => {
+      const amount = getEffectiveAmount(transaction);
+      const msiMeta = getMsiMeta(transaction, anchorDate);
+      if(!msiMeta.isMsi){
+        return { amount, subtitle: "", incomplete: false, needsReview: false };
+      }
+
+      if(!msiMeta.isComplete){
+        return {
+          amount,
+          subtitle: "MSI",
+          incomplete: true,
+          needsReview: true
+        };
+      }
+
       return {
         amount,
-        subtitle: `MSI ${months} • Pago ${installmentNumber}/${months} • Total ${formatMoney(total)}`,
+        subtitle: `MSI ${msiMeta.term} • Pago ${msiMeta.currentInstallment}/${msiMeta.term} • Total ${formatMoney(msiMeta.originalAmount)}`,
         incomplete: false,
         needsReview: false
       };
@@ -8089,23 +8162,71 @@ const getHistoryContext = () => {
       setLoading(btn, false);
     };
 
+    const toCsvAmount = (value) => {
+      const num = safeNumber(value);
+      return Number.isFinite(num) ? round2(num).toFixed(2) : "";
+    };
+
+    const csvEscape = (value) => {
+      const raw = value == null ? "" : String(value);
+      if(/[",\n]/.test(raw)) return `"${raw.replaceAll('"', '""')}"`;
+      return raw;
+    };
+
+    const serializeMovementForCsv = (movement, context = {}) => {
+      const payment = resolvePaymentDisplay(movement);
+      const rawDate = movement?.date?.toDate ? movement.date.toDate() : toDate(movement?.date);
+      const effectiveAmount = getEffectiveAmount(movement, {
+        periodStart: context?.range?.startDate || null,
+        periodEnd: context?.range?.endExclusive || null
+      });
+      const msiMeta = getMsiMeta(movement, context?.anchorDate || new Date());
+
+      return {
+        "Fecha": Number.isNaN(rawDate.getTime()) ? "" : toLocalYYYYMMDD(rawDate),
+        "Concepto": movement?.concept || "",
+        "Categoría": movement?.category || "",
+        "Tarjeta": payment?.cardName || "",
+        "Método": payment?.paymentMethod || "",
+        "Tipo": movement?.type || "",
+        "Monto": toCsvAmount(effectiveAmount),
+        "Es MSI": msiMeta.isMsi ? "Sí" : "No",
+        "MSI Plazo": msiMeta.isMsi && msiMeta.term != null ? String(msiMeta.term) : "",
+        "MSI Pago Actual": msiMeta.isMsi && msiMeta.currentInstallment != null ? String(msiMeta.currentInstallment) : "",
+        "MSI Mensualidades Restantes": msiMeta.isMsi && msiMeta.remainingInstallments != null ? String(msiMeta.remainingInstallments) : "",
+        "MSI Monto Mensual": msiMeta.isMsi && msiMeta.monthlyAmount != null ? toCsvAmount(msiMeta.monthlyAmount) : "",
+        "MSI Total Compra": msiMeta.isMsi && msiMeta.originalAmount != null ? toCsvAmount(msiMeta.originalAmount) : "",
+        "Notas": movement?.notes || movement?.note || ""
+      };
+    };
+
     window.exportCSV=()=>{
-      let csv="Fecha,Concepto,Categoria,Monto_Original,Monto_Efectivo,Tipo,Metodo_Pago,Tarjeta,Owner,Scope,MSI,MSI_Meses,MSI_Inicio\n";
+      const headers = [
+        "Fecha",
+        "Concepto",
+        "Categoría",
+        "Tarjeta",
+        "Método",
+        "Tipo",
+        "Monto",
+        "Es MSI",
+        "MSI Plazo",
+        "MSI Pago Actual",
+        "MSI Mensualidades Restantes",
+        "MSI Monto Mensual",
+        "MSI Total Compra",
+        "Notas"
+      ];
+
       const { compras, abonos, context } = getHistoryFilteredTransactions();
       const items = [...compras, ...abonos].sort((a,b)=>toDate(a.date)-toDate(b.date));
-      items.forEach(t=>{
-        const msi = t.isMsi ? "SI" : "NO";
-        const msiMonths = t.msiMonths || "";
-        const msiStart = t.msiStart?.toDate ? t.msiStart.toDate().toLocaleDateString() : "";
-        const scope = t.scope ? t.scope : "";
-        const payment = resolvePaymentDisplay(t);
-        const rawDate = t.date?.toDate ? t.date.toDate() : toDate(t.date);
-        const effectiveAmount = getEffectiveAmount(t, {
-          periodStart: context?.range?.startDate || null,
-          periodEnd: context?.range?.endExclusive || null
-        });
-        csv += `${rawDate.toLocaleDateString()},${(t.concept||"").replaceAll(","," ")},${(t.category||"").replaceAll(","," ")},${safeNumber(t.amount)},${effectiveAmount},${t.type},${payment.paymentMethod},${(payment.cardName||"").replaceAll(","," ")},${t.owner},${scope},${msi},${msiMonths},${msiStart}\n`;
-      });
+      const rows = items.map((movement) => serializeMovementForCsv(movement, context));
+      const csvRows = [
+        headers.map(csvEscape).join(","),
+        ...rows.map((row) => headers.map((header) => csvEscape(row[header] ?? "")).join(","))
+      ];
+      const csv = `${csvRows.join("\n")}\n`;
+
       const a=document.createElement('a');
       a.href='data:text/csv;charset=utf-8,'+encodeURI(csv);
       a.download=`backup_finanzas_${OWNER}.csv`;
