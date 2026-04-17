@@ -20,6 +20,7 @@
   <link href="./styles/ios-theme.css" rel="stylesheet" />
   <link href="./styles/ios-tokens.css" rel="stylesheet" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
   <style>
     body{
@@ -932,8 +933,8 @@
   <div id="view-hist" class="view-section p-3">
     <div class="d-flex justify-content-between align-items-center mb-3">
       <h4 class="fw-black m-0">Historial</h4>
-      <button class="btn btn-sm btn-outline-secondary" style="border-color:var(--border-color);color:var(--text-muted);" onclick="exportCSV()">
-        <i class="fas fa-file-csv me-1"></i> CSV
+      <button class="btn btn-sm btn-outline-secondary" style="border-color:var(--border-color);color:var(--text-muted);" onclick="exportXLSX()">
+        <i class="fas fa-file-excel me-1"></i> XLSX
       </button>
     </div>
 
@@ -8208,14 +8209,73 @@ const getHistoryContext = () => {
       setLoading(btn, false);
     };
 
+    const HISTORY_EXPORT_HEADERS = [
+      "Fecha",
+      "Concepto",
+      "Categoría",
+      "Tarjeta",
+      "Método",
+      "Tipo",
+      "Monto Original Movimiento",
+      "Monto Visible en Periodo",
+      "Es MSI",
+      "MSI Plazo",
+      "MSI Pago Actual",
+      "MSI Mensualidades Restantes",
+      "MSI Monto Mensual",
+      "MSI Total Compra",
+      "MSI Saldo Restante",
+      "MSI Fecha Estimada Fin",
+      "Es Pago de Tarjeta",
+      "Impacta Gasto Real",
+      "Periodo Exportado",
+      "Notas"
+    ];
+
+    const MSI_EXPORT_HEADERS = [
+      "Concepto",
+      "Tarjeta",
+      "Fecha compra",
+      "MSI Plazo",
+      "MSI Pago Actual",
+      "MSI Mensualidades Restantes",
+      "MSI Monto Mensual",
+      "MSI Total Compra",
+      "MSI Saldo Restante",
+      "MSI Fecha Estimada Fin",
+      "Notas"
+    ];
+
+    const HISTORY_EXPORT_NUMERIC_COLUMNS = new Set([
+      "Monto Original Movimiento",
+      "Monto Visible en Periodo",
+      "MSI Plazo",
+      "MSI Pago Actual",
+      "MSI Mensualidades Restantes",
+      "MSI Monto Mensual",
+      "MSI Total Compra",
+      "MSI Saldo Restante"
+    ]);
+
+    const SUMMARY_EXPORT_NUMERIC_COLUMNS = new Set([
+      "Total compras del periodo",
+      "Total abonos",
+      "Saldo estimado",
+      "Número de movimientos",
+      "Total movimientos que impactan gasto real",
+      "Total pagos de tarjeta",
+      "Total compras MSI del periodo",
+      "Total saldo pendiente MSI visible en exportación"
+    ]);
+
     const toCsvAmount = (value) => {
       if(value == null || value === "") return "";
       const num = safeNumber(value);
-      if(!Number.isFinite(Number(value))) return "";
-      return Number.isFinite(num) ? round2(num).toFixed(2) : "";
+      if(!Number.isFinite(num)) return "";
+      return round2(num).toFixed(2);
     };
 
-    const getCsvPeriodLabel = (context = {}) => {
+    const getHistoryPeriodLabel = (context = {}) => {
       if(context?.mode === "statement" && context?.statement && context?.range){
         const selectedCardName = context?.selectedCard?.name || context?.selectedCard?.id || "Tarjeta";
         return `Estado de cuenta: ${selectedCardName} | ${formatShortDate(context.range.startDate)} - ${formatShortDate(context.range.endDate)}`;
@@ -8235,7 +8295,7 @@ const getHistoryContext = () => {
       return raw;
     };
 
-    const serializeMovementForCsv = (movement, context = {}) => {
+    const serializeMovementForExport = (movement, context = {}) => {
       const payment = resolvePaymentDisplay(movement);
       const rawDate = movement?.date?.toDate ? movement.date.toDate() : toDate(movement?.date);
       const effectiveAmount = getEffectiveAmount(movement, {
@@ -8247,7 +8307,7 @@ const getHistoryContext = () => {
       const originalMovementAmount = msiMeta.isMsi
         ? msiMeta.originalAmount
         : safeNumber(movement?.amount ?? movement?.monto ?? null);
-      const periodLabel = getCsvPeriodLabel(context);
+      const periodLabel = getHistoryPeriodLabel(context);
 
       return {
         "Fecha": Number.isNaN(rawDate.getTime()) ? "" : toLocalYYYYMMDD(rawDate),
@@ -8256,15 +8316,15 @@ const getHistoryContext = () => {
         "Tarjeta": payment?.cardName || "",
         "Método": payment?.paymentMethod || "",
         "Tipo": movement?.type || "",
-        "Monto Original Movimiento": toCsvAmount(originalMovementAmount),
-        "Monto Visible en Periodo": toCsvAmount(effectiveAmount),
+        "Monto Original Movimiento": Number.isFinite(originalMovementAmount) ? round2(originalMovementAmount) : null,
+        "Monto Visible en Periodo": Number.isFinite(effectiveAmount) ? round2(effectiveAmount) : null,
         "Es MSI": msiMeta.isMsi ? "Sí" : "No",
-        "MSI Plazo": msiMeta.isMsi && msiMeta.term != null ? String(msiMeta.term) : "",
-        "MSI Pago Actual": msiMeta.isMsi && msiMeta.currentInstallment != null ? String(msiMeta.currentInstallment) : "",
-        "MSI Mensualidades Restantes": msiMeta.isMsi && msiMeta.remainingInstallments != null ? String(msiMeta.remainingInstallments) : "",
-        "MSI Monto Mensual": msiMeta.isMsi && msiMeta.monthlyAmount != null ? toCsvAmount(msiMeta.monthlyAmount) : "",
-        "MSI Total Compra": msiMeta.isMsi && msiMeta.originalAmount != null ? toCsvAmount(msiMeta.originalAmount) : "",
-        "MSI Saldo Restante": msiMeta.isMsi && msiMeta.remainingBalance != null ? toCsvAmount(msiMeta.remainingBalance) : "",
+        "MSI Plazo": msiMeta.isMsi && msiMeta.term != null ? Number(msiMeta.term) : null,
+        "MSI Pago Actual": msiMeta.isMsi && msiMeta.currentInstallment != null ? Number(msiMeta.currentInstallment) : null,
+        "MSI Mensualidades Restantes": msiMeta.isMsi && msiMeta.remainingInstallments != null ? Number(msiMeta.remainingInstallments) : null,
+        "MSI Monto Mensual": msiMeta.isMsi && msiMeta.monthlyAmount != null ? round2(msiMeta.monthlyAmount) : null,
+        "MSI Total Compra": msiMeta.isMsi && msiMeta.originalAmount != null ? round2(msiMeta.originalAmount) : null,
+        "MSI Saldo Restante": msiMeta.isMsi && msiMeta.remainingBalance != null ? round2(msiMeta.remainingBalance) : null,
         "MSI Fecha Estimada Fin": msiMeta.isMsi && msiMeta.estimatedEndDate ? msiMeta.estimatedEndDate : "",
         "Es Pago de Tarjeta": financialFlags.isCardPayment ? "Sí" : "No",
         "Impacta Gasto Real": financialFlags.impactsRealSpending ? "Sí" : "No",
@@ -8273,36 +8333,96 @@ const getHistoryContext = () => {
       };
     };
 
-    window.exportCSV=()=>{
-      const headers = [
-        "Fecha",
-        "Concepto",
-        "Categoría",
-        "Tarjeta",
-        "Método",
-        "Tipo",
-        "Monto Original Movimiento",
-        "Monto Visible en Periodo",
-        "Es MSI",
-        "MSI Plazo",
-        "MSI Pago Actual",
-        "MSI Mensualidades Restantes",
-        "MSI Monto Mensual",
-        "MSI Total Compra",
-        "MSI Saldo Restante",
-        "MSI Fecha Estimada Fin",
-        "Es Pago de Tarjeta",
-        "Impacta Gasto Real",
-        "Periodo Exportado",
-        "Notas"
-      ];
+    const buildHistoryExportSummary = (context = {}, compras = [], abonos = [], rows = []) => {
+      const periodLabel = getHistoryPeriodLabel(context);
+      const selectedCard = document.getElementById('hist-card-filter');
+      const selectedCategory = document.getElementById('hist-cat-filter');
+      const msiFilter = document.getElementById('hist-msi-filter');
+      const totalCompras = round2(rows.reduce((acc, row) => acc + (row["Tipo"] === "expense" || row["Tipo"] === "msi" ? safeNumber(row["Monto Visible en Periodo"]) : 0), 0));
+      const totalAbonos = round2(rows.reduce((acc, row) => acc + (row["Tipo"] === "income" || row["Es Pago de Tarjeta"] === "Sí" ? safeNumber(row["Monto Visible en Periodo"]) : 0), 0));
+      const saldoEstimado = round2(totalCompras - totalAbonos);
+      const totalImpactaGastoReal = rows.filter((row) => row["Impacta Gasto Real"] === "Sí").length;
+      const totalPagosTarjeta = rows.filter((row) => row["Es Pago de Tarjeta"] === "Sí").length;
+      const msiRows = rows.filter((row) => row["Es MSI"] === "Sí");
+      const totalComprasMsiPeriodo = round2(msiRows.reduce((acc, row) => acc + safeNumber(row["MSI Total Compra"]), 0));
+      const totalSaldoPendienteMsi = round2(msiRows.reduce((acc, row) => acc + safeNumber(row["MSI Saldo Restante"]), 0));
 
+      return {
+        "Periodo exportado": periodLabel,
+        "Tarjeta seleccionada": selectedCard?.options?.[selectedCard.selectedIndex]?.text || "Todas",
+        "Categoría seleccionada": selectedCategory?.options?.[selectedCategory.selectedIndex]?.text || "Todas",
+        "Filtro MSI": msiFilter?.options?.[msiFilter.selectedIndex]?.text || "Todos",
+        "Total compras del periodo": totalCompras,
+        "Total abonos": totalAbonos,
+        "Saldo estimado": saldoEstimado,
+        "Número de movimientos": compras.length + abonos.length,
+        "Total movimientos que impactan gasto real": totalImpactaGastoReal,
+        "Total pagos de tarjeta": totalPagosTarjeta,
+        "Total compras MSI del periodo": totalComprasMsiPeriodo,
+        "Total saldo pendiente MSI visible en exportación": totalSaldoPendienteMsi
+      };
+    };
+
+    const buildWorksheetFromRows = (headers = [], rows = [], numericColumns = new Set()) => {
+      const dataRows = rows.map((row) => headers.map((header) => row?.[header] ?? null));
+      const sheet = XLSX.utils.aoa_to_sheet([headers, ...dataRows]);
+      const lastColRef = XLSX.utils.encode_col(Math.max(headers.length - 1, 0));
+      const lastRowNumber = Math.max(rows.length + 1, 1);
+
+      headers.forEach((header, colIdx) => {
+        if(!numericColumns.has(header)) return;
+        for(let rowIdx = 0; rowIdx < rows.length; rowIdx += 1){
+          const ref = XLSX.utils.encode_cell({ c: colIdx, r: rowIdx + 1 });
+          const value = rows[rowIdx]?.[header];
+          if(value == null || value === "") continue;
+          sheet[ref] = { t: "n", v: Number(value), z: "0.00" };
+        }
+      });
+
+      sheet["!ref"] = `A1:${lastColRef}${lastRowNumber}`;
+      sheet["!autofilter"] = { ref: `A1:${lastColRef}${lastRowNumber}` };
+      sheet["!cols"] = headers.map((header) => ({ wch: Math.min(Math.max(header.length + 4, 14), 36) }));
+      sheet["!freeze"] = { xSplit: 0, ySplit: 1 };
+      return sheet;
+    };
+
+    const buildMsiActiveRows = (rows = []) => rows
+      .filter((row) => row["Es MSI"] === "Sí")
+      .map((row) => ({
+        "Concepto": row["Concepto"],
+        "Tarjeta": row["Tarjeta"],
+        "Fecha compra": row["Fecha"],
+        "MSI Plazo": row["MSI Plazo"],
+        "MSI Pago Actual": row["MSI Pago Actual"],
+        "MSI Mensualidades Restantes": row["MSI Mensualidades Restantes"],
+        "MSI Monto Mensual": row["MSI Monto Mensual"],
+        "MSI Total Compra": row["MSI Total Compra"],
+        "MSI Saldo Restante": row["MSI Saldo Restante"],
+        "MSI Fecha Estimada Fin": row["MSI Fecha Estimada Fin"],
+        "Notas": row["Notas"]
+      }));
+
+    const getExportTimestamp = () => {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, "0");
+      const day = String(now.getDate()).padStart(2, "0");
+      const hours = String(now.getHours()).padStart(2, "0");
+      const minutes = String(now.getMinutes()).padStart(2, "0");
+      return `${year}${month}${day}_${hours}${minutes}`;
+    };
+
+    window.exportCSV=()=>{
       const { compras, abonos, context } = getHistoryFilteredTransactions();
       const items = [...compras, ...abonos].sort((a,b)=>toDate(a.date)-toDate(b.date));
-      const rows = items.map((movement) => serializeMovementForCsv(movement, context));
+      const rows = items.map((movement) => serializeMovementForExport(movement, context));
       const csvRows = [
-        headers.map(csvEscape).join(","),
-        ...rows.map((row) => headers.map((header) => csvEscape(row[header] ?? "")).join(","))
+        HISTORY_EXPORT_HEADERS.map(csvEscape).join(","),
+        ...rows.map((row) => HISTORY_EXPORT_HEADERS.map((header) => {
+          const value = row[header];
+          if(HISTORY_EXPORT_NUMERIC_COLUMNS.has(header)) return csvEscape(toCsvAmount(value));
+          return csvEscape(value ?? "");
+        }).join(","))
       ];
       const csv = `${csvRows.join("\n")}\n`;
 
@@ -8310,6 +8430,36 @@ const getHistoryContext = () => {
       a.href='data:text/csv;charset=utf-8,'+encodeURI(csv);
       a.download=`backup_finanzas_${OWNER}.csv`;
       a.click();
+    };
+
+    window.exportXLSX=()=>{
+      if(typeof XLSX === "undefined"){
+        notify("No se pudo cargar la librería XLSX.", "error");
+        return;
+      }
+
+      const { compras, abonos, context } = getHistoryFilteredTransactions();
+      const items = [...compras, ...abonos].sort((a,b)=>toDate(a.date)-toDate(b.date));
+      const exportRows = items.map((movement) => serializeMovementForExport(movement, context));
+      const summary = buildHistoryExportSummary(context, compras, abonos, exportRows);
+      const summaryHeaders = Object.keys(summary);
+      const summaryRows = [summary];
+      const msiRows = buildMsiActiveRows(exportRows);
+
+      const workbook = XLSX.utils.book_new();
+      const historySheet = buildWorksheetFromRows(HISTORY_EXPORT_HEADERS, exportRows, HISTORY_EXPORT_NUMERIC_COLUMNS);
+      const summarySheet = buildWorksheetFromRows(summaryHeaders, summaryRows, SUMMARY_EXPORT_NUMERIC_COLUMNS);
+
+      XLSX.utils.book_append_sheet(workbook, historySheet, "Historial");
+      XLSX.utils.book_append_sheet(workbook, summarySheet, "Resumen");
+
+      if(msiRows.length){
+        const msiSheet = buildWorksheetFromRows(MSI_EXPORT_HEADERS, msiRows, HISTORY_EXPORT_NUMERIC_COLUMNS);
+        XLSX.utils.book_append_sheet(workbook, msiSheet, "MSI Activos");
+      }
+
+      const fileName = `finanzas_yayos_${OWNER}_${getExportTimestamp()}.xlsx`;
+      XLSX.writeFile(workbook, fileName);
     };
 
     on("DATA_LOADED", () => {
