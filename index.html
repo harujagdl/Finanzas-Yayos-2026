@@ -6555,10 +6555,11 @@
         ?? transaction?.msiInstallmentNumber
         ?? transaction?.currentInstallment
         ?? transaction?.pagoActual;
-      let currentInstallment = parsePositiveInt(rawCurrentInstallment);
-      if(currentInstallment == null && term && hasValidStartDate){
-        currentInstallment = getMsiPaymentIndex(startDate, anchorDate, term);
-      }
+      const persistedInstallment = parsePositiveInt(rawCurrentInstallment);
+      const calculatedInstallment = (term && hasValidStartDate)
+        ? getMsiPaymentIndex(startDate, anchorDate, term)
+        : null;
+      let currentInstallment = calculatedInstallment ?? persistedInstallment;
       if(term && currentInstallment != null){
         currentInstallment = Math.min(Math.max(currentInstallment, 1), term);
       }
@@ -6588,6 +6589,21 @@
         ? Math.max(term - currentInstallment, 0)
         : null;
 
+      const needsInstallmentReview = (
+        calculatedInstallment != null
+        && persistedInstallment != null
+        && calculatedInstallment !== persistedInstallment
+      );
+
+      console.log("[MSI_META]", {
+        concept: transaction?.concept,
+        startDate,
+        term,
+        rawCurrentInstallment,
+        calculatedInstallment,
+        finalInstallment: currentInstallment
+      });
+
       return {
         isMsi: true,
         term,
@@ -6597,7 +6613,7 @@
         originalAmount,
         startDate: hasValidStartDate ? startDate : null,
         isComplete: !!(term && currentInstallment != null && monthlyAmount != null && originalAmount != null),
-        needsReview: !!transaction?.needsReviewMsi
+        needsReview: !!transaction?.needsReviewMsi || needsInstallmentReview
       };
     };
 
