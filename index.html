@@ -6594,8 +6594,54 @@
         remainingInstallments,
         monthlyAmount,
         originalAmount,
+        startDate: hasValidStartDate ? startDate : null,
         isComplete: !!(term && currentInstallment != null && monthlyAmount != null && originalAmount != null),
         needsReview: !!transaction?.needsReviewMsi
+      };
+    };
+
+    const getMsiExportMeta = (transaction, anchorDate = new Date()) => {
+      const baseMeta = getMsiMeta(transaction, anchorDate);
+      if(!baseMeta.isMsi){
+        return {
+          ...baseMeta,
+          remainingBalance: null,
+          estimatedEndDate: null
+        };
+      }
+
+      let remainingBalance = null;
+      if(baseMeta.originalAmount != null && baseMeta.monthlyAmount != null && baseMeta.currentInstallment != null){
+        remainingBalance = Math.max(round2(baseMeta.originalAmount - (baseMeta.currentInstallment * baseMeta.monthlyAmount)), 0);
+      }else if(baseMeta.remainingInstallments != null && baseMeta.monthlyAmount != null){
+        remainingBalance = Math.max(round2(baseMeta.remainingInstallments * baseMeta.monthlyAmount), 0);
+      }
+
+      let estimatedEndDate = null;
+      if(baseMeta.startDate instanceof Date && !Number.isNaN(baseMeta.startDate.getTime()) && baseMeta.term){
+        const endDate = new Date(baseMeta.startDate);
+        endDate.setMonth(endDate.getMonth() + (baseMeta.term - 1));
+        estimatedEndDate = toLocalYYYYMMDD(endDate);
+      }
+
+      return {
+        ...baseMeta,
+        remainingBalance,
+        estimatedEndDate
+      };
+    };
+
+    const getFinancialFlags = (movement = {}) => {
+      const kind = getMovementKind(movement);
+      const isExpense = kind === "expense" || kind === "msi";
+      const isInternalTransfer = kind === "transfer";
+      const isCardPayment = kind === "payment" || isCardPaymentMovement(movement);
+      const impactsRealSpending = isExpense;
+      return {
+        isCardPayment,
+        impactsRealSpending,
+        isExpense,
+        isInternalTransfer
       };
     };
 
@@ -8163,8 +8209,24 @@ const getHistoryContext = () => {
     };
 
     const toCsvAmount = (value) => {
+      if(value == null || value === "") return "";
       const num = safeNumber(value);
+      if(!Number.isFinite(Number(value))) return "";
       return Number.isFinite(num) ? round2(num).toFixed(2) : "";
+    };
+
+    const getCsvPeriodLabel = (context = {}) => {
+      if(context?.mode === "statement" && context?.statement && context?.range){
+        const selectedCardName = context?.selectedCard?.name || context?.selectedCard?.id || "Tarjeta";
+        return `Estado de cuenta: ${selectedCardName} | ${formatShortDate(context.range.startDate)} - ${formatShortDate(context.range.endDate)}`;
+      }
+      if(context?.dateFilter === "all") return "Todo";
+      if(context?.range?.startDate){
+        const monthText = context.range.startDate.toLocaleDateString("es-MX", { month: "short", year: "numeric" });
+        const cleanMonth = monthText.replace(".", "");
+        return `Mes: ${cleanMonth.charAt(0).toUpperCase()}${cleanMonth.slice(1)}`;
+      }
+      return "Todo";
     };
 
     const csvEscape = (value) => {
@@ -8180,7 +8242,12 @@ const getHistoryContext = () => {
         periodStart: context?.range?.startDate || null,
         periodEnd: context?.range?.endExclusive || null
       });
-      const msiMeta = getMsiMeta(movement, context?.anchorDate || new Date());
+      const msiMeta = getMsiExportMeta(movement, context?.anchorDate || new Date());
+      const financialFlags = getFinancialFlags(movement);
+      const originalMovementAmount = msiMeta.isMsi
+        ? msiMeta.originalAmount
+        : safeNumber(movement?.amount ?? movement?.monto ?? null);
+      const periodLabel = getCsvPeriodLabel(context);
 
       return {
         "Fecha": Number.isNaN(rawDate.getTime()) ? "" : toLocalYYYYMMDD(rawDate),
@@ -8189,13 +8256,19 @@ const getHistoryContext = () => {
         "Tarjeta": payment?.cardName || "",
         "Método": payment?.paymentMethod || "",
         "Tipo": movement?.type || "",
-        "Monto": toCsvAmount(effectiveAmount),
+        "Monto Original Movimiento": toCsvAmount(originalMovementAmount),
+        "Monto Visible en Periodo": toCsvAmount(effectiveAmount),
         "Es MSI": msiMeta.isMsi ? "Sí" : "No",
         "MSI Plazo": msiMeta.isMsi && msiMeta.term != null ? String(msiMeta.term) : "",
         "MSI Pago Actual": msiMeta.isMsi && msiMeta.currentInstallment != null ? String(msiMeta.currentInstallment) : "",
         "MSI Mensualidades Restantes": msiMeta.isMsi && msiMeta.remainingInstallments != null ? String(msiMeta.remainingInstallments) : "",
         "MSI Monto Mensual": msiMeta.isMsi && msiMeta.monthlyAmount != null ? toCsvAmount(msiMeta.monthlyAmount) : "",
         "MSI Total Compra": msiMeta.isMsi && msiMeta.originalAmount != null ? toCsvAmount(msiMeta.originalAmount) : "",
+        "MSI Saldo Restante": msiMeta.isMsi && msiMeta.remainingBalance != null ? toCsvAmount(msiMeta.remainingBalance) : "",
+        "MSI Fecha Estimada Fin": msiMeta.isMsi && msiMeta.estimatedEndDate ? msiMeta.estimatedEndDate : "",
+        "Es Pago de Tarjeta": financialFlags.isCardPayment ? "Sí" : "No",
+        "Impacta Gasto Real": financialFlags.impactsRealSpending ? "Sí" : "No",
+        "Periodo Exportado": periodLabel,
         "Notas": movement?.notes || movement?.note || ""
       };
     };
@@ -8208,13 +8281,19 @@ const getHistoryContext = () => {
         "Tarjeta",
         "Método",
         "Tipo",
-        "Monto",
+        "Monto Original Movimiento",
+        "Monto Visible en Periodo",
         "Es MSI",
         "MSI Plazo",
         "MSI Pago Actual",
         "MSI Mensualidades Restantes",
         "MSI Monto Mensual",
         "MSI Total Compra",
+        "MSI Saldo Restante",
+        "MSI Fecha Estimada Fin",
+        "Es Pago de Tarjeta",
+        "Impacta Gasto Real",
+        "Periodo Exportado",
         "Notas"
       ];
 
