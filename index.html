@@ -27,12 +27,24 @@
       background:var(--bg-body); color:var(--text-main); font-family:'Inter',sans-serif;
       padding-bottom:110px; -webkit-tap-highlight-color:transparent;
     }
+    .app-shell{width:100%;}
+    .desktop-sidebar{display:none;}
+    .app-main{
+      width:100%;
+      margin:0 auto;
+      max-width:1180px;
+      padding:0;
+    }
+    .desktop-top-actions{display:none;}
+    .desktop-only{display:none !important;}
     .text-muted{color:var(--text-muted)!important;} .text-dark{color:var(--text-main)!important;}
     h1,h2,h3,h4,h5,h6{color:var(--text-main);}
     .card-box{
       background:var(--bg-card); border-radius:16px; padding:20px; margin-bottom:16px;
       box-shadow:var(--shadow); border:none; transition:background .3s;
       overflow:hidden;
+      backdrop-filter:blur(6px);
+      -webkit-backdrop-filter:blur(6px);
     }
     .fw-black{font-weight:800;}
     .blur-sensitive{filter:blur(6px); user-select:none; transition:filter .3s;}
@@ -385,6 +397,10 @@
     .timeline-title{font-weight:800;}
     .timeline-subtotal{font-size:.85rem; color:var(--text-muted);}
     .timeline-items .list-item{margin-bottom:8px;}
+    #hist-list{
+      max-width:980px;
+      margin:0 auto;
+    }
     .goals-header{
       display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;
     }
@@ -522,6 +538,139 @@
       .view-section{animation:none;}
       .quick-sheet, .quick-sheet-backdrop, .swipe-item{transition:none;}
     }
+    @media (min-width: 900px){
+      body{padding-bottom:24px;}
+      .app-shell{display:flex; min-height:100vh;}
+      .desktop-sidebar{
+        display:flex;
+        width:220px;
+        position:fixed;
+        left:0;
+        top:0;
+        bottom:0;
+        padding:24px 14px;
+        flex-direction:column;
+        gap:10px;
+        border-right:1px solid var(--border-color);
+        background:var(--bg-card);
+        z-index:80;
+      }
+      .desktop-sidebar .nav-btn{
+        flex-direction:row;
+        justify-content:flex-start;
+        gap:10px;
+        font-size:.9rem;
+        padding:10px 12px;
+        border-radius:12px;
+      }
+      .desktop-sidebar .nav-btn i,.desktop-sidebar .nav-emoji{margin:0; font-size:1rem;}
+      .app-main{
+        margin-left:220px;
+        max-width:calc(1180px + 220px);
+        padding:32px 40px;
+      }
+      .view-section{padding:0 !important;}
+      .desktop-top-actions{
+        display:flex;
+        justify-content:flex-end;
+        align-items:center;
+        gap:10px;
+        margin-bottom:14px;
+      }
+      .desktop-header{
+        position:sticky; top:0; z-index:70;
+        display:flex !important; justify-content:space-between; align-items:center; gap:20px;
+        padding:14px 0 16px; margin-bottom:18px;
+        background:linear-gradient(180deg,var(--bg-body) 0%,color-mix(in srgb, var(--bg-body) 86%, transparent) 100%);
+        backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
+        border-bottom:1px solid var(--border-color);
+        box-shadow:0 8px 20px rgba(15,23,42,.04);
+      }
+      .desktop-header h1{font-size:1.65rem; font-weight:800; letter-spacing:-.04em; margin:0;}
+      .desktop-header p{margin:.25rem 0 0; color:var(--text-muted); font-size:.9rem;}
+      .desktop-header-actions{display:flex; gap:10px; align-items:center;}
+      .desktop-top-actions{display:none !important;}
+      .desktop-only{display:inline-flex !important;}
+      .mobile-only-desktop-hide{display:none !important;}
+      .quick-fab,.fab-main,.nav-bottom,.bottomNav{display:none !important;}
+      .desktop-sidebar .nav-btn.active{
+        background:var(--primary);
+        color:white;
+        box-shadow:0 8px 18px rgba(37,99,235,.25);
+      }
+      .desktop-sidebar .nav-btn:hover:not(.active){
+        background:rgba(37,99,235,.08);
+      }
+      .desktop-sidebar{backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);}
+      .desktop-brand{display:flex; align-items:center; gap:10px; padding:4px 8px 18px; margin-bottom:6px; border-bottom:1px solid var(--border-color);}
+      .desktop-brand-icon{width:36px; height:36px; border-radius:12px; display:flex; align-items:center; justify-content:center; background:var(--primary); color:#fff; box-shadow:0 8px 18px rgba(37,99,235,.25);}
+      .desktop-brand strong{display:block; font-size:.95rem; line-height:1.1;}
+      .desktop-brand span{display:block; font-size:.75rem; color:var(--text-muted);}
+      .desktop-sidebar-label{padding:6px 10px; font-size:.68rem; text-transform:uppercase; letter-spacing:.12em; color:var(--text-muted); font-weight:800;}
+      .desktop-sidebar .nav-btn{font-weight:650; position:relative; overflow:hidden;}
+      .desktop-sidebar .nav-btn.active::before{
+        content:"";
+        position:absolute;
+        left:0; top:8px; bottom:8px;
+        width:3px; background:#fff; border-radius:4px;
+      }
+      #view-hist .row.g-2{
+        display:grid;
+        grid-template-columns:repeat(3,minmax(0,1fr));
+      }
+      #view-hist .row.g-2 > [class*="col-"]{width:100%;}
+      #view-hist .col-12.d-grid{grid-column:3; align-self:end;}
+      #view-hist input,
+      #view-hist select{height:42px;}
+      #view-hist .col-12.d-grid .btn{
+        background:transparent;
+        border:1px solid var(--border-color);
+      }
+      #hist-period-totals{
+        display:grid;
+        grid-template-columns:repeat(4,minmax(0,1fr));
+        gap:12px;
+      }
+      #hist-period-totals > div{
+        background:var(--bg-card);
+        padding:16px;
+        border-radius:14px;
+        border:1px solid var(--border-color);
+      }
+      #hist-period-totals .kpi,
+      #hist-period-totals .summary-kpi,
+      #hist-period-totals .dash-card{
+        margin:0;
+      }
+      .timeline-items{
+        display:grid;
+        grid-template-columns:repeat(2,minmax(0,1fr));
+        gap:12px;
+      }
+      .timeline-items .list-item{margin-bottom:0;}
+      .history-view-toggle{display:flex !important; justify-content:flex-end; gap:8px; margin-bottom:12px;}
+      .history-table{width:100%; border-collapse:separate; border-spacing:0 8px;}
+      .history-table th{font-size:.72rem; text-transform:uppercase; letter-spacing:.08em; color:var(--text-muted); padding:0 12px 6px;}
+      .history-table td{background:var(--bg-card); border-top:1px solid var(--border-color); border-bottom:1px solid var(--border-color); padding:14px 12px; vertical-align:middle; font-size:.9rem;}
+      .history-table td:first-child{border-left:1px solid var(--border-color); border-radius:14px 0 0 14px;}
+      .history-table td:last-child{border-right:1px solid var(--border-color); border-radius:0 14px 14px 0;}
+      .history-table tbody tr{transition:transform .15s ease;}
+      .history-table tbody tr:hover{transform:translateY(-1px);}
+      .history-table tbody tr:hover td{background:color-mix(in srgb, var(--bg-card) 85%, var(--primary) 5%);}
+      #hist-list,#hist-table-wrap{transition:opacity .2s ease;}
+      #view-hist .row.g-2.mb-3{background:var(--bg-card); border:1px solid var(--border-color); border-radius:18px; padding:14px; box-shadow:var(--shadow);}
+      #view-hist .row.g-2.mb-3 .form-select,#view-hist .row.g-2.mb-3 .form-control{background:var(--bg-body);}
+      #hist-period-totals{margin-bottom:18px;}
+      #hist-period-totals > div{position:relative; overflow:hidden;}
+      #hist-period-totals > div::before{content:""; position:absolute; left:0; top:0; bottom:0; width:4px; background:var(--primary); opacity:.8;}
+      .desktop-shortcuts{margin-top:auto; padding:14px 10px 4px; color:var(--text-muted); font-size:.76rem; display:grid; gap:6px;}
+      .desktop-shortcuts kbd{background:var(--bg-body); border:1px solid var(--border-color); color:var(--text-main); border-radius:6px; padding:2px 6px; font-size:.7rem; box-shadow:none;}
+    }
+    @media (min-width: 1200px){
+      .timeline-items{
+        grid-template-columns:repeat(3,minmax(0,1fr));
+      }
+    }
   </style>
   <link href="./styles/ios-components.css" rel="stylesheet" />
 </head>
@@ -541,6 +690,36 @@
   <!-- =======================
         ✅ INICIO
   ======================= -->
+  <div class="app-shell">
+    <aside class="desktop-sidebar">
+      <div class="desktop-brand">
+        <div class="desktop-brand-icon"><i class="fas fa-wallet"></i></div>
+        <div><strong>Finanzas Yayos</strong><span>Control financiero</span></div>
+      </div>
+      <div class="desktop-sidebar-label">Menú</div>
+      <button class="nav-btn navItem active" onclick="nav('view-home')" id="d-nav-home"><i class="fas fa-chart-pie"></i> Inicio</button>
+      <button class="nav-btn navItem" onclick="nav('view-summary')" id="d-nav-summary"><i class="fas fa-calendar-days"></i> Resumen</button>
+      <button class="nav-btn navItem" onclick="nav('view-cards')" id="d-nav-cards"><i class="fas fa-wallet"></i> Tarjetas</button>
+      <button class="nav-btn navItem" onclick="nav('view-msi')" id="d-nav-msi"><i class="fas fa-layer-group"></i> MSI</button>
+      <button class="nav-btn navItem" onclick="nav('view-hist')" id="d-nav-hist"><i class="fas fa-list-ul"></i> Historial</button>
+      <button class="nav-btn navItem" onclick="nav('view-goals')" id="d-nav-goals"><span class="nav-emoji trophy-icon">🏆</span> Metas</button>
+      <div class="desktop-shortcuts desktop-only">
+        <div><kbd>N</kbd> Nuevo</div>
+        <div><kbd>H</kbd> Historial</div>
+        <div><kbd>M</kbd> MSI</div>
+      </div>
+    </aside>
+    <main class="app-main">
+      <header class="desktop-header desktop-only">
+        <div>
+          <h1 id="desktop-view-title">Inicio</h1>
+          <p id="desktop-view-subtitle">Resumen general de tus finanzas.</p>
+        </div>
+        <div class="desktop-header-actions">
+          <button id="desktop-export-xlsx" class="btn btn-outline-secondary fw-bold d-none" style="border-color:var(--border-color);color:var(--text-muted);" onclick="exportXLSX()"><i class="fas fa-file-excel me-2"></i>XLSX</button>
+          <button class="btn btn-primary fw-bold" onclick="nav('view-add'); resetForm();"><i class="fas fa-plus me-2"></i>Nuevo movimiento</button>
+        </div>
+      </header>
   <div id="view-home" class="view-section active p-3">
     <div class="topbar topbar-ios mb-4">
       <div class="topbar-left topbarLeft">
@@ -933,7 +1112,7 @@
   <div id="view-hist" class="view-section p-3">
     <div class="d-flex justify-content-between align-items-center mb-3">
       <h4 class="fw-black m-0">Historial</h4>
-      <button class="btn btn-sm btn-outline-secondary" style="border-color:var(--border-color);color:var(--text-muted);" onclick="exportXLSX()">
+      <button class="btn btn-sm btn-outline-secondary mobile-only-desktop-hide" style="border-color:var(--border-color);color:var(--text-muted);" onclick="exportXLSX()">
         <i class="fas fa-file-excel me-1"></i> XLSX
       </button>
     </div>
@@ -990,8 +1169,12 @@
 
     <div id="hist-period-hint" class="text-muted small mb-2 d-none"></div>
     <div id="hist-period-totals" class="card-box card p-3 mb-3"></div>
-
+    <div class="history-view-toggle desktop-only">
+      <button type="button" class="btn btn-sm btn-primary" id="hist-view-cards" onclick="setHistoryDesktopMode('cards')">Cards</button>
+      <button type="button" class="btn btn-sm btn-outline-secondary" id="hist-view-table" onclick="setHistoryDesktopMode('table')">Tabla</button>
+    </div>
     <div id="hist-list"></div>
+    <div id="hist-table-wrap" class="desktop-only d-none"></div>
   </div>
 
   <!-- =======================
@@ -1145,6 +1328,8 @@
         <span class="nav-emoji trophy-icon">🏆</span> Metas
       </button>
     </div>
+  </div>
+    </main>
   </div>
 
   <!-- =======================
@@ -1714,11 +1899,40 @@
     let msiChartInstance=null;
     let historyMsiFilter = "all";
     let historyPeriodMode = "month";
+    let historyDesktopMode = localStorage.getItem("historyDesktopMode") === "table" ? "table" : "cards";
+    let historySort = { field: "date", dir: "desc" };
     let summaryPeriodMode = "month";
     const ABONOS_MODE_KEY = "fy_abonos_mode";
     const normalizeAbonosMode = (value) => value === "cashflow_ciclo" ? "cashflow_ciclo" : "pagos_aplicados";
     let abonosMode = normalizeAbonosMode(localStorage.getItem(ABONOS_MODE_KEY));
     if(!localStorage.getItem(ABONOS_MODE_KEY)) localStorage.setItem(ABONOS_MODE_KEY, abonosMode);
+    const DESKTOP_VIEW_META = {
+      "view-home": { title: "Inicio", subtitle: "Resumen general de tus finanzas." },
+      "view-summary": { title: "Resumen", subtitle: "Visualiza ingresos, gastos y comportamiento mensual." },
+      "view-cards": { title: "Tarjetas", subtitle: "Administra tarjetas, cortes y límites." },
+      "view-add": { title: "Nuevo movimiento", subtitle: "Registra gastos, abonos o compras a MSI." },
+      "view-msi": { title: "MSI", subtitle: "Seguimiento de compras a meses sin intereses." },
+      "view-hist": { title: "Historial", subtitle: "Consulta, filtra y exporta tus movimientos." },
+      "view-goals": { title: "Metas", subtitle: "Organiza objetivos y avances financieros." }
+    };
+    function updateDesktopHeader(vid = "view-home"){
+      const meta = DESKTOP_VIEW_META[vid] || DESKTOP_VIEW_META["view-home"];
+      const title = document.getElementById("desktop-view-title");
+      const subtitle = document.getElementById("desktop-view-subtitle");
+      const xlsx = document.getElementById("desktop-export-xlsx");
+      if(title) title.textContent = meta.title;
+      if(subtitle) subtitle.textContent = meta.subtitle;
+      if(xlsx) xlsx.classList.toggle("d-none", vid !== "view-hist");
+    }
+    function updateHistoryModeButtons(){
+      const cardsBtn = document.getElementById("hist-view-cards");
+      const tableBtn = document.getElementById("hist-view-table");
+      if(!cardsBtn || !tableBtn) return;
+      cardsBtn.classList.toggle("btn-primary", historyDesktopMode === "cards");
+      cardsBtn.classList.toggle("btn-outline-secondary", historyDesktopMode !== "cards");
+      tableBtn.classList.toggle("btn-primary", historyDesktopMode === "table");
+      tableBtn.classList.toggle("btn-outline-secondary", historyDesktopMode !== "table");
+    }
 
     const FEATURES = {
       dashboard: true,
@@ -4411,12 +4625,13 @@
       document.querySelectorAll('.nav-btn').forEach(e=>e.classList.remove('active'));
       document.getElementById(vid).classList.add('active');
 
-      if(vid.includes('home')) document.getElementById('nav-home').classList.add('active');
-      if(vid.includes('summary')) document.getElementById('nav-summary').classList.add('active');
-      if(vid.includes('cards')) document.getElementById('nav-cards').classList.add('active');
-      if(vid.includes('hist')) document.getElementById('nav-hist').classList.add('active');
-      if(vid.includes('msi')) document.getElementById('nav-msi').classList.add('active');
-      if(vid.includes('goals')) document.getElementById('nav-goals').classList.add('active');
+      if(vid.includes('home')) { document.getElementById('nav-home')?.classList.add('active'); document.getElementById('d-nav-home')?.classList.add('active'); }
+      if(vid.includes('summary')) { document.getElementById('nav-summary')?.classList.add('active'); document.getElementById('d-nav-summary')?.classList.add('active'); }
+      if(vid.includes('cards')) { document.getElementById('nav-cards')?.classList.add('active'); document.getElementById('d-nav-cards')?.classList.add('active'); }
+      if(vid.includes('hist')) { document.getElementById('nav-hist')?.classList.add('active'); document.getElementById('d-nav-hist')?.classList.add('active'); }
+      if(vid.includes('msi')) { document.getElementById('nav-msi')?.classList.add('active'); document.getElementById('d-nav-msi')?.classList.add('active'); }
+      if(vid.includes('goals')) { document.getElementById('nav-goals')?.classList.add('active'); document.getElementById('d-nav-goals')?.classList.add('active'); }
+      updateDesktopHeader(vid);
 
       // render MSI cuando entras
       syncAbonosModeUI();
@@ -4431,6 +4646,19 @@
       }
       if(vid === 'view-hist') renderHistory();
     };
+    updateDesktopHeader("view-home");
+    updateHistoryModeButtons();
+    document.addEventListener("keydown", (ev) => {
+      if(window.innerWidth < 900) return;
+      const tag = document.activeElement?.tagName?.toLowerCase();
+      if(["input","textarea","select"].includes(tag)) return;
+      const key = (ev.key || "").toLowerCase();
+      if(key === "n"){ ev.preventDefault(); nav("view-add"); resetForm(); }
+      if(key === "h"){ ev.preventDefault(); nav("view-hist"); }
+      if(key === "m"){ ev.preventDefault(); nav("view-msi"); }
+      if(key === "r"){ ev.preventDefault(); nav("view-summary"); }
+      if(ev.key === "Escape"){ nav("view-home"); }
+    });
 
     window.updateThemeUI = function(){
       const saved = window.getTheme?.() || "system";
@@ -6855,6 +7083,62 @@ const getHistoryContext = () => {
         </div>
       </div>
     `).join("");
+    const renderHistoryTable = (items = [], anchorDate = new Date()) => `
+      <table class="history-table">
+        <thead><tr><th role="button" onclick="sortHistory('date')">Fecha${getHistorySortIcon("date")}</th><th>Concepto</th><th>Categoría</th><th>Tarjeta</th><th>MSI</th><th role="button" onclick="sortHistory('amount')" class="text-end">Monto${getHistorySortIcon("amount")}</th></tr></thead>
+        <tbody>
+          ${sortHistoryItemsForTable(items, anchorDate).map((t) => {
+            const d = toDate(t.date);
+            const msiDetails = getMsiPaymentDetails(t, anchorDate);
+            const kind = getMovementKind(t);
+            const isExp = kind === "expense" || kind === "msi";
+            const paymentInfo = resolvePaymentDisplay(t);
+            return `<tr><td>${d.toLocaleDateString()}</td><td class="fw-semibold">${t.concept || "-"}</td><td><span class="${getCategoryClassName(t.category)}">${t.category || "-"}</span></td><td>${paymentInfo.cardName || "-"}</td><td>${kind === "msi" ? "Sí" : "No"}</td><td class="text-end fw-bold ${isExp ? "text-danger" : "text-success"} sensitive-data">${isExp ? "-" : "+"}${formatMoney(msiDetails.amount)}</td></tr>`;
+          }).join("")}
+        </tbody>
+      </table>
+    `;
+    window.setHistoryDesktopMode = function(mode){
+      historyDesktopMode = mode === "table" ? "table" : "cards";
+      localStorage.setItem("historyDesktopMode", historyDesktopMode);
+      updateHistoryModeButtons();
+      renderHistory();
+    };
+    const getHistorySortIcon = (field) => {
+      if(historySort.field !== field) return "";
+      return historySort.dir === "asc" ? " ↑" : " ↓";
+    };
+    const getHistoryAmountForSort = (t, anchorDate) => {
+      const msiDetails = getMsiPaymentDetails(t, anchorDate);
+      const kind = getMovementKind(t);
+      const sign = (kind === "expense" || kind === "msi") ? -1 : 1;
+      return sign * Number(msiDetails.amount || 0);
+    };
+    const sortHistoryItemsForTable = (items, anchorDate) => {
+      const sorted = [...(items || [])];
+      sorted.sort((a,b) => {
+        let av = 0; let bv = 0;
+        if(historySort.field === "date"){
+          av = getMovementDate(a)?.getTime?.() || toDate(a.date)?.getTime?.() || 0;
+          bv = getMovementDate(b)?.getTime?.() || toDate(b.date)?.getTime?.() || 0;
+        }
+        if(historySort.field === "amount"){
+          av = getHistoryAmountForSort(a, anchorDate);
+          bv = getHistoryAmountForSort(b, anchorDate);
+        }
+        return historySort.dir === "asc" ? av - bv : bv - av;
+      });
+      return sorted;
+    };
+    window.sortHistory = function(field){
+      if(historySort.field === field){
+        historySort.dir = historySort.dir === "asc" ? "desc" : "asc";
+      }else{
+        historySort.field = field;
+        historySort.dir = field === "date" ? "desc" : "asc";
+      }
+      renderHistory();
+    };
 
     const getHistoryMsiFilter = () => {
       const filterEl = document.getElementById("hist-msi-filter");
@@ -7033,9 +7317,11 @@ const getHistoryContext = () => {
     window.renderHistory = () => {
       const list = document.getElementById('hist-list');
       const hint = document.getElementById('hist-period-hint');
+      const tableWrap = document.getElementById('hist-table-wrap');
 
       if(!list) return;
       list.innerHTML = '';
+      if(tableWrap) tableWrap.innerHTML = "";
       syncAbonosModeUI();
 
       const { context, compras, abonos } = getHistoryFilteredTransactions();
@@ -7051,6 +7337,8 @@ const getHistoryContext = () => {
       renderHistoryPeriodTotals(totals, context);
 
       if (context.warning || (!compras.length && !abonos.length)) {
+        list.classList.remove("d-none");
+        tableWrap?.classList.add("d-none");
         list.innerHTML = '<div class="text-center text-muted mt-3">No se encontraron resultados</div>';
         return;
       }
@@ -7064,7 +7352,7 @@ const getHistoryContext = () => {
         ? `<div class="small text-muted mb-2">${context.statement.abonosLabel}</div>`
         : "";
 
-      list.innerHTML = `
+      const historyCardsHtml = `
         <div class="card-box p-3 mb-3">
           <div class="fw-bold mb-2">Compras del ciclo</div>
           ${statementRangeLabel}
@@ -7075,6 +7363,19 @@ const getHistoryContext = () => {
           <div class="mt-2">${abonosRangeLabel}${abonos.length ? renderTimeline(abonosGrouped, context.anchorDate) : '<div class="text-muted small">Sin abonos en este rango.</div>'}</div>
         </details>
       `;
+      const desktopTableMode = window.innerWidth >= 900 && historyDesktopMode === "table";
+      updateHistoryModeButtons();
+      if(desktopTableMode){
+        list.classList.add("d-none");
+        if(tableWrap){
+          tableWrap.classList.remove("d-none");
+          tableWrap.innerHTML = renderHistoryTable([...compras, ...abonos], context.anchorDate);
+        }
+      }else{
+        list.classList.remove("d-none");
+        tableWrap?.classList.add("d-none");
+        list.innerHTML = historyCardsHtml;
+      }
       setupHistoryInteractions();
 
       if(privacy) togglePrivacy();
