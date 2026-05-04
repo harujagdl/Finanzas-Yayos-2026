@@ -1256,10 +1256,38 @@
       </div>
       <div class="themeOptions">
         <button class="themeOption" type="button" onclick="openThemeSheet()">Tema</button>
+        <button class="themeOption" type="button" onclick="openCategoriesSheet()">Categorías</button>
         <button class="themeOption" type="button" onclick="menuAction('enablePush')">Notificaciones</button>
         <button class="themeOption" type="button" onclick="menuAction('togglePrivacy')">Privacidad</button>
         <button id="mobile-owner-repair" class="themeOption d-none" type="button" onclick="menuAction('repairLegacyOwnerData')">Reparar owner</button>
       </div>
+    </div>
+  </div>
+
+  <div id="categoriesSheetOverlay" class="sheetOverlay hidden" onclick="closeCategoriesSheet(event)">
+    <div class="sheet" role="dialog" aria-modal="true" onclick="event.stopPropagation()">
+      <div class="sheetHeader">
+        <div class="sheetTitle">Categorías</div>
+        <button class="btn btn-sm btn-outline-secondary iconBtn" type="button" onclick="closeCategoriesSheet()">✕</button>
+      </div>
+      <form id="category-form" class="row g-2 mb-3">
+        <input type="hidden" id="category-id" />
+        <div class="col-12"><input id="category-name" class="form-control" placeholder="Nombre" required /></div>
+        <div class="col-6">
+          <select id="category-type" class="form-select">
+            <option value="expense">Gasto</option><option value="income">Ingreso</option><option value="both">Ambos</option>
+          </select>
+        </div>
+        <div class="col-6">
+          <select id="category-owner" class="form-select">
+            <option value="shared">Compartida</option><option value="yair">Yair</option><option value="haru">Haru</option>
+          </select>
+        </div>
+        <div class="col-6"><input id="category-icon" class="form-control" placeholder="Ícono (opcional)" /></div>
+        <div class="col-6"><input id="category-color" class="form-control" type="color" value="#2563eb" /></div>
+        <div class="col-12"><button class="btn btn-primary w-100" type="submit">Guardar categoría</button></div>
+      </form>
+      <div id="categories-list"><small class="text-muted">Cargando...</small></div>
     </div>
   </div>
 
@@ -1902,6 +1930,8 @@
     let historyDesktopMode = localStorage.getItem("historyDesktopMode") === "table" ? "table" : "cards";
     let historySort = { field: "date", dir: "desc" };
     let summaryPeriodMode = "month";
+    let customCategories = [];
+    let categoriesUnsubscribe = null;
     const ABONOS_MODE_KEY = "fy_abonos_mode";
     const normalizeAbonosMode = (value) => value === "cashflow_ciclo" ? "cashflow_ciclo" : "pagos_aplicados";
     let abonosMode = normalizeAbonosMode(localStorage.getItem(ABONOS_MODE_KEY));
@@ -4806,6 +4836,51 @@
       if(e && e.target && e.target.id !== "themeSheetOverlay") return;
       document.getElementById("themeSheetOverlay")?.classList.add("hidden");
     };
+    window.openCategoriesSheet = function(){
+      closeMenuSheet();
+      document.getElementById("categoriesSheetOverlay")?.classList.remove("hidden");
+      renderCategoriesManager();
+    };
+    window.closeCategoriesSheet = function(e){
+      if(e && e.target && e.target.id !== "categoriesSheetOverlay") return;
+      document.getElementById("categoriesSheetOverlay")?.classList.add("hidden");
+    };
+    function renderCategorySelects(){
+      const type = document.querySelector('input[name="ttype"]:checked')?.value === "payment" ? "income" : "expense";
+      const nodes = [document.getElementById("t-cat"), document.getElementById("hist-cat-filter")].filter(Boolean);
+      nodes.forEach((select)=>{
+        const current = select.value;
+        const isFilter = select.id === "hist-cat-filter";
+        const categories = getAvailableCategories(type);
+        select.innerHTML = isFilter ? `<option value="all">Categoría: Todas</option>` : "";
+        categories.forEach((cat)=>{
+          const opt = document.createElement("option");
+          const label = getCategoryOptionLabel(cat);
+          opt.value = label; opt.textContent = label;
+          select.appendChild(opt);
+        });
+        if(current && ![...select.options].some((o)=>o.value===current)){
+          const legacyOpt = document.createElement("option");
+          legacyOpt.value = current;
+          legacyOpt.textContent = current;
+          select.appendChild(legacyOpt);
+        }
+        if([...select.options].some((o)=>o.value===current)) select.value = current;
+      });
+      if(typeof syncQuickCategories === "function") syncQuickCategories();
+    }
+    function subscribeCategories(){
+      if(categoriesUnsubscribe) categoriesUnsubscribe();
+      categoriesUnsubscribe = onSnapshot(query(collection(db,"categories"), where("active","==",true)), (snap)=>{
+        customCategories = snap.docs.map((d)=>({ id:d.id, ...d.data() }));
+        renderCategorySelects();
+        fillHistFilters?.();
+        renderHistory?.();
+        window.renderSummaryView?.({ force:true });
+        window.renderMsi?.();
+        renderCategoriesManager();
+      }, ()=>{ customCategories = []; renderCategorySelects(); });
+    }
 
     window.openMenuSheet = function(){
       document.getElementById("menuSheetOverlay")?.classList.remove("hidden");
@@ -4867,8 +4942,34 @@
       salary: "💰",
       transfer: "🔄"
     };
+    const DEFAULT_CATEGORIES = { ...CATEGORY_DEFS };
+    const normalizeCategoryName = (name) => String(name || "").trim().replace(/\s+/g, " ");
+    const getCategoryKey = (name) => normalizeCategoryName(name).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const toCategoryObject = (item, type = "expense") => typeof item === "string"
+      ? { id: getCategoryKey(item), name: item, label: item, nameKey: getCategoryKey(item), type, active: true, owner: "shared", color: "#2563eb", icon: "" }
+      : { ...item, name: item.name || item.label, label: item.label || item.name, nameKey: item.nameKey || getCategoryKey(item.name || item.label), active: item.active !== false };
+    function getAvailableCategories(type = "expense"){
+      const baseRaw = DEFAULT_CATEGORIES[type] || [];
+      const base = baseRaw.map((c)=>toCategoryObject(c, type));
+      const custom = customCategories.filter((c)=>c.active && (c.type === "both" || c.type === type)).map((c)=>toCategoryObject(c, c.type));
+      const seen = new Set();
+      return [...base, ...custom].filter((c)=>{
+        const key = c.nameKey || getCategoryKey(c.name || c.label);
+        if(seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    }
 
-    const getCategoryDefs = (type = "expense") => CATEGORY_DEFS[type] || [];
+    const getCategoryDefs = (type = "expense") => getAvailableCategories(type).map((cat) => ({
+      id: cat.id || cat.nameKey,
+      label: cat.label || cat.name,
+      icon: cat.icon || "",
+      color: cat.color || "#2563eb",
+      name: cat.name || cat.label,
+      nameKey: cat.nameKey,
+      source: cat.source || (cat.id ? "custom" : "default")
+    }));
     const getCategoryOptionLabel = (category = {}) => {
       const icon = CATEGORY_ICON_MAP[category.icon] || "";
       return `${icon ? `${icon} ` : ""}${category.label || ""}`.trim();
@@ -4984,6 +5085,45 @@
       if ([...quickCategory.options].some((opt) => opt.value === selected)) {
         quickCategory.value = selected;
       }
+    };
+    async function saveCategory(data){
+      const name = normalizeCategoryName(data.name);
+      if(!name) throw new Error("El nombre de la categoría es obligatorio.");
+      const nameKey = getCategoryKey(name);
+      const owner = data.owner || "shared";
+      const type = data.type || "expense";
+      const dupSnap = await getDocs(query(collection(db,"categories"), where("active","==",true), where("owner","==",owner), where("nameKey","==",nameKey)));
+      if(!dupSnap.empty) throw new Error("Ya existe una categoría activa con ese nombre.");
+      await addDoc(collection(db,"categories"), { name, nameKey, owner, type, icon:data.icon||"", color:data.color||"#2563eb", active:true, createdAt:serverTimestamp(), updatedAt:serverTimestamp() });
+    }
+    async function updateCategory(id,data){
+      const name = normalizeCategoryName(data.name);
+      if(!id || !name) throw new Error("Datos incompletos.");
+      const owner = data.owner || "shared";
+      const nameKey = getCategoryKey(name);
+      const dupSnap = await getDocs(query(collection(db,"categories"), where("active","==",true), where("owner","==",owner), where("nameKey","==",nameKey)));
+      const existsOther = dupSnap.docs.some((d)=>d.id !== id);
+      if(existsOther) throw new Error("Ya existe otra categoría activa con ese nombre.");
+      await updateDoc(doc(db,"categories",id), { name, nameKey:getCategoryKey(name), type:data.type||"expense", owner:data.owner||"shared", icon:data.icon||"", color:data.color||"#2563eb", updatedAt:serverTimestamp() });
+    }
+    async function archiveCategory(id){
+      if(!id) return;
+      await updateDoc(doc(db,"categories",id), { active:false, updatedAt:serverTimestamp() });
+      showToast("Categoría desactivada", { tone:"success", duration:2000 });
+    }
+    function renderCategoriesManager(){
+      const wrap = document.getElementById("categories-list"); if(!wrap) return;
+      if(!customCategories.length){ wrap.innerHTML = '<small class="text-muted">Sin categorías personalizadas.</small>'; return; }
+      wrap.innerHTML = customCategories.map((c)=>`<div class="card-box p-2 mb-2"><div class="d-flex justify-content-between align-items-center"><div><strong>${c.name}</strong><div class="small text-muted">${c.type} • ${c.owner}</div></div><div class="d-flex gap-2"><button class="btn btn-sm btn-light" onclick="prefillCategoryForm('${c.id}')">Editar</button><button class="btn btn-sm btn-outline-secondary" onclick="archiveCategory('${c.id}')">Desactivar</button></div></div></div>`).join("");
+    }
+    window.prefillCategoryForm = (id) => {
+      const c = customCategories.find((x)=>x.id===id); if(!c) return;
+      document.getElementById("category-id").value = c.id;
+      document.getElementById("category-name").value = c.name || "";
+      document.getElementById("category-type").value = c.type || "expense";
+      document.getElementById("category-owner").value = c.owner || "shared";
+      document.getElementById("category-icon").value = c.icon || "";
+      document.getElementById("category-color").value = c.color || "#2563eb";
     };
 
     // Filters
@@ -7747,6 +7887,7 @@ const getHistoryContext = () => {
       });
       if(typeof syncQuickCategories === "function") syncQuickCategories();
     };
+    window.archiveCategory = archiveCategory;
 
     // =========================
     // ✅ UI MSI
@@ -8110,6 +8251,25 @@ const getHistoryContext = () => {
         showToast("No se pudo crear la meta.", { tone: "warning", duration: 2400 });
       }
     });
+    document.getElementById("category-form")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      try{
+        const payload = {
+          name: document.getElementById("category-name").value,
+          type: document.getElementById("category-type").value,
+          owner: document.getElementById("category-owner").value,
+          icon: document.getElementById("category-icon").value,
+          color: document.getElementById("category-color").value
+        };
+        const id = document.getElementById("category-id").value;
+        if(id) await updateCategory(id, payload); else await saveCategory(payload);
+        e.target.reset();
+        document.getElementById("category-id").value = "";
+        renderCategoriesManager();
+        renderCategorySelects();
+        showToast("Categoría guardada", { tone:"success", duration:2000 });
+      }catch(err){ showToast(err.message || "No se pudo guardar categoría.", { tone: "warning" }); }
+    });
 
     document.getElementById('form-goal-contribution').addEventListener('submit', async(e)=>{
       e.preventDefault();
@@ -8263,6 +8423,11 @@ const getHistoryContext = () => {
 
         const movementType = type === "payment" ? "card_payment" : type;
         const normalizedCategory = isAbonoMovement ? "Abono Capital" : document.getElementById('t-cat').value;
+        const selectedCategoryKey = getCategoryKey(cleanCategoryLabel(normalizedCategory));
+        const selectedCategoryObj = customCategories.find((c)=>{
+          const cKey = c.nameKey || getCategoryKey(c.name || c.label);
+          return cKey === selectedCategoryKey;
+        });
         const normalizedConcept = isAbonoMovement
           ? (document.getElementById('t-concept').value || `Abono a ${cObj?.name || "tarjeta"}`)
           : document.getElementById('t-concept').value;
@@ -8279,6 +8444,7 @@ const getHistoryContext = () => {
           targetCardName: isAbonoMovement && cObj ? cObj.name : null,
           concept: normalizedConcept,
           category: normalizedCategory,
+          categoryId: selectedCategoryObj?.id || null,
           subtype: isAbonoMovement ? "Abono Capital" : null,
           subCategory: null,
           date: Timestamp.fromDate(parseLocalYYYYMMDDToDate(document.getElementById('t-date').value) || new Date()),
@@ -8843,6 +9009,7 @@ const getHistoryContext = () => {
     startLoader();
     await seedPresetCards();
     resubscribeAll();
+    subscribeCategories();
   </script>
 </body>
 </html>
