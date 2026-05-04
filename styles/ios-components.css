@@ -11,7 +11,7 @@
 *{ box-sizing: border-box; }
 html, body{
   background: var(--bg);
-  color: var(--text);
+  color: var(--text-main);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -52,7 +52,7 @@ textarea,
   background: var(--input-bg);
   border: 1px solid var(--input-border);
   border-radius: var(--r-lg);
-  color: var(--text);
+  color: var(--text-main);
   padding: 12px 14px;
   outline: none;
 }
@@ -64,6 +64,8 @@ textarea:focus,
 .form-select:focus{
   box-shadow: var(--ring);
   border-color: rgba(47,124,255,.35);
+  color: var(--text-main);
+  background: var(--input-bg);
 }
 
 .btnPrimary,
@@ -85,7 +87,7 @@ textarea:focus,
 .btn-light{
   background: var(--pill-bg);
   border: 1px solid var(--border);
-  color: var(--text);
+  color: var(--text-main);
   border-radius: var(--r-lg);
   min-height: 44px;
   padding: 0 14px;
