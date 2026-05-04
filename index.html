@@ -716,6 +716,17 @@
         grid-template-columns:repeat(3,minmax(0,1fr));
       }
     }
+    .msi-status-pill{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      border:1px solid currentColor;
+      border-radius:999px;
+      padding:3px 8px;
+      font-size:.72rem;
+      font-weight:800;
+      line-height:1;
+    }
   </style>
   <link href="./styles/ios-components.css" rel="stylesheet" />
 </head>
@@ -6712,6 +6723,14 @@
       return MSI_TRAFFIC_COLORS.red;
     }
 
+    function getMsiTrafficLabel(monthsLeft){
+      const n = Number(monthsLeft || 0);
+      if(!Number.isFinite(n) || n <= 0) return "Liquidada";
+      if(n <= 3) return "Próxima";
+      if(n <= 6) return "Intermedia";
+      return "Lejana";
+    }
+
     function monthsBetween(a, b){
       // a,b = Date
       const ay=a.getFullYear(), am=a.getMonth();
@@ -6783,7 +6802,7 @@
           list.innerHTML = '';
           items.forEach(t => {
             const pct = t.totalMonths > 0 ? Math.min((t.passed / t.totalMonths) * 100, 100) : 0;
-            const color = (t.remaining === 0) ? 'success' : (t.remaining <= 2 ? 'warning' : 'primary');
+            const trafficColor = getMsiTrafficColor(t.remaining);
 
             list.innerHTML += `
               <div class="mb-3">
@@ -6794,12 +6813,13 @@
                     ${t.msiIncomplete ? '<div class="text-warning small fw-semibold">MSI incompleto</div>' : ''}
                   </div>
                   <div class="text-end">
-                    <div class="fw-black sensitive-data">${t.remaining === 0 ? '✅ Liquidada' : `${t.remaining} meses`}</div>
-                    <small class="text-muted sensitive-data">${formatMoney(t.monthly)}/mes</small>
+                    <div class="fw-black sensitive-data" style="color:${trafficColor};">${t.remaining === 0 ? '✅ Liquidada' : `${t.remaining} meses`}</div>
+                    <span class="msi-status-pill" style="border-color:${trafficColor}; color:${trafficColor};">${getMsiTrafficLabel(t.remaining)}</span>
+                    <small class="d-block text-muted sensitive-data">${formatMoney(t.monthly)}/mes</small>
                   </div>
                 </div>
                 <div class="progress mt-2" style="height:12px;background-color:var(--bg-body);">
-                  <div class="progress-bar bg-${color}" role="progressbar" style="width:${pct}%"></div>
+                  <div class="progress-bar" role="progressbar" style="width:${pct}%; background-color:${trafficColor};"></div>
                 </div>
               </div>
             `;
