@@ -1466,7 +1466,7 @@
 
     <div class="card-box">
       <div class="d-flex justify-content-between align-items-center mb-2">
-        <h6 class="fw-bold m-0">Lista de MSI familiares</h6>
+        <h6 class="fw-bold m-0">MSI activos</h6>
         <span class="text-muted small" id="family-msi-count">0</span>
       </div>
       <div class="family-table-wrap">
@@ -1476,6 +1476,20 @@
         </table>
       </div>
       <div id="family-msi-mobile-list" class="family-mobile-list"></div>
+    </div>
+
+    <div class="card-box">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h6 class="fw-bold m-0">MSI liquidados</h6>
+        <span class="text-muted small" id="family-msi-finished-count">0</span>
+      </div>
+      <div class="family-table-wrap">
+        <table class="table family-table">
+          <thead><tr><th>Responsable</th><th>Concepto</th><th>Banco/Tarjeta</th><th>Mensualidad</th><th>Avance</th><th>Inicio</th><th>Fecha fin</th><th>Estado</th></tr></thead>
+          <tbody id="family-msi-finished-table"><tr><td colspan="8" class="text-muted small">Cargando...</td></tr></tbody>
+        </table>
+      </div>
+      <div id="family-msi-finished-mobile-list" class="family-mobile-list"></div>
     </div>
 
     <div class="card-box">
@@ -5791,8 +5805,10 @@
       const monthsPaidFromMeta = Number.isFinite(Number(meta.currentInstallment)) ? Math.max(Number(meta.currentInstallment) - 1, 0) : null;
       const monthsPaid = Math.max(0, Math.min(monthsTotal, Math.round(monthsPaidFromScreen ?? monthsPaidFromMeta ?? 0)));
       const endDate = meta.estimatedEndDate || calculateFamilyMsiEndDate(startDate, monthsTotal);
-      const remaining = Number.isFinite(Number(t.remaining)) ? Math.max(0, Number(t.remaining)) : Math.max(monthsTotal - monthsPaid, 0);
-      const status = remaining > 0 || t.msiIncomplete || meta.needsReview ? "active" : "finished";
+      const remaining = Number.isFinite(Number(t.remaining))
+        ? Math.max(0, Number(t.remaining))
+        : Math.max(monthsTotal - monthsPaid, 0);
+      const status = remaining > 0 ? "active" : "finished";
       return {
         id: t.id,
         sourceCollection: "expenses",
@@ -5895,8 +5911,9 @@
       });
     }
     function getFamilyMonthsRemaining(item){
-      if(item.status !== "active") return 0;
-      return Math.max(0, Math.round(familyNumber(item.monthsTotal)) - Math.round(familyNumber(item.monthsPaid)));
+      return Number.isFinite(Number(item?.remaining))
+        ? Math.max(0, Number(item.remaining))
+        : Math.max(0, Math.round(familyNumber(item?.monthsTotal)) - Math.round(familyNumber(item?.monthsPaid)));
     }
     function getFamilyMsiStatusView(item = {}){
       const isActive = item.status === "active";
@@ -5904,6 +5921,27 @@
         statusClass: isActive ? "bg-success-light" : "bg-danger-light",
         statusLabel: isActive ? (item.needsReview ? "Activo · revisar" : "Activo") : "Liquidado"
       };
+    }
+    function renderFamilyMsiTableRows(items = [], emptyMessage = "No hay MSI que coincidan con los filtros seleccionados."){
+      return items.length ? items.map((item)=>{
+        const owner = getFamilyOwnerForMsi(item);
+        const { statusClass, statusLabel } = getFamilyMsiStatusView(item);
+        return `
+          <tr>
+            <td>
+              <select class="form-select form-select-sm owner-select" data-family-owner-select="${familyEscape(item.id)}" onchange="updateFamilyOwnerFromMsi('${familyEscape(item.id)}', this.value)">
+                ${FAMILY_OWNERS.map((value)=>`<option value="${value}" ${owner === value ? "selected" : ""}>${FAMILY_OWNER_LABELS[value]}</option>`).join("")}
+              </select>
+            </td>
+            <td><strong>${familyEscape(item.title || "Sin concepto")}</strong><div class="text-muted small">${familyEscape(item.category || "Sin categoría")}</div></td>
+            <td>${familyEscape(item.cardName || "—")}</td>
+            <td class="sensitive-data fw-bold">${formatMoney(item.monthlyPayment)}</td>
+            <td>${familyEscape(item.monthsPaid)}/${familyEscape(item.monthsTotal)}<div class="text-muted small">${getFamilyMonthsRemaining(item)} restantes</div></td>
+            <td>${familyEscape(item.startDate || "—")}</td>
+            <td>${familyEscape(item.endDate || calculateFamilyMsiEndDate(item.startDate, item.monthsTotal) || "—")}</td>
+            <td><span class="badge-status ${statusClass}">${statusLabel}</span></td>
+          </tr>`;
+      }).join("") : `<tr><td colspan="8" class="text-muted small">${familyEscape(emptyMessage)}</td></tr>`;
     }
     function renderFamilyMsiMobileCard(item = {}){
       const owner = getFamilyOwnerForMsi(item);
@@ -5997,35 +6035,38 @@
       syncFamilyFilterControls();
       renderFamilyCardFilterOptions(familyMsiFromTransactions);
       const filteredList = getFilteredFamilyMsiList();
-      const activeFilteredList = filteredList.filter((item)=>(item.status || "active") === "active");
-      const countEl = document.getElementById("family-msi-count");
-      if(countEl) countEl.textContent = `${activeFilteredList.length} activos / ${filteredList.length} mostrados / ${familyMsiFromTransactions.length} totales`;
       const sorted = [...filteredList].sort((a,b)=>(a.endDate || "9999-12-31").localeCompare(b.endDate || "9999-12-31"));
+      const activeVisibleList = sorted.filter(item => getFamilyMonthsRemaining(item) > 0);
+      const finishedVisibleList = sorted.filter(item => getFamilyMonthsRemaining(item) <= 0);
+      const countEl = document.getElementById("family-msi-count");
+      if(countEl) countEl.textContent = `${activeVisibleList.length} activos / ${finishedVisibleList.length} liquidados / ${familyMsiFromTransactions.length} totales`;
+      const finishedCountEl = document.getElementById("family-msi-finished-count");
+      if(finishedCountEl) finishedCountEl.textContent = `${finishedVisibleList.length} liquidados`;
       const tableEl = document.getElementById("family-msi-table");
       if(tableEl){
-        tableEl.innerHTML = sorted.length ? sorted.map((item)=>{
-          const owner = getFamilyOwnerForMsi(item);
-          const { statusClass, statusLabel } = getFamilyMsiStatusView(item);
-          return `
-          <tr>
-            <td>
-              <select class="form-select form-select-sm owner-select" data-family-owner-select="${familyEscape(item.id)}" onchange="updateFamilyOwnerFromMsi('${familyEscape(item.id)}', this.value)">
-                ${FAMILY_OWNERS.map((value)=>`<option value="${value}" ${owner === value ? "selected" : ""}>${FAMILY_OWNER_LABELS[value]}</option>`).join("")}
-              </select>
-            </td>
-            <td><strong>${familyEscape(item.title || "Sin concepto")}</strong><div class="text-muted small">${familyEscape(item.category || "Sin categoría")}</div></td>
-            <td>${familyEscape(item.cardName || "—")}</td>
-            <td class="sensitive-data fw-bold">${formatMoney(item.monthlyPayment)}</td>
-            <td>${familyEscape(item.monthsPaid)}/${familyEscape(item.monthsTotal)}<div class="text-muted small">${getFamilyMonthsRemaining(item)} restantes</div></td>
-            <td>${familyEscape(item.startDate || "—")}</td>
-            <td>${familyEscape(item.endDate || calculateFamilyMsiEndDate(item.startDate, item.monthsTotal) || "—")}</td>
-            <td><span class="badge-status ${statusClass}">${statusLabel}</span></td>
-          </tr>`;
-        }).join("") : `<tr><td colspan="8" class="text-muted small">No hay MSI que coincidan con los filtros seleccionados.</td></tr>`;
+        tableEl.innerHTML = renderFamilyMsiTableRows(activeVisibleList, "No hay MSI activos que coincidan con los filtros seleccionados.");
+      }
+      const finishedTableEl = document.getElementById("family-msi-finished-table");
+      if(finishedTableEl){
+        finishedTableEl.innerHTML = renderFamilyMsiTableRows(finishedVisibleList, "No hay MSI liquidados que coincidan con los filtros seleccionados.");
       }
       const mobileListEl = document.getElementById("family-msi-mobile-list");
       if(mobileListEl){
-        mobileListEl.innerHTML = sorted.length ? sorted.map(renderFamilyMsiMobileCard).join("") : `<div class="family-msi-card text-muted small">No hay MSI que coincidan con los filtros seleccionados.</div>`;
+        mobileListEl.innerHTML = activeVisibleList.length
+          ? activeVisibleList.map(renderFamilyMsiMobileCard).join("")
+          : `<div class="family-msi-card text-muted small">No hay MSI activos que coincidan con los filtros seleccionados.</div>`;
+      }
+      const finishedMobileListEl = document.getElementById("family-msi-finished-mobile-list");
+      if(finishedMobileListEl){
+        const finishedMobileHtml = finishedVisibleList.length
+          ? finishedVisibleList.map(renderFamilyMsiMobileCard).join("")
+          : `<div class="family-msi-card text-muted small">No hay MSI liquidados que coincidan con los filtros seleccionados.</div>`;
+        finishedMobileListEl.innerHTML = `
+          <details>
+            <summary class="fw-bold" style="cursor:pointer;">Liquidados (${finishedVisibleList.length})</summary>
+            <div class="family-mobile-list mt-2">${finishedMobileHtml}</div>
+          </details>
+        `;
       }
       const projectionEl = document.getElementById("family-msi-projection");
       if(projectionEl){
@@ -6059,6 +6100,8 @@
         console.error("Family transactions snapshot error:", err);
         const tableEl = document.getElementById("family-msi-table");
         if(tableEl) tableEl.innerHTML = `<tr><td colspan="8" class="text-muted small">No se pudieron cargar los MSI familiares de Yair y Haru.</td></tr>`;
+        const finishedTableEl = document.getElementById("family-msi-finished-table");
+        if(finishedTableEl) finishedTableEl.innerHTML = `<tr><td colspan="8" class="text-muted small">No se pudieron cargar los MSI familiares de Yair y Haru.</td></tr>`;
       });
     }
     document.getElementById("family-filter-status")?.addEventListener("change", e => {
@@ -9273,49 +9316,83 @@ const getHistoryContext = () => {
     window.deleteTrans=async()=>{
       if(!confirm("¿Eliminar? Se recalculará el saldo.")) return;
 
-      const id=document.getElementById('trans-id').value;
+      const id=(document.getElementById('trans-id')?.value || '').trim();
+      if(!id){
+        console.error("[deleteMovement] missing id", id);
+        showToast("No se pudo eliminar: movimiento sin ID.", { tone: "error", duration: 3200 });
+        haptic("error");
+        return;
+      }
+      console.log("[deleteMovement] deleting", id);
+
       const t=trans.find(x=>x.id===id);
-      if(!t) return;
+      if(!t){
+        console.error("[deleteMovement] movement not found", { id });
+        showToast("No se encontró el movimiento para eliminar.", { tone: "error", duration: 3200 });
+        haptic("error");
+        return;
+      }
 
-      const batch=writeBatch(db);
-      if(requiresCardSelection(t.type, normalizePaymentMethod(t))){
-        const affectedCardId = t.targetCardId || t.cardId;
-        const cObj=cards.find(c=>c.id===affectedCardId);
-        if(!cObj){
-          showToast("Tarjeta no encontrada para recalcular saldo.", { tone: "warning", duration: 2400 });
-          return;
+      try{
+        if(requiresCardSelection(t.type, normalizePaymentMethod(t))){
+          const affectedCardId = t.targetCardId || t.cardId;
+          const cObj=cards.find(c=>c.id===affectedCardId);
+
+          if(!cObj){
+            console.warn("[deleteMovement] card not found for balance recalculation", { id, affectedCardId });
+          }else{
+            let newBal=parseFloat(cObj.balance||0);
+
+            if(t.type==='expense') newBal -= t.amount;
+            else newBal += t.amount;
+
+            await updateDoc(doc(db,"cards",affectedCardId), {
+              balance:newBal
+            });
+          }
         }
-        let newBal=parseFloat(cObj.balance||0);
-        if(t.type==='expense') newBal -= t.amount;
-        else newBal += t.amount;
-        batch.update(doc(db,"cards",affectedCardId), { balance:newBal });
-      }
-      batch.delete(doc(db,"expenses",id));
-      await batch.commit();
 
-      await sheetsSend({
-        entity: "transaction",
-        action: "delete",
-        owner: OWNER,
-        data: { id }
-      });
-      emit("EXPENSE_DELETED", { id });
-      if(t.type === "expense" && t.date){
-        const prevDate = t.date?.toDate ? t.date.toDate() : t.date;
-        invalidateCategoryAggCacheForPeriod(OWNER, getPeriodKeyFromDate(prevDate));
-      }
-      if(t?.date){
-        const prevDate = t.date?.toDate ? t.date.toDate() : t.date;
-        const periodKey = getPeriodKeyFromDate(prevDate);
-        invalidateMonthlyCardSummaryCacheForPeriod(OWNER, periodKey);
-        queueSummaryRecalc(periodKey);
-      }
+        await deleteDoc(doc(db, "expenses", id));
 
-      invalidateCacheForOwner(OWNER);
-      refreshAll({ owner: OWNER, force: true, source: "delete-expense" });
-      updateAlerts({ force: true });
-      resetForm();
-      nav('view-hist');
+        trans = trans.filter(x=>x.id!==id);
+        familyTrans = familyTrans.filter(x=>x.id!==id);
+        window.renderHistory?.();
+        await window.renderMsi?.();
+        window.renderFamilyFinancePage?.();
+
+        sheetsSend({
+          entity: "transaction",
+          action: "delete",
+          owner: OWNER,
+          data: { id }
+        }).catch((err)=>console.error("[deleteMovement] sheets sync failed", err));
+        emit("EXPENSE_DELETED", { id });
+        if(t.type === "expense" && t.date){
+          const prevDate = t.date?.toDate ? t.date.toDate() : t.date;
+          invalidateCategoryAggCacheForPeriod(OWNER, getPeriodKeyFromDate(prevDate));
+        }
+        if(t?.date){
+          const prevDate = t.date?.toDate ? t.date.toDate() : t.date;
+          const periodKey = getPeriodKeyFromDate(prevDate);
+          invalidateMonthlyCardSummaryCacheForPeriod(OWNER, periodKey);
+          queueSummaryRecalc(periodKey);
+        }
+
+        invalidateCacheForOwner(OWNER);
+        await refreshAll({ owner: OWNER, force: true, source: "delete-expense" });
+        window.renderHistory?.();
+        await window.renderMsi?.();
+        window.renderFamilyFinancePage?.();
+        updateAlerts({ force: true });
+        showToast("Movimiento eliminado.", { tone: "success", duration: 2200 });
+        haptic("success");
+        resetForm();
+        nav('view-hist');
+      }catch(e){
+        console.error("[deleteMovement] delete failed", e);
+        showToast("No se pudo eliminar. Intenta de nuevo.", { tone: "error", duration: 3400 });
+        haptic("error");
+      }
     };
 
     window.resetForm=()=>{
