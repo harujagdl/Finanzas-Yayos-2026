@@ -55,13 +55,6 @@ service cloud.firestore {
       allow delete: if canUpdateOrDeleteStrict();
     }
 
-    match /familyMsiCommitments/{docId} {
-      allow read: if canReadMaintenance();
-      allow create: if canCreate();
-      allow update: if canUpdateOrDeleteStrict() || canClaimLegacyOwner();
-      allow delete: if canUpdateOrDeleteStrict();
-    }
-
     // Default deny
     match /{document=**} {
       allow read, write: if false;
