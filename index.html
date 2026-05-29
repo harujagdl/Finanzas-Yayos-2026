@@ -391,6 +391,37 @@
     .dashboard-grid{
       display:grid; gap:12px; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));
     }
+    .family-summary-grid{
+      display:grid; gap:12px; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));
+    }
+    .family-table-wrap{overflow-x:auto; -webkit-overflow-scrolling:touch;}
+    .family-table{min-width:760px; margin:0;}
+    .family-table th{
+      color:var(--text-muted); font-size:.72rem; text-transform:uppercase; letter-spacing:.7px;
+      border-color:var(--border-color); white-space:nowrap;
+    }
+    .family-table td{border-color:var(--border-color); color:var(--text-main); vertical-align:middle;}
+    .family-owner-badge{
+      display:inline-flex; align-items:center; justify-content:center;
+      padding:5px 9px; border-radius:999px; font-size:.72rem; font-weight:800;
+      background:var(--bg-body); border:1px solid var(--border-color); text-transform:uppercase;
+    }
+    .family-owner-badge.yair{background:rgba(37,99,235,.12); color:var(--primary); border-color:rgba(37,99,235,.25);}
+    .family-owner-badge.haru{background:rgba(236,72,153,.12); color:#ec4899; border-color:rgba(236,72,153,.25);}
+    .family-owner-badge.compartido{background:rgba(16,185,129,.12); color:var(--success); border-color:rgba(16,185,129,.25);}
+    .family-projection-list{display:grid; gap:10px;}
+    .family-projection-item{
+      display:grid; grid-template-columns:1.2fr repeat(4, minmax(92px, 1fr)); gap:10px; align-items:center;
+      padding:12px; border:1px solid var(--border-color); border-radius:14px; background:var(--bg-body);
+    }
+    .family-projection-item .metric{display:flex; flex-direction:column; gap:2px;}
+    .family-projection-item .metric small{color:var(--text-muted); font-size:.7rem; font-weight:800; text-transform:uppercase;}
+    .family-projection-item .metric strong{font-variant-numeric:tabular-nums;}
+    .family-form-status{min-height:22px;}
+    @media (max-width: 720px){
+      .family-projection-item{grid-template-columns:1fr 1fr;}
+      .family-projection-item .month{grid-column:1 / -1;}
+    }
     .dash-card{
       background:var(--bg-body); border:1px solid var(--border-color);
       border-radius:14px; padding:14px;
@@ -786,6 +817,7 @@
       <button class="nav-btn navItem" onclick="nav('view-summary')" id="d-nav-summary"><i class="fas fa-calendar-days"></i> Resumen</button>
       <button class="nav-btn navItem" onclick="nav('view-cards')" id="d-nav-cards"><i class="fas fa-wallet"></i> Tarjetas</button>
       <button class="nav-btn navItem" onclick="nav('view-msi')" id="d-nav-msi"><i class="fas fa-layer-group"></i> MSI</button>
+      <button class="nav-btn navItem" onclick="nav('view-family')" id="d-nav-family"><i class="fas fa-people-roof"></i> Familia</button>
       <button class="nav-btn navItem" onclick="nav('view-hist')" id="d-nav-hist"><i class="fas fa-list-ul"></i> Historial</button>
       <button class="nav-btn navItem" onclick="nav('view-goals')" id="d-nav-goals"><span class="nav-emoji trophy-icon">🏆</span> Metas</button>
       <div class="desktop-shortcuts desktop-only">
@@ -1340,6 +1372,78 @@
     </div>
   </div>
 
+
+  <div id="view-family" class="view-section p-3">
+    <div class="d-flex justify-content-between align-items-center mb-3 gap-2">
+      <div>
+        <h4 class="fw-black m-0">Finanzas Familiares</h4>
+        <div class="text-muted small">Vista compartida de compromisos MSI y flujo futuro.</div>
+      </div>
+      <button class="btn btn-sm btn-outline-secondary" style="border-color:var(--border-color);color:var(--text-muted);" onclick="nav('view-home')">
+        <i class="fas fa-arrow-left me-1"></i> Volver
+      </button>
+    </div>
+
+    <div id="family-msi-summary" class="family-summary-grid mb-3">
+      <div class="card-box m-0"><div class="kpi-label">MSI Yair</div><div class="kpi-value sensitive-data">$0.00</div></div>
+      <div class="card-box m-0"><div class="kpi-label">MSI Haru</div><div class="kpi-value sensitive-data">$0.00</div></div>
+      <div class="card-box m-0"><div class="kpi-label">MSI Compartidos</div><div class="kpi-value sensitive-data">$0.00</div></div>
+      <div class="card-box m-0"><div class="kpi-label">Carga mensual familiar</div><div class="kpi-value sensitive-data">$0.00</div></div>
+    </div>
+
+    <div class="card-box">
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+        <div>
+          <h6 class="fw-bold m-0">Alta de MSI familiar</h6>
+          <div class="text-muted small">Se guarda aislado en familyMsiCommitments.</div>
+        </div>
+        <span id="family-msi-form-status" class="family-form-status small text-muted"></span>
+      </div>
+      <form id="family-msi-form" class="row g-2">
+        <div class="col-12 col-md-4"><label class="small fw-bold text-muted mb-1">Responsable</label><select id="family-owner" class="form-select" required><option value="yair">Yair</option><option value="haru">Haru</option><option value="compartido">Compartido</option></select></div>
+        <div class="col-12 col-md-8"><label class="small fw-bold text-muted mb-1">Concepto</label><input id="family-title" class="form-control" required placeholder="Ej. Xbox, Viaje, Liverpool" /></div>
+        <div class="col-12 col-md-4"><label class="small fw-bold text-muted mb-1">Banco / Tarjeta</label><input id="family-bank" class="form-control" placeholder="Banco o tarjeta" /></div>
+        <div class="col-12 col-md-4"><label class="small fw-bold text-muted mb-1">Categoría</label><input id="family-category" class="form-control" placeholder="Categoría" /></div>
+        <div class="col-6 col-md-2"><label class="small fw-bold text-muted mb-1">Monto total</label><input id="family-total" type="number" class="form-control" step="0.01" min="0" inputmode="decimal" required /></div>
+        <div class="col-6 col-md-2"><label class="small fw-bold text-muted mb-1">Pago mensual</label><input id="family-monthly" type="number" class="form-control" step="0.01" min="0" inputmode="decimal" required /></div>
+        <div class="col-6 col-md-3"><label class="small fw-bold text-muted mb-1">Meses totales</label><input id="family-months-total" type="number" class="form-control" min="1" step="1" required /></div>
+        <div class="col-6 col-md-3"><label class="small fw-bold text-muted mb-1">Meses pagados</label><input id="family-months-paid" type="number" class="form-control" min="0" step="1" value="0" /></div>
+        <div class="col-12 col-md-3"><label class="small fw-bold text-muted mb-1">Fecha de inicio</label><input id="family-start" type="date" class="form-control" required /></div>
+        <div class="col-12 col-md-3"><label class="small fw-bold text-muted mb-1">Estado</label><select id="family-status" class="form-select"><option value="active">Activo</option><option value="paused">Pausado</option><option value="finished">Finalizado</option></select></div>
+        <div class="col-12 col-md-6 d-flex align-items-end">
+          <div class="form-check mb-2">
+            <input id="family-include" class="form-check-input" type="checkbox" checked />
+            <label class="form-check-label fw-bold" for="family-include">Incluir en proyección familiar</label>
+          </div>
+        </div>
+        <div class="col-12"><button id="family-save-btn" class="btn btn-primary w-100 fw-bold" type="submit"><i class="fas fa-save me-2"></i>Guardar MSI familiar</button></div>
+      </form>
+    </div>
+
+    <div class="card-box">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h6 class="fw-bold m-0">Lista de MSI familiares</h6>
+        <span class="text-muted small" id="family-msi-count">0</span>
+      </div>
+      <div class="family-table-wrap">
+        <table class="table family-table">
+          <thead><tr><th>Responsable</th><th>Concepto</th><th>Banco/Tarjeta</th><th>Mensualidad</th><th>Meses restantes</th><th>Fecha fin</th><th>Estado</th></tr></thead>
+          <tbody id="family-msi-table"><tr><td colspan="7" class="text-muted small">Cargando...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card-box">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+          <h6 class="fw-bold m-0">Proyección futura</h6>
+          <div class="text-muted small">Próximos 18 meses de carga MSI familiar.</div>
+        </div>
+      </div>
+      <div id="family-msi-projection" class="family-projection-list"><small class="text-muted">Cargando...</small></div>
+    </div>
+  </div>
+
   <div id="menuSheetOverlay" class="sheetOverlay hidden" onclick="closeMenuSheet(event)">
     <div class="sheet" role="dialog" aria-modal="true" onclick="event.stopPropagation()">
       <div class="sheetHeader">
@@ -1349,6 +1453,7 @@
       <div class="themeOptions">
         <button class="themeOption" type="button" onclick="openThemeSheet()">Tema</button>
         <button class="themeOption" type="button" onclick="openCategoriesSheet()">Categorías</button>
+        <button class="themeOption" type="button" onclick="nav('view-family'); closeMenuSheet();">Ver Finanzas Familiares</button>
         <button class="themeOption" type="button" onclick="menuAction('enablePush')">Notificaciones</button>
         <button class="themeOption" type="button" onclick="menuAction('togglePrivacy')">Privacidad</button>
         <button id="mobile-owner-repair" class="themeOption d-none" type="button" onclick="menuAction('repairLegacyOwnerData')">Reparar owner</button>
@@ -1890,6 +1995,10 @@
         unsubGoals();
         unsubGoals = null;
       }
+      if(unsubFamilyMsi){
+        unsubFamilyMsi();
+        unsubFamilyMsi = null;
+      }
     }
 
     function retryStartup(){
@@ -1993,7 +2102,8 @@
     let goalModal=null;
     let goalDetailModal=null;
     let goalContributionModal=null;
-    let unsubCards=null, unsubTrans=null, unsubGoals=null;
+    let unsubCards=null, unsubTrans=null, unsubGoals=null, unsubFamilyMsi=null;
+    let familyMsiCommitments = [];
     let goalsLoading = true;
     let goalsError = null;
     let goalsLastErrorToastAt = 0;
@@ -2034,6 +2144,7 @@
       "view-cards": { title: "Tarjetas", subtitle: "Administra tarjetas, cortes y límites." },
       "view-add": { title: "Nuevo movimiento", subtitle: "Registra gastos, abonos o compras a MSI." },
       "view-msi": { title: "MSI", subtitle: "Seguimiento de compras a meses sin intereses." },
+      "view-family": { title: "Finanzas Familiares", subtitle: "Vista compartida de compromisos MSI y flujo futuro." },
       "view-hist": { title: "Historial", subtitle: "Consulta, filtra y exporta tus movimientos." },
       "view-goals": { title: "Metas", subtitle: "Organiza objetivos y avances financieros." }
     };
@@ -4751,9 +4862,16 @@
       if(vid.includes('summary')) { document.getElementById('nav-summary')?.classList.add('active'); document.getElementById('d-nav-summary')?.classList.add('active'); }
       if(vid.includes('cards')) { document.getElementById('nav-cards')?.classList.add('active'); document.getElementById('d-nav-cards')?.classList.add('active'); }
       if(vid.includes('hist')) { document.getElementById('nav-hist')?.classList.add('active'); document.getElementById('d-nav-hist')?.classList.add('active'); }
-      if(vid.includes('msi')) { document.getElementById('nav-msi')?.classList.add('active'); document.getElementById('d-nav-msi')?.classList.add('active'); }
+      if(vid.includes('msi') && vid !== 'view-family') { document.getElementById('nav-msi')?.classList.add('active'); document.getElementById('d-nav-msi')?.classList.add('active'); }
+      if(vid.includes('family')) { document.getElementById('nav-family')?.classList.add('active'); document.getElementById('d-nav-family')?.classList.add('active'); }
       if(vid.includes('goals')) { document.getElementById('nav-goals')?.classList.add('active'); document.getElementById('d-nav-goals')?.classList.add('active'); }
       updateDesktopHeader(vid);
+      const routePath = vid === 'view-family' ? '/finanzas-familiares' : window.location.pathname;
+      if(vid === 'view-family' && window.location.pathname !== routePath){
+        history.pushState({ view: vid }, '', routePath);
+      }else if(vid !== 'view-family' && window.location.pathname === '/finanzas-familiares'){
+        history.pushState({ view: vid }, '', './');
+      }
 
       // render MSI cuando entras
       syncAbonosModeUI();
@@ -4761,6 +4879,7 @@
         renderMsi();
         setTimeout(() => window.renderCharts?.(), 50);
       }
+      if(vid === 'view-family') renderFamilyFinancePage();
       if(vid === 'view-goals') renderGoals();
       if(vid === 'view-summary') {
         renderSummaryView();
@@ -5370,6 +5489,7 @@
       subscribeCards();
       subscribeTrans();
       subscribeGoals();
+      subscribeFamilyMsi();
       resetForm();
       refreshAll({ owner: OWNER, force: true, source: "resubscribe" });
       updateMonthlyFootprint({ force: true });
@@ -5576,6 +5696,190 @@
     };
 
     const getLocalDateInputValue = (date = new Date()) => toLocalYYYYMMDD(date);
+
+    // =========================
+    // Finanzas Familiares (colección aislada)
+    // =========================
+    const FAMILY_MSI_COLLECTION = "familyMsiCommitments";
+    const FAMILY_OWNERS = ["yair", "haru", "compartido"];
+    const FAMILY_STATUSES = ["active", "finished", "paused"];
+    const familyNumber = (value) => {
+      const n = Number(value);
+      return Number.isFinite(n) ? n : 0;
+    };
+    const familyEscape = (value) => String(value ?? "").replace(/[&<>'"]/g, (ch) => ({
+      "&":"&amp;", "<":"&lt;", ">":"&gt;", "'":"&#39;", '"':"&quot;"
+    }[ch]));
+    const normalizeFamilyOwner = (owner) => FAMILY_OWNERS.includes(owner) ? owner : "compartido";
+    const normalizeFamilyStatus = (status) => FAMILY_STATUSES.includes(status) ? status : "active";
+    const getFamilyMonthKey = (date = new Date()) => `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}`;
+    const familyMonthLabel = (monthKey) => {
+      const [year, month] = monthKey.split("-").map(Number);
+      const label = new Date(year, month - 1, 1).toLocaleDateString("es-MX", { month:"long", year:"numeric" });
+      return label.charAt(0).toUpperCase() + label.slice(1);
+    };
+    const addFamilyMonths = (date, months) => {
+      const d = new Date(date.getFullYear(), date.getMonth() + months, 1, 12, 0, 0, 0);
+      return d;
+    };
+    function calculateFamilyMsiEndDate(startDate, monthsTotal){
+      const start = parseLocalYYYYMMDDToDate(startDate);
+      const months = Math.max(1, Math.round(familyNumber(monthsTotal)));
+      if(!start) return "";
+      return toLocalYYYYMMDD(addFamilyMonths(start, months - 1));
+    }
+    function normalizeFamilyMsiData(raw = {}){
+      const monthsTotal = Math.max(1, Math.round(familyNumber(raw.monthsTotal)));
+      const monthsPaid = Math.max(0, Math.min(monthsTotal, Math.round(familyNumber(raw.monthsPaid))));
+      const startDate = raw.startDate || toLocalYYYYMMDD(new Date());
+      return {
+        owner: normalizeFamilyOwner(raw.owner),
+        title: String(raw.title || "").trim(),
+        bank: String(raw.bank || "").trim(),
+        category: String(raw.category || "").trim(),
+        totalAmount: familyNumber(raw.totalAmount),
+        monthlyPayment: familyNumber(raw.monthlyPayment),
+        monthsTotal,
+        monthsPaid,
+        startDate,
+        endDate: raw.endDate || calculateFamilyMsiEndDate(startDate, monthsTotal),
+        status: normalizeFamilyStatus(raw.status),
+        includeInFamilyProjection: raw.includeInFamilyProjection !== false
+      };
+    }
+    async function createFamilyMsi(data){
+      const payload = normalizeFamilyMsiData(data);
+      const ref = doc(collection(db, FAMILY_MSI_COLLECTION));
+      await setDoc(ref, {
+        id: ref.id,
+        ...payload,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      return { id: ref.id, ...payload };
+    }
+    async function updateFamilyMsi(id, data){
+      const payload = normalizeFamilyMsiData(data);
+      await updateDoc(doc(db, FAMILY_MSI_COLLECTION, id), { ...payload, updatedAt: serverTimestamp() });
+      return { id, ...payload };
+    }
+    async function deleteFamilyMsi(id){
+      await deleteDoc(doc(db, FAMILY_MSI_COLLECTION, id));
+    }
+    async function getFamilyMsiList(){
+      const snap = await getDocs(query(collection(db, FAMILY_MSI_COLLECTION), orderBy("startDate", "asc")));
+      return snap.docs.map((d)=>({ id:d.id, ...normalizeFamilyMsiData(d.data()), ...d.data() }));
+    }
+    async function getActiveFamilyMsi(){
+      const list = await getFamilyMsiList();
+      return list.filter((item)=>item.status === "active");
+    }
+    function getProjectableFamilyMsi(msiList = []){
+      return (msiList || []).filter((item)=>item.status === "active" && item.includeInFamilyProjection === true);
+    }
+    function calculateFamilyMsiSummary(msiList = []){
+      const summary = { yair:0, haru:0, compartido:0, total:0 };
+      getProjectableFamilyMsi(msiList).forEach((item)=>{
+        const owner = normalizeFamilyOwner(item.owner);
+        const payment = familyNumber(item.monthlyPayment);
+        summary[owner] += payment;
+        summary.total += payment;
+      });
+      return summary;
+    }
+    function calculateFamilyMsiProjection(msiList = [], monthsAhead = 18){
+      const base = addFamilyMonths(new Date(), 0);
+      base.setDate(1); base.setHours(12,0,0,0);
+      const items = getProjectableFamilyMsi(msiList);
+      return Array.from({ length: monthsAhead }, (_, idx) => {
+        const monthDate = addFamilyMonths(base, idx);
+        const monthKey = getFamilyMonthKey(monthDate);
+        const row = { monthKey, label: familyMonthLabel(monthKey), yairTotal:0, haruTotal:0, sharedTotal:0, familyTotal:0, activeItems:[] };
+        items.forEach((item)=>{
+          const start = parseLocalYYYYMMDDToDate(item.startDate);
+          const end = parseLocalYYYYMMDDToDate(item.endDate || calculateFamilyMsiEndDate(item.startDate, item.monthsTotal));
+          if(!start || !end) return;
+          const startKey = getFamilyMonthKey(start);
+          const endKey = getFamilyMonthKey(end);
+          if(monthKey < startKey || monthKey > endKey) return;
+          const payment = familyNumber(item.monthlyPayment);
+          const owner = normalizeFamilyOwner(item.owner);
+          if(owner === "yair") row.yairTotal += payment;
+          if(owner === "haru") row.haruTotal += payment;
+          if(owner === "compartido") row.sharedTotal += payment;
+          row.familyTotal += payment;
+          row.activeItems.push(item);
+        });
+        return row;
+      });
+    }
+    function getFamilyMonthsRemaining(item){
+      if(item.status !== "active") return 0;
+      return Math.max(0, Math.round(familyNumber(item.monthsTotal)) - Math.round(familyNumber(item.monthsPaid)));
+    }
+    function renderFamilyFinancePage(){
+      const summary = calculateFamilyMsiSummary(familyMsiCommitments);
+      const summaryEl = document.getElementById("family-msi-summary");
+      if(summaryEl){
+        summaryEl.innerHTML = [
+          ["MSI Yair", summary.yair],
+          ["MSI Haru", summary.haru],
+          ["MSI Compartidos", summary.compartido],
+          ["Carga mensual familiar", summary.total]
+        ].map(([label, value]) => `<div class="card-box m-0"><div class="kpi-label">${label}</div><div class="kpi-value sensitive-data">${formatMoney(value)}</div></div>`).join("");
+      }
+      const activeList = familyMsiCommitments.filter((item)=>item.status === "active");
+      const countEl = document.getElementById("family-msi-count");
+      if(countEl) countEl.textContent = `${activeList.length} activos`;
+      const tableEl = document.getElementById("family-msi-table");
+      if(tableEl){
+        const sorted = [...familyMsiCommitments].sort((a,b)=>(a.endDate || "").localeCompare(b.endDate || ""));
+        tableEl.innerHTML = sorted.length ? sorted.map((item)=>`
+          <tr>
+            <td><span class="family-owner-badge ${normalizeFamilyOwner(item.owner)}">${normalizeFamilyOwner(item.owner)}</span></td>
+            <td><strong>${familyEscape(item.title || "Sin concepto")}</strong><div class="text-muted small">${familyEscape(item.category || "Sin categoría")}</div></td>
+            <td>${familyEscape(item.bank || "—")}</td>
+            <td class="sensitive-data fw-bold">${formatMoney(item.monthlyPayment)}</td>
+            <td>${getFamilyMonthsRemaining(item)}</td>
+            <td>${familyEscape(item.endDate || calculateFamilyMsiEndDate(item.startDate, item.monthsTotal) || "—")}</td>
+            <td><span class="badge-status ${item.status === "active" ? "bg-success-light" : item.status === "paused" ? "bg-warning-light" : "bg-danger-light"}">${item.status}</span></td>
+          </tr>
+        `).join("") : `<tr><td colspan="7" class="text-muted small">Aún no hay MSI familiares registrados.</td></tr>`;
+      }
+      const projectionEl = document.getElementById("family-msi-projection");
+      if(projectionEl){
+        const projection = calculateFamilyMsiProjection(familyMsiCommitments, 18);
+        projectionEl.innerHTML = projection.map((row)=>`
+          <div class="family-projection-item">
+            <div class="metric month"><small>Mes</small><strong>${row.label}</strong><span class="text-muted small">${row.activeItems.length} MSI activos</span></div>
+            <div class="metric"><small>Total Yair</small><strong class="sensitive-data">${formatMoney(row.yairTotal)}</strong></div>
+            <div class="metric"><small>Total Haru</small><strong class="sensitive-data">${formatMoney(row.haruTotal)}</strong></div>
+            <div class="metric"><small>Compartido</small><strong class="sensitive-data">${formatMoney(row.sharedTotal)}</strong></div>
+            <div class="metric"><small>Total familiar</small><strong class="sensitive-data">${formatMoney(row.familyTotal)}</strong></div>
+          </div>
+        `).join("");
+      }
+      if(privacy) togglePrivacy();
+    }
+    function subscribeFamilyMsi(){
+      if(unsubFamilyMsi) unsubFamilyMsi();
+      unsubFamilyMsi = onSnapshot(query(collection(db, FAMILY_MSI_COLLECTION), orderBy("startDate", "asc")), (snap)=>{
+        familyMsiCommitments = snap.docs.map((d)=>({ id:d.id, ...normalizeFamilyMsiData(d.data()), ...d.data() }));
+        renderFamilyFinancePage();
+      }, (err)=>{
+        console.error("Family MSI snapshot error:", err);
+        const tableEl = document.getElementById("family-msi-table");
+        if(tableEl) tableEl.innerHTML = `<tr><td colspan="7" class="text-muted small">No se pudieron cargar los MSI familiares.</td></tr>`;
+      });
+    }
+    window.renderFamilyFinancePage = renderFamilyFinancePage;
+    window.createFamilyMsi = createFamilyMsi;
+    window.updateFamilyMsi = updateFamilyMsi;
+    window.deleteFamilyMsi = deleteFamilyMsi;
+    window.getFamilyMsiList = getFamilyMsiList;
+    window.getActiveFamilyMsi = getActiveFamilyMsi;
+    window.calculateFamilyMsiSummary = calculateFamilyMsiSummary;
+    window.calculateFamilyMsiProjection = calculateFamilyMsiProjection;
 
     const formatGoalOwner = (owner) => owner === "haru" ? "Haru" : "Yair";
 
@@ -8163,6 +8467,51 @@ const getHistoryContext = () => {
       if(on) document.getElementById('t-msi-start').value = document.getElementById('t-date').value;
     });
 
+    const familyStartInput = document.getElementById('family-start');
+    if(familyStartInput && !familyStartInput.value) familyStartInput.value = toLocalYYYYMMDD(new Date());
+    document.getElementById('family-msi-form')?.addEventListener('submit', async (event)=>{
+      event.preventDefault();
+      const statusEl = document.getElementById('family-msi-form-status');
+      const btn = document.getElementById('family-save-btn');
+      const form = event.currentTarget;
+      const data = {
+        owner: document.getElementById('family-owner')?.value,
+        title: document.getElementById('family-title')?.value,
+        bank: document.getElementById('family-bank')?.value,
+        category: document.getElementById('family-category')?.value,
+        totalAmount: document.getElementById('family-total')?.value,
+        monthlyPayment: document.getElementById('family-monthly')?.value,
+        monthsTotal: document.getElementById('family-months-total')?.value,
+        monthsPaid: document.getElementById('family-months-paid')?.value,
+        startDate: document.getElementById('family-start')?.value,
+        status: document.getElementById('family-status')?.value,
+        includeInFamilyProjection: document.getElementById('family-include')?.checked
+      };
+      data.endDate = calculateFamilyMsiEndDate(data.startDate, data.monthsTotal);
+      try{
+        if(statusEl){ statusEl.textContent = 'Guardando...'; statusEl.className = 'family-form-status small text-muted'; }
+        setLoading(btn, true);
+        await createFamilyMsi(data);
+        form.reset();
+        document.getElementById('family-owner').value = 'yair';
+        document.getElementById('family-months-paid').value = '0';
+        document.getElementById('family-status').value = 'active';
+        document.getElementById('family-include').checked = true;
+        document.getElementById('family-start').value = toLocalYYYYMMDD(new Date());
+        if(statusEl){ statusEl.textContent = `MSI guardado. Fecha fin: ${data.endDate}`; statusEl.className = 'family-form-status small text-success fw-bold'; }
+        showToast('MSI familiar guardado', { tone:'success', duration:2200 });
+        haptic('success');
+        setTimeout(()=>{ if(statusEl) statusEl.textContent = ''; }, 3500);
+      }catch(e){
+        console.error('Family MSI save error:', e);
+        if(statusEl){ statusEl.textContent = 'No se pudo guardar el MSI familiar.'; statusEl.className = 'family-form-status small text-danger fw-bold'; }
+        showToast('No se pudo guardar el MSI familiar.', { tone:'warning', duration:2600 });
+        haptic('error');
+      }finally{
+        setLoading(btn, false);
+      }
+    });
+
     const cardsAvailableInput = document.getElementById('cards-available-input');
     cardsAvailableInput?.addEventListener('input', () => {
       const value = safeNumber(cardsAvailableInput.value);
@@ -9149,6 +9498,11 @@ const getHistoryContext = () => {
     await seedPresetCards();
     resubscribeAll();
     subscribeCategories();
+    if(window.location.pathname === '/finanzas-familiares') nav('view-family');
+    window.addEventListener('popstate', () => {
+      if(window.location.pathname === '/finanzas-familiares') nav('view-family');
+      else nav('view-home');
+    });
   </script>
 </body>
 </html>
