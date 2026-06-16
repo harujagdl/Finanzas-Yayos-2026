@@ -457,6 +457,14 @@
       .family-projection-item{grid-template-columns:1fr 1fr;}
       .family-projection-item .month{grid-column:1 / -1;}
     }
+    .mini-kpi{
+      background:var(--bg-body);
+      border:1px solid var(--border-color);
+      border-radius:14px;
+      padding:10px 12px;
+      min-height:78px;
+    }
+    .cards-coverage-note{font-size:.78rem;}
     .dash-card{
       background:var(--bg-body); border:1px solid var(--border-color);
       border-radius:14px; padding:14px;
@@ -970,7 +978,7 @@
           <input type="number" id="cards-available-input" class="form-control" step="0.01" inputmode="decimal" min="0" placeholder="0.00" />
         </div>
         <div class="col-12 col-md-7">
-          <div class="kpi-label">Balance disponible - por pagar</div>
+          <div class="kpi-label">Cobertura de tarjetas</div>
           <div id="cards-cycle-balance" class="kpi-value sensitive-data">$0.00</div>
           <small id="cards-available-status" class="text-muted"></small>
         </div>
@@ -2484,13 +2492,74 @@
     setupConnectivityListeners();
     setSyncStatus(appState.isOnline ? "synced" : "local", { silent: true });
 
-    const formatMoney = (v) => '$' + parseFloat(v||0).toLocaleString('en-US',{minimumFractionDigits:2});
+    const moneyFormatter = new Intl.NumberFormat('es-MX', {
+      style: 'currency',
+      currency: 'MXN',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+    const formatMoney = (v) => {
+      const n = Number(v);
+      const safe = Number.isFinite(n) ? n : 0;
+      return moneyFormatter.format(Object.is(safe, -0) ? 0 : safe);
+    };
     const round2 = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
 
     // ===== FASE 1: HELPERS BASE =====
     const safeNumber = (n) => {
       const v = Number(n);
       return Number.isFinite(v) ? v : 0;
+    };
+
+    function buildCardCoverage({ cashDisponible = 0, tarjetas = [] } = {}){
+      const normalizedCash = Math.max(0, round2(safeNumber(cashDisponible)));
+      const normalizedCards = (tarjetas || []).map((card, index) => ({
+        ...card,
+        __coverageIndex: index,
+        montoCiclo: Math.max(0, round2(safeNumber(card?.montoCiclo)))
+      }));
+      const totalPorPagar = round2(normalizedCards.reduce((sum, card) => sum + safeNumber(card.montoCiclo), 0));
+      const coberturaPct = totalPorPagar > 0
+        ? Math.min(100, (normalizedCash / totalPorPagar) * 100)
+        : 100;
+      const faltanteTotal = Math.max(0, round2(totalPorPagar - normalizedCash));
+
+      let cashRestante = normalizedCash;
+      const tarjetasCoverage = normalizedCards.map((card) => {
+        const debe = Math.max(0, round2(safeNumber(card.montoCiclo)));
+        const cubierto = Math.max(0, round2(Math.min(cashRestante, debe)));
+        const faltan = Math.max(0, round2(debe - cubierto));
+        const pct = debe > 0 ? Math.min(100, (cubierto / debe) * 100) : 100;
+
+        cashRestante = Math.max(0, round2(cashRestante - cubierto));
+
+        const { __coverageIndex, ...publicCard } = card;
+        return {
+          ...publicCard,
+          debe,
+          cubierto,
+          faltan,
+          pct,
+          status: faltan <= 0 ? 'covered' : (cubierto > 0 ? 'partial' : 'missing')
+        };
+      });
+
+      return {
+        cashDisponible: normalizedCash,
+        totalPorPagar,
+        coberturaPct,
+        faltanteTotal,
+        sobrante: Math.max(0, round2(normalizedCash - totalPorPagar)),
+        tarjetasCoverage
+      };
+    }
+
+    const getCoverageTone = (pct) => {
+      const value = safeNumber(pct);
+      if(value >= 100) return { className: 'bg-success', textClass: 'text-success', label: 'Tarjetas cubiertas' };
+      if(value >= 80) return { className: 'bg-warning', textClass: 'text-warning', label: 'Casi cubierto' };
+      if(value >= 40) return { className: 'bg-warning', textClass: 'text-warning', label: 'Cobertura ajustada' };
+      return { className: 'bg-danger', textClass: 'text-danger', label: 'Riesgo de pago' };
     };
 
     const normalizeScope = (scope) => {
@@ -5686,7 +5755,6 @@
 
         if(privacy) togglePrivacy();
         updateSmartPick();
-        updatePaymentMonitor();
         updateAlerts();
         fillHistFilters();
         refreshCardsCycleBudget({ monthKey: getLocalMonthKey(), silent: true });
@@ -6621,73 +6689,44 @@
     // Monitor pagos + smart pick
     function updatePaymentMonitor(){
       const list=document.getElementById('payment-monitor-list');
-      list.innerHTML='';
-      let hasGoals=false;
+      if(!list) return;
+      const computed = computeCardsDueThisCycle({ owner: OWNER });
+      const coverage = buildCardCoverage({
+        cashDisponible: cardsBudgetState.availableForCards,
+        tarjetas: computed.tarjetasDelCiclo || []
+      });
 
-      cards.forEach(c=>{
-        const requiredPayment = toMoney(parseFloat(c.payGoal || 0));
-        if(requiredPayment<=0) return;
+      if(!coverage.tarjetasCoverage.length){
+        list.innerHTML = '<div class="text-center text-muted small p-3">No hay tarjetas por pagar este ciclo.</div>';
+        return;
+      }
 
-        hasGoals=true;
-        const pagosDelMes = trans.filter((m) => {
-          const amount = Number(m.amount || 0);
-          return (
-            isSameCard(m, c) &&
-            isCardPayment(m) &&
-            isInCurrentMonth(m.date) &&
-            amount > 0
-          );
-        });
+      const monitorNote = '<small class="text-muted d-block mb-3">Cobertura aplicada en orden de tarjetas.</small>';
+      list.innerHTML = monitorNote + coverage.tarjetasCoverage.map((card) => {
+        const tone = getCoverageTone(card.pct);
+        const pctLabel = `${round2(card.pct).toFixed(1)}%`;
+        const statusLine = card.status === 'covered'
+          ? `<div class="text-success small fw-bold">Cubierta</div><div class="text-muted small sensitive-data">${formatMoney(card.debe)} de ${formatMoney(card.debe)} cubierto</div>`
+          : card.cubierto > 0
+            ? `<div class="text-muted small sensitive-data">Cubierto ${formatMoney(card.cubierto)} de ${formatMoney(card.debe)}</div><div class="text-danger small fw-bold sensitive-data">Faltan ${formatMoney(card.faltan)}</div>`
+            : `<div class="text-muted small fw-bold">Sin cash asignado aún</div><div class="text-danger small fw-bold sensitive-data">Faltan ${formatMoney(card.faltan)}</div>`;
 
-        const totalPagado = toMoney(
-          pagosDelMes.reduce((sum, m) => sum + Number(m.amount || 0), 0)
-        );
-
-        const restante = Math.max(toMoney(requiredPayment - totalPagado), 0);
-        const cubierto = restante <= 0.009;
-        const pct = requiredPayment > 0 ? Math.min((totalPagado / requiredPayment) * 100, 100) : 0;
-
-        console.log("[PAYMENT_MONITOR]", {
-          card: c.name,
-          cardId: c.id,
-          requiredPayment,
-          pagosDelMes: pagosDelMes.map(p => ({
-            id: p.id,
-            concept: p.concept,
-            amount: p.amount,
-            type: p.type,
-            category: p.category,
-            subtype: p.subtype,
-            isCardPayment: p.isCardPayment,
-            cardId: p.cardId,
-            cardName: p.cardName,
-            targetCardId: p.targetCardId,
-            targetCardName: p.targetCardName,
-            paymentMethod: p.paymentMethod,
-            date: p.date?.toDate ? p.date.toDate().toISOString() : p.date
-          })),
-          totalPagado,
-          restante,
-          cubierto
-        });
-
-        let color = pct>50 ? 'warning' : 'danger';
-        if(cubierto) color='success';
-
-        list.innerHTML += `
+        return `
           <div class="mb-3">
-            <div class="d-flex justify-content-between mb-1">
-              <span class="small fw-bold">${c.name}</span>
-              <span class="small fw-bold text-${color} sensitive-data">${cubierto ? '¡CUBIERTO!' : 'Faltan ' + formatMoney(restante)}</span>
+            <div class="d-flex justify-content-between align-items-start gap-2 mb-1">
+              <div>
+                <div class="small fw-bold">${card.name || 'Tarjeta'}</div>
+                <div class="small text-muted sensitive-data">Debe ${formatMoney(card.debe)} · Cubierto ${formatMoney(card.cubierto)}</div>
+                ${statusLine}
+              </div>
+              <span class="small fw-bold ${tone.textClass}">${pctLabel}</span>
             </div>
-            <div class="progress" style="height:12px;background-color:var(--bg-body);">
-              <div class="progress-bar bg-${color}" role="progressbar" style="width:${pct}%"></div>
+            <div class="progress" style="height:12px;background-color:var(--bg-body);" aria-label="${pctLabel} cubierto">
+              <div class="progress-bar ${tone.className}" role="progressbar" style="width:${Math.min(100, Math.max(0, card.pct))}%" aria-valuenow="${round2(card.pct)}" aria-valuemin="0" aria-valuemax="100"></div>
             </div>
           </div>
         `;
-      });
-
-      if(!hasGoals) list.innerHTML = '<div class="text-center text-muted small p-3">Configura el "Pago para no generar intereses" al editar una tarjeta.</div>';
+      }).join('');
       if(privacy) togglePrivacy();
     }
 
@@ -6817,32 +6856,87 @@
 
     const getMonthBudgetRef = (monthKey) => doc(db, "budgets", monthKey);
 
-    const renderCardsCycleBudget = ({ monthKey = getLocalMonthKey(), availableForCards = 0, cardsDueThisCycle = 0, fallbackCards = [] } = {}) => {
+    const renderCardsCycleBudget = ({ monthKey = getLocalMonthKey(), availableForCards = 0, cardsDueThisCycle = 0, fallbackCards = [], tarjetasDelCiclo = [] } = {}) => {
       const monthEl = document.getElementById("cards-cycle-month");
       const summaryEl = document.getElementById("cards-cycle-summary");
       const balanceEl = document.getElementById("cards-cycle-balance");
       const inputEl = document.getElementById("cards-available-input");
       if(!monthEl || !summaryEl || !balanceEl || !inputEl) return;
 
+      const coverage = buildCardCoverage({
+        cashDisponible: availableForCards,
+        tarjetas: tarjetasDelCiclo
+      });
+      const tone = getCoverageTone(coverage.coberturaPct);
+      const pctLabel = `${round2(coverage.coberturaPct).toFixed(1)}%`;
+      cardsBudgetState = { monthKey, availableForCards: coverage.cashDisponible };
+
       monthEl.textContent = formatPeriodLabel(monthKey);
-      const balance = round2(safeNumber(availableForCards) - safeNumber(cardsDueThisCycle));
-      balanceEl.textContent = formatMoney(balance);
-      balanceEl.classList.toggle("text-danger", balance < 0);
-      balanceEl.classList.toggle("text-success", balance >= 0);
+      balanceEl.textContent = coverage.totalPorPagar > 0 ? pctLabel : "--";
+      balanceEl.classList.toggle("text-danger", coverage.faltanteTotal > 0);
+      balanceEl.classList.toggle("text-success", coverage.faltanteTotal <= 0);
 
       if(document.activeElement !== inputEl){
         inputEl.value = safeNumber(availableForCards) ? safeNumber(availableForCards).toFixed(2) : "";
       }
 
       const fallbackText = fallbackCards.length
-        ? `<div class="mt-1"><span class="badge-status bg-warning-light">${fallbackCards.length} tarjeta(s) usan mes calendario</span></div>`
+        ? `<div class="mt-2"><span class="badge-status bg-warning-light">${fallbackCards.length} tarjeta(s) usan mes calendario</span></div>`
         : "";
+
+      if(!coverage.tarjetasCoverage.length || coverage.totalPorPagar <= 0){
+        summaryEl.innerHTML = `
+          <div class="text-muted small">No hay tarjetas por pagar este ciclo.</div>
+          <div class="mt-2">Disponible para pago: <strong class="sensitive-data">${formatMoney(coverage.cashDisponible)}</strong></div>
+          ${fallbackText}
+        `;
+        updatePaymentMonitor();
+        if(privacy) togglePrivacy();
+        return;
+      }
+
+      const pendingOrSurplusLabel = coverage.faltanteTotal > 0 ? 'Faltan para cubrir' : 'Sobrante después de tarjetas';
+      const pendingOrSurplusValue = coverage.faltanteTotal > 0 ? coverage.faltanteTotal : coverage.sobrante;
+      const pendingOrSurplusClass = coverage.faltanteTotal > 0 ? 'text-danger' : 'text-success';
+      const coverageMessage = coverage.faltanteTotal > 0
+        ? `Te faltan ${formatMoney(coverage.faltanteTotal)} para cubrir tus tarjetas del ciclo.`
+        : `Tus tarjetas del ciclo están cubiertas. Sobrante: ${formatMoney(coverage.sobrante)}.`;
+
       summaryEl.innerHTML = `
-        <div>Disponible para pago: <strong class="sensitive-data">${formatMoney(availableForCards)}</strong></div>
-        <div>Total por pagar en ciclo actual: <strong class="sensitive-data text-danger">${formatMoney(cardsDueThisCycle)}</strong></div>
-        <div>Balance: <strong class="sensitive-data ${balance < 0 ? "text-danger" : "text-success"}">${formatMoney(balance)}</strong></div>
+        <div class="row g-2 mt-2">
+          <div class="col-6 col-md-3">
+            <div class="mini-kpi">
+              <div class="kpi-label">Disponible para pago</div>
+              <div class="fw-bold sensitive-data">${formatMoney(coverage.cashDisponible)}</div>
+            </div>
+          </div>
+          <div class="col-6 col-md-3">
+            <div class="mini-kpi">
+              <div class="kpi-label">Por pagar este ciclo</div>
+              <div class="fw-bold text-danger sensitive-data">${formatMoney(coverage.totalPorPagar)}</div>
+            </div>
+          </div>
+          <div class="col-6 col-md-3">
+            <div class="mini-kpi">
+              <div class="kpi-label">Cobertura actual</div>
+              <div class="fw-bold ${tone.textClass}">${pctLabel}</div>
+              <div class="cards-coverage-note fw-bold ${tone.textClass}">${tone.label} · ${pctLabel} cubierto</div>
+            </div>
+          </div>
+          <div class="col-6 col-md-3">
+            <div class="mini-kpi">
+              <div class="kpi-label">${pendingOrSurplusLabel}</div>
+              <div class="fw-bold ${pendingOrSurplusClass} sensitive-data">${formatMoney(pendingOrSurplusValue)}</div>
+            </div>
+          </div>
+        </div>
+        <div class="progress mt-3" style="height:12px;background-color:var(--bg-body);" aria-label="${pctLabel} cubierto">
+          <div class="progress-bar ${tone.className}" role="progressbar" style="width:${Math.min(100, Math.max(0, coverage.coberturaPct))}%" aria-valuenow="${round2(coverage.coberturaPct)}" aria-valuemin="0" aria-valuemax="100"></div>
+        </div>
+        <div class="small fw-bold mt-2 ${tone.textClass}">${coverageMessage}</div>
         ${fallbackText}
       `;
+      updatePaymentMonitor();
       if(privacy) togglePrivacy();
     };
 
@@ -6853,34 +6947,54 @@
       const fallbackCards = [];
       let total = 0;
 
-      cards.forEach((card) => {
-        const window = getCardCycleWindow(card, now);
-        if(window.source === "calendar") fallbackCards.push(card.name || "Tarjeta");
-        const endInclusive = new Date(window.endExclusive.getTime() - 1);
+      const tarjetasDelCiclo = cards
+        .map((card, index) => ({ card, index }))
+        // Prioridad de cobertura:
+        // 1. order manual si existe
+        // 2. orden original de tarjetas
+        // Futuro: permitir ordenar por fecha de pago, monto menor o prioridad personalizada.
+        .sort((a, b) => {
+          const aOrder = Number.isFinite(Number(a.card?.order)) ? Number(a.card.order) : 999;
+          const bOrder = Number.isFinite(Number(b.card?.order)) ? Number(b.card.order) : 999;
+          if(aOrder !== bOrder) return aOrder - bOrder;
+          return a.index - b.index;
+        })
+        .map(({ card, index }) => {
+          const window = getCardCycleWindow(card, now);
+          if(window.source === "calendar") fallbackCards.push(card.name || "Tarjeta");
+          const endInclusive = new Date(window.endExclusive.getTime() - 1);
 
-        const cardExpenses = ownerItems.filter((item) => {
-          if(item?.type !== "expense") return false;
-          if(item?.cardId !== card.id) return false;
-          return true;
-        });
+          const cardExpenses = ownerItems.filter((item) => {
+            if(item?.type !== "expense") return false;
+            if(item?.cardId !== card.id) return false;
+            return true;
+          });
 
-        let cardTotal = 0;
-        cardExpenses.forEach((item) => {
-          if(item?.isMsi === true){
-            const expanded = expandMsiToMonthlyCharges(item, window.start, endInclusive);
-            cardTotal += expanded.reduce((acc, row) => acc + safeNumber(row.computedAmount), 0);
-            return;
-          }
-          const d = toDate(item?.date);
-          if(d >= window.start && d < window.endExclusive){
-            cardTotal += getEffectiveAmount(item);
-          }
-        });
+          let cardTotal = 0;
+          cardExpenses.forEach((item) => {
+            if(item?.isMsi === true){
+              const expanded = expandMsiToMonthlyCharges(item, window.start, endInclusive);
+              cardTotal += expanded.reduce((acc, row) => acc + safeNumber(row.computedAmount), 0);
+              return;
+            }
+            const d = toDate(item?.date);
+            if(d >= window.start && d < window.endExclusive){
+              cardTotal += getEffectiveAmount(item);
+            }
+          });
 
-        total += cardTotal;
-      });
+          const montoCiclo = round2(cardTotal);
+          total += montoCiclo;
+          return {
+            id: card.id,
+            name: card.name || "Tarjeta",
+            order: card.order ?? index,
+            montoCiclo
+          };
+        })
+        .filter((card) => safeNumber(card.montoCiclo) > 0);
 
-      return { cardsDueThisCycle: round2(total), fallbackCards };
+      return { cardsDueThisCycle: round2(total), fallbackCards, tarjetasDelCiclo };
     };
 
     const refreshCardsCycleBudget = async ({ monthKey = getLocalMonthKey(), silent = false } = {}) => {
@@ -8723,6 +8837,7 @@ const getHistoryContext = () => {
     const cardsAvailableInput = document.getElementById('cards-available-input');
     cardsAvailableInput?.addEventListener('input', () => {
       const value = safeNumber(cardsAvailableInput.value);
+      cardsBudgetState = { monthKey: getLocalMonthKey(), availableForCards: value };
       const computed = computeCardsDueThisCycle({ owner: OWNER });
       renderCardsCycleBudget({ monthKey: getLocalMonthKey(), availableForCards: value, ...computed });
       const statusEl = document.getElementById('cards-available-status');
