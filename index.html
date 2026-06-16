@@ -2152,7 +2152,7 @@
 
     // State
     let cards=[], trans=[], goals=[];
-    let cardsBudgetState = { monthKey: getLocalMonthKey(), availableForCards: 0, cardPaymentPlan: {} };
+    let cardsBudgetState = { monthKey: getLocalMonthKey(), availableForCards: 0 };
     let cardsBudgetSaveTimer = null;
     let privacy=false, chartInstance=null;
     let cardModal=null;
@@ -6818,9 +6818,12 @@
       return safeDay(dueDate.getFullYear(), dueDate.getMonth() + cutMonthOffset, cutDay);
     };
 
-    const computeManualCardPaymentPlanForMonth = ({ monthKey = getLocalMonthKey(), cards = [], budget = {} } = {}) => {
+    const computeCardPaymentsFromGoals = ({ monthKey = getLocalMonthKey(), cards = [], trans: transactions = [], owner = OWNER } = {}) => {
       const monthRange = getMonthRange(monthKey);
-      const cardPaymentPlan = budget?.cardPaymentPlan || {};
+      const scopeFilter = getActiveScopeFilter();
+      const scoped = FEATURES.coupleMode ? applyScopeFilter(transactions || [], scopeFilter) : (transactions || []);
+      const ownerItems = scoped.filter((item) => !item?.owner || item.owner === owner);
+
       const orderedCards = (cards || [])
         .map((card, index) => ({ card, index }))
         .sort((a, b) => {
@@ -6830,34 +6833,81 @@
           return a.index - b.index;
         });
 
-      const tarjetasDelMes = orderedCards
+      const tarjetasDelCiclo = orderedCards
         .map(({ card, index }) => {
+          const payGoal = Math.max(0, round2(safeNumber(card?.payGoal)));
           const dueDate = getCardDueDateForMonth(card, monthKey);
-          if(dueDate && (dueDate < monthRange.startDate || dueDate >= monthRange.endExclusive)) return null;
-          const amount = Math.max(0, round2(safeNumber(cardPaymentPlan?.[card.id])));
+          const cutDate = getCardCutDateForDueMonth(card, monthKey);
+          const abonadoCiclo = round2(ownerItems.reduce((sum, item) => {
+            const amount = safeNumber(item?.amount ?? item?.monto ?? 0);
+            const d = toDate(item?.date);
+            const movementText = [
+              item?.type,
+              item?.category,
+              item?.subtype,
+              item?.concept,
+              item?.description,
+              item?.label,
+              item?.movementType,
+              item?.paymentMethod
+            ].map(normalizeText).join(" ");
+            const looksLikeCardPayment =
+              getMovementKind(item) === "payment" ||
+              (typeof isCardPaymentMovement === "function" && isCardPaymentMovement(item)) ||
+              movementText.includes("abono capital") ||
+              movementText.includes("abono a capital") ||
+              movementText.includes("pago tarjeta") ||
+              movementText.includes("pago tdc") ||
+              movementText.includes("pago a tarjeta") ||
+              movementText.includes("pago c/ transferencia") ||
+              movementText.includes("pago con transferencia");
+
+            if(!looksLikeCardPayment) return sum;
+            if(!matchesTargetCard(item, card.id)) return sum;
+            if(amount <= 0) return sum;
+            if(d < monthRange.startDate || d >= monthRange.endExclusive) return sum;
+            if(DEBUG_RENDER && looksLikeCardPayment && matchesTargetCard(item, card.id)){
+              console.log("[CARDS_CYCLE_ABONO_MATCH]", {
+                card: card.name,
+                id: item.id,
+                amount,
+                type: item.type,
+                category: item.category,
+                subtype: item.subtype,
+                targetCardId: item.targetCardId,
+                targetCardName: item.targetCardName,
+                date: item.date
+              });
+            }
+            return sum + amount;
+          }, 0));
+          const saldoPendiente = Math.max(0, round2(payGoal - abonadoCiclo));
+
           return {
             id: card.id,
             name: card.name || "Tarjeta",
             order: card.order ?? index,
+            payGoal,
+            abonadoCiclo,
+            saldoPendiente,
+            montoCiclo: saldoPendiente,
             dueDate,
             dueDateLabel: dueDate ? formatShortDate(dueDate) : "Sin fecha de pago configurada",
-            cutDate: getCardCutDateForDueMonth(card, monthKey),
-            amount,
-            montoCiclo: amount
+            cutDate
           };
         })
-        .filter(Boolean);
+        .filter((card) => safeNumber(card.payGoal) > 0 || safeNumber(card.abonadoCiclo) > 0 || safeNumber(card.montoCiclo) > 0);
 
       return {
-        cardsDueThisMonth: round2(tarjetasDelMes.reduce((sum, card) => sum + safeNumber(card.amount), 0)),
-        tarjetasDelMes,
-        tarjetasDelCiclo: tarjetasDelMes
+        tarjetasDelCiclo,
+        tarjetasDelMes: tarjetasDelCiclo,
+        cardsDueThisCycle: round2(tarjetasDelCiclo.reduce((sum, card) => sum + safeNumber(card.montoCiclo), 0))
       };
     };
 
     const getMonthBudgetRef = (monthKey) => doc(db, "budgets", monthKey);
 
-    const renderCardsCycleBudget = ({ monthKey = getLocalMonthKey(), availableForCards = 0, cardPaymentPlan = {}, tarjetasDelMes = [], tarjetasDelCiclo = tarjetasDelMes } = {}) => {
+    const renderCardsCycleBudget = ({ monthKey = getLocalMonthKey(), availableForCards = 0, tarjetasDelMes = [], tarjetasDelCiclo = tarjetasDelMes } = {}) => {
       const monthEl = document.getElementById("cards-cycle-month");
       const summaryEl = document.getElementById("cards-cycle-summary");
       const balanceEl = document.getElementById("cards-cycle-balance");
@@ -6870,7 +6920,7 @@
       });
       const tone = getCoverageTone(coverage.coberturaPct);
       const pctLabel = `${round2(coverage.coberturaPct).toFixed(1)}%`;
-      cardsBudgetState = { monthKey, availableForCards: coverage.cashDisponible, cardPaymentPlan: { ...(cardPaymentPlan || cardsBudgetState.cardPaymentPlan || {}) } };
+      cardsBudgetState = { monthKey, availableForCards: coverage.cashDisponible };
 
       monthEl.textContent = formatPeriodLabel(monthKey);
       balanceEl.textContent = coverage.totalPorPagar > 0 ? pctLabel : "--";
@@ -6881,42 +6931,33 @@
         inputEl.value = safeNumber(availableForCards) ? safeNumber(availableForCards).toFixed(2) : "";
       }
 
-      const paymentInputsHtml = (tarjetasDelCiclo || []).length
+      const cardsDetailHtml = (tarjetasDelCiclo || []).length
         ? `
           <div class="mt-3">
-            <div class="small fw-bold mb-2">Pagos objetivo del mes</div>
+            <div class="small fw-bold mb-2">Pagos para no generar intereses</div>
             ${(tarjetasDelCiclo || []).map((card) => `
-              <div class="row g-2 align-items-end mb-2">
-                <div class="col-12 col-md-7">
+              <div class="p-2 border rounded-3 mb-2">
+                <div class="d-flex justify-content-between gap-2 flex-wrap">
                   <div class="fw-bold">${card.name || "Tarjeta"}</div>
-                  <div class="text-muted small">Fecha pago: ${card.dueDateLabel || (card.dueDate ? formatShortDate(card.dueDate) : "Sin fecha de pago configurada")}${card.cutDate ? ` · Corte: ${formatShortDate(card.cutDate)}` : ""}</div>
+                  <div class="fw-bold text-danger sensitive-data">Pendiente: ${formatMoney(card.saldoPendiente)}</div>
                 </div>
-                <div class="col-12 col-md-5">
-                  <input type="number" class="form-control card-payment-plan-input sensitive-data" data-card-id="${card.id}" step="0.01" inputmode="decimal" min="0" placeholder="0.00" value="${safeNumber(card.amount) ? safeNumber(card.amount).toFixed(2) : ""}" />
-                </div>
+                <div class="small mt-1">Pago para no generar intereses: <strong class="sensitive-data">${formatMoney(card.payGoal)}</strong></div>
+                <div class="small">Abonado: <strong class="sensitive-data">${formatMoney(card.abonadoCiclo)}</strong></div>
+                <div class="text-muted small">Fecha pago: ${card.dueDateLabel || (card.dueDate ? formatShortDate(card.dueDate) : "Sin fecha de pago configurada")}${card.cutDate ? ` · Corte: ${formatShortDate(card.cutDate)}` : ""}</div>
               </div>
             `).join("")}
           </div>
         `
-        : `<div class="text-muted small mt-3">No hay tarjetas con fecha de pago en este mes.</div>`;
-
-      if(!coverage.tarjetasCoverage.length || coverage.totalPorPagar <= 0){
-        summaryEl.innerHTML = `
-          <div class="text-muted small">Captura los pagos objetivo para calcular la cobertura.</div>
-          <div class="mt-2">Cash disponible: <strong class="sensitive-data">${formatMoney(coverage.cashDisponible)}</strong></div>
-          ${paymentInputsHtml}
-        `;
-        bindCardPaymentPlanInputs();
-        if(privacy) togglePrivacy();
-        return;
-      }
+        : `<div class="text-muted small mt-3">No hay tarjetas con pago para no generar intereses configurado.</div>`;
 
       const pendingOrSurplusLabel = coverage.faltanteTotal > 0 ? 'Faltan para cubrir' : 'Sobrante después de tarjetas';
       const pendingOrSurplusValue = coverage.faltanteTotal > 0 ? coverage.faltanteTotal : coverage.sobrante;
       const pendingOrSurplusClass = coverage.faltanteTotal > 0 ? 'text-danger' : 'text-success';
-      const coverageMessage = coverage.faltanteTotal > 0
-        ? `Te faltan ${formatMoney(coverage.faltanteTotal)} para cubrir tus tarjetas del mes.`
-        : `Tus tarjetas del mes están cubiertas. Sobrante: ${formatMoney(coverage.sobrante)}.`;
+      const coverageMessage = coverage.totalPorPagar <= 0
+        ? 'Configura el pago para no generar intereses en cada tarjeta para calcular la cobertura.'
+        : coverage.faltanteTotal > 0
+          ? `Te faltan ${formatMoney(coverage.faltanteTotal)} para cubrir tus tarjetas del mes.`
+          : `Tus tarjetas del mes están cubiertas. Sobrante: ${formatMoney(coverage.sobrante)}.`;
 
       summaryEl.innerHTML = `
         <div class="row g-2 mt-2">
@@ -6934,9 +6975,9 @@
           </div>
           <div class="col-6 col-md-3">
             <div class="mini-kpi">
-              <div class="kpi-label">Cobertura actual</div>
-              <div class="fw-bold ${tone.textClass}">${pctLabel}</div>
-              <div class="cards-coverage-note fw-bold ${tone.textClass}">${tone.label} · ${pctLabel} cubierto</div>
+              <div class="kpi-label">Cobertura</div>
+              <div class="fw-bold ${tone.textClass}">${coverage.totalPorPagar > 0 ? pctLabel : "--"}</div>
+              <div class="cards-coverage-note fw-bold ${tone.textClass}">${coverage.totalPorPagar > 0 ? `${tone.label} · ${pctLabel} cubierto` : "Sin objetivo"}</div>
             </div>
           </div>
           <div class="col-6 col-md-3">
@@ -6946,216 +6987,22 @@
             </div>
           </div>
         </div>
-        <div class="progress mt-3" style="height:12px;background-color:var(--bg-body);" aria-label="${pctLabel} cubierto">
+        <div class="progress mt-3" style="height:12px;background-color:var(--bg-body);" aria-label="${coverage.totalPorPagar > 0 ? pctLabel : "Sin objetivo"}">
           <div class="progress-bar ${tone.className}" role="progressbar" style="width:${Math.min(100, Math.max(0, coverage.coberturaPct))}%" aria-valuenow="${round2(coverage.coberturaPct)}" aria-valuemin="0" aria-valuemax="100"></div>
         </div>
-        <div class="small fw-bold mt-2 ${tone.textClass}">${coverageMessage}</div>
-        ${paymentInputsHtml}
+        <div class="small fw-bold mt-2 ${coverage.totalPorPagar > 0 ? tone.textClass : "text-muted"}">${coverageMessage}</div>
+        ${cardsDetailHtml}
       `;
-      bindCardPaymentPlanInputs();
       if(privacy) togglePrivacy();
-    };
-
-    const computeCardsDueThisCycle = ({ now = new Date(), owner = OWNER } = {}) => {
-      const scopeFilter = getActiveScopeFilter();
-      const scoped = FEATURES.coupleMode ? applyScopeFilter(trans, scopeFilter) : trans;
-      const ownerItems = scoped.filter((item) => !item?.owner || item.owner === owner);
-      const fallbackCards = [];
-      let total = 0;
-
-      const tarjetasDelCiclo = cards
-        .map((card, index) => ({ card, index }))
-        // Prioridad de cobertura:
-        // 1. order manual si existe
-        // 2. orden original de tarjetas
-        // Futuro: permitir ordenar por fecha de pago, monto menor o prioridad personalizada.
-        .sort((a, b) => {
-          const aOrder = Number.isFinite(Number(a.card?.order)) ? Number(a.card.order) : 999;
-          const bOrder = Number.isFinite(Number(b.card?.order)) ? Number(b.card.order) : 999;
-          if(aOrder !== bOrder) return aOrder - bOrder;
-          return a.index - b.index;
-        })
-        .map(({ card, index }) => {
-          const window = getCardCycleWindow(card, now);
-          if(window.source === "calendar") fallbackCards.push(card.name || "Tarjeta");
-          const endInclusive = new Date(window.endExclusive.getTime() - 1);
-
-          const cardExpenses = ownerItems.filter((item) => {
-            if(item?.type !== "expense") return false;
-            if(item?.cardId !== card.id) return false;
-            return true;
-          });
-
-          let cardTotal = 0;
-          cardExpenses.forEach((item) => {
-            if(item?.isMsi === true){
-              const expanded = expandMsiToMonthlyCharges(item, window.start, endInclusive);
-              cardTotal += expanded.reduce((acc, row) => acc + safeNumber(row.computedAmount), 0);
-              return;
-            }
-            const d = toDate(item?.date);
-            if(d >= window.start && d < window.endExclusive){
-              cardTotal += getEffectiveAmount(item);
-            }
-          });
-
-          const pagosTarjeta = ownerItems.filter((item) => {
-            const amount = Number(item.amount || 0);
-            const d = toDate(item?.date);
-
-            return (
-              getMovementKind(item) === "payment" &&
-              matchesTargetCard(item, card.id) &&
-              amount > 0 &&
-              d >= window.start &&
-              d < window.endExclusive
-            );
-          });
-
-          const totalAbonado = round2(
-            pagosTarjeta.reduce(
-              (sum, item) => sum + safeNumber(item.amount),
-              0
-            )
-          );
-
-          const saldoPendiente = Math.max(
-            0,
-            round2(cardTotal - totalAbonado)
-          );
-
-          const montoCiclo = saldoPendiente;
-          total += saldoPendiente;
-          return {
-            id: card.id,
-            name: card.name || "Tarjeta",
-            order: card.order ?? index,
-            totalCiclo: round2(cardTotal),
-            abonadoCiclo: totalAbonado,
-            saldoPendiente,
-            montoCiclo
-          };
-        })
-        .filter((card) => safeNumber(card.montoCiclo) > 0);
-
-      return { cardsDueThisCycle: round2(total), fallbackCards, tarjetasDelCiclo };
-    };
-
-
-    const getPreviousCardCycleWindowForPaymentMonth = (card, now = new Date()) => {
-      const anchor = startOfMonth(now);
-      const cycleMode = normalizeCycleMode(card?.cycleMode);
-      const closingDay = parseCycleDay(card?.closingDay ?? card?.cutDay);
-
-      if(cycleMode === "billing" && closingDay){
-        const currentAtMonthStart = getCycleWindow(anchor, closingDay);
-        const previousEndExclusive = new Date(currentAtMonthStart.start);
-        const previousStart = safeDay(
-          previousEndExclusive.getFullYear(),
-          previousEndExclusive.getMonth() - 1,
-          closingDay
-        );
-        return { start: previousStart, endExclusive: previousEndExclusive, source: "billing" };
-      }
-
-      const previousMonthDate = new Date(anchor.getFullYear(), anchor.getMonth() - 1, 1, 0, 0, 0, 0);
-      const monthKey = getPeriodKeyFromDate(previousMonthDate);
-      const monthRange = getMonthRange(monthKey);
-      return { start: monthRange.startDate, endExclusive: monthRange.endExclusive, source: "calendar" };
-    };
-
-    const getPaymentApplicationWindow = (card, statementWindow, now = new Date()) => {
-      const statementEndInclusive = new Date(statementWindow.endExclusive.getTime() - 1);
-      const payDay = parseCycleDay(card?.dueDay ?? card?.payDay);
-      if(payDay){
-        const paymentWindow = getPaymentWindow(statementEndInclusive, payDay);
-        return { start: paymentWindow.payStart, endExclusive: paymentWindow.payEndExclusive };
-      }
-
-      const visibleMonth = getMonthRange(getPeriodKeyFromDate(now));
-      return { start: statementWindow.endExclusive, endExclusive: visibleMonth.endExclusive };
-    };
-
-    const computeCardsPaymentDueThisMonth = ({ now = new Date(), owner = OWNER } = {}) => {
-      const scopeFilter = getActiveScopeFilter();
-      const scoped = FEATURES.coupleMode ? applyScopeFilter(trans, scopeFilter) : trans;
-      const ownerItems = scoped.filter((item) => !item?.owner || item.owner === owner);
-      const fallbackCards = [];
-      let total = 0;
-
-      const tarjetasDelCiclo = cards
-        .map((card, index) => ({ card, index }))
-        .sort((a, b) => {
-          const aOrder = Number.isFinite(Number(a.card?.order)) ? Number(a.card.order) : 999;
-          const bOrder = Number.isFinite(Number(b.card?.order)) ? Number(b.card.order) : 999;
-          if(aOrder !== bOrder) return aOrder - bOrder;
-          return a.index - b.index;
-        })
-        .map(({ card, index }) => {
-          const window = getPreviousCardCycleWindowForPaymentMonth(card, now);
-          if(window.source === "calendar") fallbackCards.push(card.name || "Tarjeta");
-          const endInclusive = new Date(window.endExclusive.getTime() - 1);
-          const paymentWindow = getPaymentApplicationWindow(card, window, now);
-
-          const cardExpenses = ownerItems.filter((item) => {
-            if(item?.type !== "expense") return false;
-            if(item?.cardId !== card.id) return false;
-            return true;
-          });
-
-          let cardTotal = 0;
-          cardExpenses.forEach((item) => {
-            if(item?.isMsi === true){
-              const expanded = expandMsiToMonthlyCharges(item, window.start, endInclusive);
-              cardTotal += expanded.reduce((acc, row) => acc + safeNumber(row.computedAmount), 0);
-              return;
-            }
-            const d = toDate(item?.date);
-            if(d >= window.start && d < window.endExclusive){
-              cardTotal += getEffectiveAmount(item);
-            }
-          });
-
-          const pagosTarjeta = ownerItems.filter((item) => {
-            const amount = Number(item.amount || 0);
-            const d = toDate(item?.date);
-            return (
-              getMovementKind(item) === "payment" &&
-              matchesTargetCard(item, card.id) &&
-              amount > 0 &&
-              d >= paymentWindow.start &&
-              d < paymentWindow.endExclusive
-            );
-          });
-
-          const totalAbonado = round2(pagosTarjeta.reduce((sum, item) => sum + safeNumber(item.amount), 0));
-          const saldoPendiente = Math.max(0, round2(cardTotal - totalAbonado));
-          const montoCiclo = saldoPendiente;
-          total += saldoPendiente;
-
-          return {
-            id: card.id,
-            name: card.name || "Tarjeta",
-            order: card.order ?? index,
-            totalCiclo: round2(cardTotal),
-            abonadoCiclo: totalAbonado,
-            saldoPendiente,
-            montoCiclo
-          };
-        })
-        .filter((card) => safeNumber(card.montoCiclo) > 0);
-
-      return { cardsDueThisCycle: round2(total), fallbackCards, tarjetasDelCiclo };
     };
 
     const refreshCardsCycleBudget = async ({ monthKey = getLocalMonthKey(), silent = false } = {}) => {
       try{
         const budgetSnap = await getDoc(getMonthBudgetRef(monthKey));
         const availableForCards = budgetSnap.exists() ? safeNumber(budgetSnap.data()?.availableForCards) : 0;
-        const cardPaymentPlan = budgetSnap.exists() ? (budgetSnap.data()?.cardPaymentPlan || {}) : {};
-        cardsBudgetState = { monthKey, availableForCards, cardPaymentPlan };
-        const computed = computeManualCardPaymentPlanForMonth({ monthKey, cards, budget: cardsBudgetState });
-        renderCardsCycleBudget({ monthKey, availableForCards, cardPaymentPlan, ...computed });
+        cardsBudgetState = { monthKey, availableForCards };
+        const computed = computeCardPaymentsFromGoals({ monthKey, cards, trans, owner: OWNER });
+        renderCardsCycleBudget({ monthKey, availableForCards, ...computed });
       }catch(err){
         if(!silent){
           showToast("No se pudo cargar Disponible para pago.", { tone: "warning", duration: 2600 });
@@ -7176,53 +7023,6 @@
         if(statusEl) statusEl.textContent = "";
       }, 1600);
       await refreshCardsCycleBudget({ monthKey, silent: true });
-    };
-
-
-    const saveCardPaymentPlanAmount = async (cardId, value) => {
-      const monthKey = cardsBudgetState.monthKey || getLocalMonthKey();
-      const nextPlan = { ...(cardsBudgetState.cardPaymentPlan || {}) };
-      nextPlan[cardId] = round2(safeNumber(value));
-      cardsBudgetState = { ...cardsBudgetState, monthKey, cardPaymentPlan: nextPlan };
-
-      await setDoc(getMonthBudgetRef(monthKey), {
-        monthKey,
-        cardPaymentPlan: nextPlan,
-        updatedAt: serverTimestamp()
-      }, { merge: true });
-
-      const statusEl = document.getElementById("cards-available-status");
-      if(statusEl) statusEl.textContent = "Guardado";
-      setTimeout(() => {
-        if(statusEl) statusEl.textContent = "";
-      }, 1600);
-    };
-
-    const bindCardPaymentPlanInputs = () => {
-      document.querySelectorAll('.card-payment-plan-input').forEach((input) => {
-        input.addEventListener('input', () => {
-          const cardId = input.dataset.cardId;
-          if(!cardId) return;
-          const value = safeNumber(input.value);
-          const nextPlan = { ...(cardsBudgetState.cardPaymentPlan || {}), [cardId]: round2(value) };
-          cardsBudgetState = { ...cardsBudgetState, cardPaymentPlan: nextPlan };
-          const computed = computeManualCardPaymentPlanForMonth({
-            monthKey: cardsBudgetState.monthKey || getLocalMonthKey(),
-            cards,
-            budget: cardsBudgetState
-          });
-          renderCardsCycleBudget({
-            monthKey: cardsBudgetState.monthKey || getLocalMonthKey(),
-            availableForCards: cardsBudgetState.availableForCards,
-            cardPaymentPlan: nextPlan,
-            ...computed
-          });
-          const statusEl = document.getElementById('cards-available-status');
-          if(statusEl) statusEl.textContent = 'Sin guardar';
-          clearTimeout(cardsBudgetSaveTimer);
-          cardsBudgetSaveTimer = setTimeout(() => saveCardPaymentPlanAmount(cardId, value), 700);
-        });
-      });
     };
 
     function getMonthRange(periodKey){
@@ -9038,8 +8838,8 @@ const getHistoryContext = () => {
       const value = safeNumber(cardsAvailableInput.value);
       const monthKey = getLocalMonthKey();
       cardsBudgetState = { ...cardsBudgetState, monthKey, availableForCards: value };
-      const computed = computeManualCardPaymentPlanForMonth({ monthKey, cards, budget: cardsBudgetState });
-      renderCardsCycleBudget({ monthKey, availableForCards: value, cardPaymentPlan: cardsBudgetState.cardPaymentPlan, ...computed });
+      const computed = computeCardPaymentsFromGoals({ monthKey, cards, trans, owner: OWNER });
+      renderCardsCycleBudget({ monthKey, availableForCards: value, ...computed });
       const statusEl = document.getElementById('cards-available-status');
       if(statusEl) statusEl.textContent = 'Sin guardar';
       clearTimeout(cardsBudgetSaveTimer);
