@@ -6705,18 +6705,28 @@
       list.innerHTML = monitorNote + coverage.tarjetasCoverage.map((card) => {
         const tone = getCoverageTone(card.pct);
         const pctLabel = `${round2(card.pct).toFixed(1)}%`;
-        const statusLine = card.status === 'covered'
-          ? `<div class="text-success small fw-bold">Cubierta</div><div class="text-muted small sensitive-data">${formatMoney(card.debe)} de ${formatMoney(card.debe)} cubierto</div>`
-          : card.cubierto > 0
-            ? `<div class="text-muted small sensitive-data">Cubierto ${formatMoney(card.cubierto)} de ${formatMoney(card.debe)}</div><div class="text-danger small fw-bold sensitive-data">Faltan ${formatMoney(card.faltan)}</div>`
-            : `<div class="text-muted small fw-bold">Sin cash asignado aún</div><div class="text-danger small fw-bold sensitive-data">Faltan ${formatMoney(card.faltan)}</div>`;
+        const abonoBadge = safeNumber(card.abonadoCiclo) > 0
+          ? '<span class="badge-status bg-success-light">Abono registrado</span>'
+          : '';
+        const statusLine = `
+          <div class="small text-muted">Debe del ciclo</div>
+          <div class="fw-bold text-danger sensitive-data">${formatMoney(card.totalCiclo ?? card.debe)}</div>
+          <div class="small text-muted mt-1">Abonado</div>
+          <div class="fw-bold text-success sensitive-data">${formatMoney(card.abonadoCiclo)}</div>
+          <div class="small text-muted mt-1">Pendiente</div>
+          <div class="fw-bold text-danger sensitive-data">${formatMoney(card.saldoPendiente ?? card.debe)}</div>
+          <div class="small text-muted mt-1">Cash asignado</div>
+          <div class="fw-bold sensitive-data">${formatMoney(card.cubierto)}</div>
+          <div class="small text-muted mt-1">Faltan</div>
+          <div class="fw-bold ${card.faltan > 0 ? 'text-danger' : 'text-success'} sensitive-data">${formatMoney(card.faltan)}</div>
+        `;
 
         return `
           <div class="mb-3">
             <div class="d-flex justify-content-between align-items-start gap-2 mb-1">
               <div>
                 <div class="small fw-bold">${card.name || 'Tarjeta'}</div>
-                <div class="small text-muted sensitive-data">Debe ${formatMoney(card.debe)} · Cubierto ${formatMoney(card.cubierto)}</div>
+                <div class="mt-1 mb-2">${abonoBadge}</div>
                 ${statusLine}
               </div>
               <span class="small fw-bold ${tone.textClass}">${pctLabel}</span>
@@ -6983,12 +6993,40 @@
             }
           });
 
-          const montoCiclo = round2(cardTotal);
-          total += montoCiclo;
+          const pagosTarjeta = ownerItems.filter((item) => {
+            const amount = Number(item.amount || 0);
+            const d = toDate(item?.date);
+
+            return (
+              getMovementKind(item) === "payment" &&
+              matchesTargetCard(item, card.id) &&
+              amount > 0 &&
+              d >= window.start &&
+              d < window.endExclusive
+            );
+          });
+
+          const totalAbonado = round2(
+            pagosTarjeta.reduce(
+              (sum, item) => sum + safeNumber(item.amount),
+              0
+            )
+          );
+
+          const saldoPendiente = Math.max(
+            0,
+            round2(cardTotal - totalAbonado)
+          );
+
+          const montoCiclo = saldoPendiente;
+          total += saldoPendiente;
           return {
             id: card.id,
             name: card.name || "Tarjeta",
             order: card.order ?? index,
+            totalCiclo: round2(cardTotal),
+            abonadoCiclo: totalAbonado,
+            saldoPendiente,
             montoCiclo
           };
         })
