@@ -44,6 +44,24 @@ service cloud.firestore {
       allow update, delete: if canUpdateOrDelete();
     }
 
+
+    match /users/{userId}/notificationPreferences/{prefId} {
+      allow read, write: if userId in ["haru", "yair"];
+    }
+
+    match /users/{userId}/pushDevices/{deviceId} {
+      allow read, delete: if userId in ["haru", "yair"];
+      allow create, update: if userId in ["haru", "yair"]
+        && request.resource.data.token is string
+        && request.resource.data.enabled is bool;
+    }
+
+    match /notificationLog/{notificationId} {
+      allow read: if resource.data.userId in ["haru", "yair"];
+      allow create, update, delete: if false;
+    }
+
+
     // Default deny
     match /{document=**} {
       allow read, write: if false;
