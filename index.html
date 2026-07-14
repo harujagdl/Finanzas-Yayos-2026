@@ -2105,6 +2105,8 @@
     let loaderTimeoutId = null;
     let loaderSoftTimeoutId = null;
     let appReady = false;
+    const startupState = { cardsLoading: true, transactionsLoading: true, seedLoading: false, cardsReady: false, transactionsReady: false, error: null };
+    const isDevMode = () => ['localhost','127.0.0.1'].includes(window.location.hostname) || new URLSearchParams(window.location.search).get('debug') === '1';
 
     function clearLoaderTimers(){
       if(loaderSoftTimeoutId) clearTimeout(loaderSoftTimeoutId);
@@ -2123,11 +2125,17 @@
 
     function startLoader(){
       appReady = false;
+      startupState.cardsLoading = true;
+      startupState.transactionsLoading = true;
+      startupState.cardsReady = false;
+      startupState.transactionsReady = false;
+      startupState.error = null;
       clearLoaderTimers();
       if(loaderEl) loaderEl.style.display='flex';
       if(loaderError) loaderError.classList.add('d-none');
       setLoaderMsg("Cargando...");
       const isOffline = !navigator.onLine;
+      if(typeof setSyncStatus === 'function') setSyncStatus(isOffline ? "local" : "syncing", { silent: true });
       if(isOffline){
         setLoaderMsg("Estás offline. Mostrando datos disponibles.");
       }
@@ -2156,6 +2164,7 @@
     }
 
     function showStartupError(message, { canRetry = true } = {}){
+      startupState.error = message;
       console.error(message);
       if(loaderEl) loaderEl.style.display='flex';
       if(loaderErrorMsg){
@@ -2175,11 +2184,41 @@
       }
     }
 
-    function markAppReady(source){
-      if(appReady) return;
+    function logStartupDiagnostics(source){
+      if(!isDevMode()) return;
+      console.table({
+        source,
+        authLoading: false,
+        workspaceLoading: false,
+        cardsLoading: startupState.cardsLoading,
+        transactionsLoading: startupState.transactionsLoading,
+        msiLoading: false,
+        userReady: !!OWNER,
+        workspaceReady: true,
+        firestoreReady: startupState.cardsReady && startupState.transactionsReady,
+        seedLoading: startupState.seedLoading
+      });
+    }
+
+    function markStartupLoaded(source){
+      if(source === "cards"){
+        startupState.cardsLoading = false;
+        startupState.cardsReady = true;
+      }
+      if(source === "expenses"){
+        startupState.transactionsLoading = false;
+        startupState.transactionsReady = true;
+      }
+      logStartupDiagnostics(source);
+      if(appReady || !startupState.cardsReady || !startupState.transactionsReady) return;
       appReady = true;
       stopLoader();
-      console.info("App ready via", source);
+      if(typeof setSyncStatus === 'function') setSyncStatus(navigator.onLine ? "synced" : "local", { silent: true });
+      console.info("App ready via essential Firestore snapshots", source);
+    }
+
+    function markAppReady(source){
+      markStartupLoaded(source);
     }
 
     function getFirestoreErrorMessage(err){
@@ -2300,8 +2339,9 @@
       summaryPendingRecalc.clear();
       startLoader();
       setLoaderMsg("Cambiando usuario...");
-      await seedPresetCards();
       resubscribeAll();
+      startupState.seedLoading = true;
+      seedPresetCards().finally(()=>{ startupState.seedLoading = false; logStartupDiagnostics('seed'); });
       periodDataCache = { owner: null, scope: null, data: null };
       refreshAll({ owner: OWNER, force: true, source: "owner-change" });
       updateMonthlyFootprint({ force: true });
@@ -2575,14 +2615,17 @@
       const syncEl = document.getElementById("sync-status");
       const timeEl = document.getElementById("sync-time");
       if(!syncEl) return;
+      if(status === "synced" && !appReady){
+        status = navigator.onLine ? "syncing" : "local";
+      }
       appState.syncStatus = status;
       setState({ syncStatus: status });
       syncEl.classList.remove("syncing", "synced", "local");
       if(status === "syncing"){
-        syncEl.textContent = "Sincronizando...";
+        syncEl.textContent = appReady ? "Sincronizando..." : "Conectando...";
         syncEl.classList.add("syncing");
       }else if(status === "local"){
-        syncEl.textContent = "Guardado local";
+        syncEl.textContent = appReady ? "Guardado local" : "Datos locales";
         syncEl.classList.add("local");
       }else{
         syncEl.textContent = "Sincronizado";
@@ -10480,7 +10523,10 @@ const getHistoryContext = () => {
         if(scope === 'liquidated-in-period' && (r.statusKey !== 'liquidated' || r.endDate < startKey || r.endDate > endKey)) return false;
         if(scope === 'active-in-period' && !(r.purchaseDate <= endKey && (r.endDate === '—' || r.endDate >= startKey))) return false;
         return true;
-      }).sort((a,b)=>({active:0,liquidated:1,cancelled:2}[a.statusKey]-({active:0,liquidated:1,cancelled:2}[b.statusKey]) || String(a.endDate).localeCompare(String(b.endDate)) || a.responsibleLabel.localeCompare(b.responsibleLabel) || a.card.localeCompare(b.card) || a.concept.localeCompare(b.concept));
+      }).sort((a,b)=>{
+        const statusOrder = { active:0, liquidated:1, cancelled:2 };
+        return (statusOrder[a.statusKey] ?? 99) - (statusOrder[b.statusKey] ?? 99) || String(a.endDate).localeCompare(String(b.endDate)) || a.responsibleLabel.localeCompare(b.responsibleLabel) || a.card.localeCompare(b.card) || a.concept.localeCompare(b.concept);
+      });
     };
     const matchesExportStatus = (item = {}, statusFilter = 'all') => {
       const status = String(item.status || item.state || 'confirmed').toLowerCase();
@@ -10644,8 +10690,9 @@ const getHistoryContext = () => {
     setupGoalEvents();
     document.body.classList.toggle('ios-fallback', isProbablyIOS() || !window.PointerEvent);
     startLoader();
-    await seedPresetCards();
     resubscribeAll();
+    startupState.seedLoading = true;
+    seedPresetCards().finally(()=>{ startupState.seedLoading = false; logStartupDiagnostics('seed'); });
     subscribeCategories();
     if(window.location.pathname === '/finanzas-familiares') nav('view-family');
     window.addEventListener('popstate', () => {
