@@ -1880,8 +1880,8 @@
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
           </div>
           <div class="row g-3">
-            <div class="col-md-6"><label class="small fw-bold text-muted mb-1">Periodo</label><select id="export-period" class="form-select" onchange="syncExportCustomRange()"><option value="current-month">Mes actual</option><option value="previous-month">Mes anterior</option><option value="last-3-months">Últimos 3 meses</option><option value="last-6-months">Últimos 6 meses</option><option value="current-year">Año actual</option><option value="custom">Rango personalizado</option></select></div>
-            <div class="col-md-6"><label class="small fw-bold text-muted mb-1">Responsable</label><select id="export-owner" class="form-select"><option value="all">Todos</option><option value="yair">Yair</option><option value="haru">Haru</option><option value="shared">Compartidos</option></select></div>
+            <div class="col-md-6 export-period-field"><label class="small fw-bold text-muted mb-1">Periodo</label><select id="export-period" class="form-select" onchange="syncExportCustomRange(); updateMsiExportPreview();"><option value="current-month">Mes actual</option><option value="previous-month">Mes anterior</option><option value="last-3-months">Últimos 3 meses</option><option value="last-6-months">Últimos 6 meses</option><option value="current-year">Año actual</option><option value="custom">Rango personalizado</option></select></div>
+            <div class="col-md-6"><label class="small fw-bold text-muted mb-1">Responsable</label><select id="export-owner" class="form-select" onchange="updateMsiExportPreview()"><option value="all">Todos</option><option value="yair">Yair</option><option value="haru">Haru</option><option value="shared">Compartidos</option></select></div>
             <div class="col-md-6 export-custom-range d-none"><label class="small fw-bold text-muted mb-1">Desde</label><input id="export-start" type="date" class="form-control"></div>
             <div class="col-md-6 export-custom-range d-none"><label class="small fw-bold text-muted mb-1">Hasta</label><input id="export-end" type="date" class="form-control"></div>
             <div class="col-md-6"><label class="small fw-bold text-muted mb-1">Estado de movimientos</label><select id="export-status" class="form-select"><option value="all">Todos</option><option value="confirmed">Confirmados</option><option value="pending">Pendientes</option><option value="exclude-cancelled">Excluir cancelados</option></select></div>
@@ -1895,6 +1895,22 @@
               <div class="col-sm-6 col-lg-4"><div class="form-check"><input class="form-check-input" type="checkbox" id="export-categories" checked><label class="form-check-label" for="export-categories">Categorías</label></div></div>
               <div class="col-sm-6 col-lg-4"><div class="form-check"><input class="form-check-input" type="checkbox" id="export-dashboard"><label class="form-check-label" for="export-dashboard">Dashboard gráfico</label></div></div>
             </div></div>
+            <div class="col-12" id="export-msi-config">
+              <div class="fw-bold mb-2">¿Qué compras a MSI deseas incluir?</div>
+              <div class="row g-2 mb-2">
+                <div class="col-md-6"><label class="form-check border rounded-3 p-2 h-100"><input class="form-check-input ms-0 me-2" type="radio" name="export-msi-scope" value="current-active" checked onchange="syncMsiExportConfig()"><span class="fw-bold">MSI activos actualmente</span><div class="text-muted small">Incluye compromisos con mensualidades pendientes, aunque hayan comenzado en años anteriores.</div></label></div>
+                <div class="col-md-6"><label class="form-check border rounded-3 p-2 h-100"><input class="form-check-input ms-0 me-2" type="radio" name="export-msi-scope" value="active-in-period" onchange="syncMsiExportConfig()"><span class="fw-bold">MSI vigentes durante el periodo</span><div class="text-muted small">Compromisos activos en algún momento del rango seleccionado.</div></label></div>
+                <div class="col-md-6"><label class="form-check border rounded-3 p-2 h-100"><input class="form-check-input ms-0 me-2" type="radio" name="export-msi-scope" value="started-in-period" onchange="syncMsiExportConfig()"><span class="fw-bold">MSI iniciados en el periodo</span><div class="text-muted small">Solo compras cuya fecha inicial pertenece al rango.</div></label></div>
+                <div class="col-md-6"><label class="form-check border rounded-3 p-2 h-100"><input class="form-check-input ms-0 me-2" type="radio" name="export-msi-scope" value="liquidated-in-period" onchange="syncMsiExportConfig()"><span class="fw-bold">MSI liquidados durante el periodo</span><div class="text-muted small">Compras cuya última mensualidad o liquidación ocurrió dentro del rango.</div></label></div>
+                <div class="col-md-6"><label class="form-check border rounded-3 p-2 h-100"><input class="form-check-input ms-0 me-2" type="radio" name="export-msi-scope" value="all-history" onchange="syncMsiExportConfig()"><span class="fw-bold">Todos los MSI históricos</span><div class="text-muted small">Incluye activos y liquidados sin limitar por fecha.</div></label></div>
+              </div>
+              <div class="d-flex flex-wrap gap-3 mb-2" id="export-msi-statuses">
+                <label class="form-check"><input class="form-check-input" type="checkbox" id="export-msi-status-active" checked onchange="updateMsiExportPreview()"> Activos</label>
+                <label class="form-check"><input class="form-check-input" type="checkbox" id="export-msi-status-liquidated" onchange="updateMsiExportPreview()"> Liquidados</label>
+                <label class="form-check"><input class="form-check-input" type="checkbox" id="export-msi-status-cancelled" onchange="updateMsiExportPreview()"> Cancelados</label>
+              </div>
+              <div class="border rounded-3 p-2 bg-light" id="export-msi-preview">Se exportarán 0 MSI</div>
+            </div>
           </div>
           <div id="export-status-text" class="text-muted small mt-3">Listo para generar.</div>
           <div class="d-flex justify-content-end gap-2 mt-4"><button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancelar</button><button type="button" id="btn-generate-excel" class="btn btn-success fw-bold" onclick="generateFinancialExcel()"><i class="fas fa-file-excel me-1"></i> Generar Excel</button></div>
@@ -10320,6 +10336,8 @@ const getHistoryContext = () => {
       currency: document.getElementById('export-currency')?.value || 'MXN',
       start: document.getElementById('export-start')?.value || '',
       end: document.getElementById('export-end')?.value || '',
+      msiScope: getSelectedMsiExportScope(),
+      msiStatuses: getSelectedMsiExportStatuses(),
       include: {
         summary: document.getElementById('export-summary')?.checked !== false,
         movements: document.getElementById('export-movements')?.checked !== false,
@@ -10362,16 +10380,108 @@ const getHistoryContext = () => {
       document.querySelectorAll('.export-custom-range').forEach((el)=>el.classList.toggle('d-none', !isCustom));
     };
 
+    window.syncMsiExportConfig = () => {
+      const scope = getSelectedMsiExportScope();
+      const needsPeriod = ['active-in-period','started-in-period','liquidated-in-period'].includes(scope);
+      document.querySelectorAll('.export-period-field').forEach((el)=>el.classList.toggle('d-none', !needsPeriod));
+      if(scope === 'current-active'){
+        const active = document.getElementById('export-msi-status-active');
+        const liquidated = document.getElementById('export-msi-status-liquidated');
+        const cancelled = document.getElementById('export-msi-status-cancelled');
+        if(active) { active.checked = true; active.disabled = true; }
+        [liquidated, cancelled].forEach((el)=>{ if(el){ el.checked = false; el.disabled = true; } });
+      }else{
+        ['export-msi-status-active','export-msi-status-liquidated','export-msi-status-cancelled'].forEach((id)=>{ const el=document.getElementById(id); if(el) el.disabled = false; });
+        if(scope === 'liquidated-in-period'){
+          const active = document.getElementById('export-msi-status-active');
+          const liquidated = document.getElementById('export-msi-status-liquidated');
+          if(active) active.checked = false;
+          if(liquidated) liquidated.checked = true;
+        }
+      }
+      syncExportCustomRange();
+      if(!needsPeriod) document.querySelectorAll('.export-custom-range').forEach((el)=>el.classList.add('d-none'));
+      updateMsiExportPreview();
+    };
+
+    window.updateMsiExportPreview = () => {
+      const el = document.getElementById('export-msi-preview');
+      if(!el || typeof selectMsiPurchases !== 'function') return;
+      const options = getExportOptionsFromModal();
+      const rows = getNormalizedMsiRecords(options);
+      const byOwner = rows.reduce((acc,r)=>{ acc[r.responsibleLabel]=(acc[r.responsibleLabel]||0)+1; return acc; },{});
+      const byStatus = rows.reduce((acc,r)=>{ acc[r.statusLabel]=(acc[r.statusLabel]||0)+1; return acc; },{});
+      const monthly = round2(rows.reduce((s,r)=>s+safeNumber(r.monthly),0));
+      const pending = round2(rows.reduce((s,r)=>s+safeNumber(r.pendingBalance),0));
+      const preview = rows.slice(0, 10).map((r)=>`<li>${familyEscape(r.concept)} · ${familyEscape(r.responsibleLabel)} · ${familyEscape(r.card)} · ${familyEscape(r.statusLabel)}</li>`).join('');
+      el.innerHTML = `<div class="fw-bold">Se exportarán ${rows.length} MSI</div><div class="small text-muted">${Object.entries(byOwner).map(([k,v])=>`${v} de ${familyEscape(k)}`).join(' · ') || 'Sin registros'}<br>${Object.entries(byStatus).map(([k,v])=>`${v} ${familyEscape(k.toLowerCase())}`).join(' · ')}<br>Carga mensual total: ${formatMoney(monthly)} · Saldo pendiente estimado: ${formatMoney(pending)}</div><details class="mt-1"><summary class="small fw-bold">Ver registros incluidos</summary><ul class="small mb-0 mt-1">${preview || '<li>Sin resultados</li>'}</ul></details>`;
+    };
+
     window.openFinancialExportModal = () => {
       if(document.getElementById('export-start')) document.getElementById('export-start').value = toLocalYYYYMMDD(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
       if(document.getElementById('export-end')) document.getElementById('export-end').value = toLocalYYYYMMDD(new Date());
-      syncExportCustomRange();
+      syncMsiExportConfig();
       const modalEl = document.getElementById('modalFinancialExport');
       if(window.bootstrap && modalEl) new bootstrap.Modal(modalEl).show(); else generateFinancialExcel();
     };
 
+    const LIQUIDATION_TOLERANCE = 0.05;
     const normalizeExportOwner = (t = {}) => t.scope === 'shared' || t.owner === 'both' || t.shared === true ? 'shared' : (t.owner || OWNER);
-    const matchesExportOwner = (item = {}, ownerFilter = 'all') => ownerFilter === 'all' || normalizeExportOwner(item) === ownerFilter || item.owner === ownerFilter;
+    const getResponsibleKey = (msi = {}) => normalizeFamilyOwner(msi.familyOwner || msi.responsibleId || msi.ownerId || msi.userId || msi.responsible || msi.participantId || msi.financialOwner || msi.owner || OWNER);
+    const resolveResponsibleLabel = (msi = {}, workspaceMembers = []) => {
+      const raw = msi.familyOwner || msi.responsibleId || msi.ownerId || msi.userId || msi.responsible || msi.participantId || msi.financialOwner || msi.owner || '';
+      const member = (workspaceMembers || []).find((m)=>[m?.id, m?.uid, m?.key, m?.owner].includes(raw));
+      if(member?.name || member?.displayName) return member.name || member.displayName;
+      const key = normalizeFamilyOwner(raw || getResponsibleKey(msi));
+      if(key === 'yair') return 'Yair';
+      if(key === 'haru') return 'Haru';
+      if(key === 'compartido') return 'Compartido';
+      return 'Sin responsable';
+    };
+    const matchesExportOwner = (item = {}, ownerFilter = 'all') => ownerFilter === 'all' || getResponsibleKey(item) === normalizeFamilyOwner(ownerFilter) || normalizeExportOwner(item) === ownerFilter || item.owner === ownerFilter;
+    const getSelectedMsiExportScope = () => document.querySelector('input[name="export-msi-scope"]:checked')?.value || 'current-active';
+    const getSelectedMsiExportStatuses = () => {
+      const statuses = [];
+      if(document.getElementById('export-msi-status-active')?.checked) statuses.push('active');
+      if(document.getElementById('export-msi-status-liquidated')?.checked) statuses.push('liquidated');
+      if(document.getElementById('export-msi-status-cancelled')?.checked) statuses.push('cancelled');
+      return statuses.length ? statuses : ['active'];
+    };
+    const getNormalizedMsiRecords = (options = {}) => {
+      const range = getExportPeriodRange(options);
+      const source = options.owner === 'all' && Array.isArray(familyTrans) && familyTrans.length ? familyTrans : trans;
+      const anchor = range.endInclusive || new Date();
+      const rows = selectMsiPurchases({ activeFilter: 'all', source }).map((item)=>{
+        const meta = getMsiExportMeta(item, anchor);
+        const pendingRaw = meta.remainingBalance ?? ((meta.remainingInstallments ?? item.remaining ?? 0) * (meta.monthlyAmount ?? item.monthlyPayment ?? item.monthly ?? 0));
+        const pendingBalance = Math.abs(safeNumber(pendingRaw)) <= LIQUIDATION_TOLERANCE ? 0 : Math.max(round2(safeNumber(pendingRaw)), 0);
+        const normalizedStatus = String(item.status || item.state || '').toLowerCase();
+        const isCancelled = ['cancelled','canceled','cancelado','deleted','eliminado'].includes(normalizedStatus);
+        const currentInstallment = Number(meta.currentInstallment ?? item.passed ?? 0);
+        const totalInstallments = Number(meta.term ?? item.totalMonths ?? item.msiMonths ?? 0);
+        const remainingInstallments = Math.max(0, Number(meta.remainingInstallments ?? item.remaining ?? Math.max(totalInstallments - currentInstallment, 0)));
+        const isLiquidated = !isCancelled && (['done','finished','liquidated','liquidado'].includes(normalizedStatus) || currentInstallment >= totalInstallments || remainingInstallments <= 0 || pendingBalance === 0);
+        const statusKey = isCancelled ? 'cancelled' : (isLiquidated ? 'liquidated' : 'active');
+        const statusLabel = statusKey === 'active' ? 'Activo' : statusKey === 'liquidated' ? 'Liquidado' : 'Cancelado';
+        const pmt = resolvePaymentDisplay(item);
+        const purchaseDate = toLocalYYYYMMDD(getMovementDate(item));
+        const endDate = meta.estimatedEndDate || (item.endDate ? toLocalYYYYMMDD(toDate(item.endDate)) : '');
+        return { source:item, statusKey, statusLabel, responsibleKey:getResponsibleKey(item), responsibleLabel:resolveResponsibleLabel(item), concept:item.concept||item.title||'—', category:item.category||'Sin categoría', card:pmt.cardName||item.cardName||'—', monthly:round2(meta.monthlyAmount || item.msiMonthly || item.monthlyPayment || item.amount || 0), currentInstallment, totalInstallments, remainingInstallments, pendingBalance, purchaseDate, endDate:endDate || '—', needsReview:!!(item.needsReviewMsi || item.msiIncomplete || meta.needsReview), reviewReason:item.msiReviewReason || (item.msiIncomplete ? 'MSI incompleto' : meta.needsReview ? 'Validar mensualidad calculada' : '' ) };
+      });
+      const scope = options.msiScope || getSelectedMsiExportScope();
+      const statuses = options.msiStatuses || getSelectedMsiExportStatuses();
+      const startKey = toLocalYYYYMMDD(range.startDate);
+      const endKey = toLocalYYYYMMDD(range.endInclusive);
+      return rows.filter((r)=>{
+        if(options.owner !== 'all' && r.responsibleKey !== normalizeFamilyOwner(options.owner)) return false;
+        if(scope === 'current-active' && r.statusKey !== 'active') return false;
+        else if(scope !== 'current-active' && !statuses.includes(r.statusKey)) return false;
+        if(scope === 'started-in-period' && (r.purchaseDate < startKey || r.purchaseDate > endKey)) return false;
+        if(scope === 'liquidated-in-period' && (r.statusKey !== 'liquidated' || r.endDate < startKey || r.endDate > endKey)) return false;
+        if(scope === 'active-in-period' && !(r.purchaseDate <= endKey && (r.endDate === '—' || r.endDate >= startKey))) return false;
+        return true;
+      }).sort((a,b)=>({active:0,liquidated:1,cancelled:2}[a.statusKey]-({active:0,liquidated:1,cancelled:2}[b.statusKey]) || String(a.endDate).localeCompare(String(b.endDate)) || a.responsibleLabel.localeCompare(b.responsibleLabel) || a.card.localeCompare(b.card) || a.concept.localeCompare(b.concept));
+    };
     const matchesExportStatus = (item = {}, statusFilter = 'all') => {
       const status = String(item.status || item.state || 'confirmed').toLowerCase();
       if(statusFilter === 'confirmed') return ['confirmed','confirmado','paid','pagado','active',''].includes(status);
@@ -10432,7 +10542,8 @@ const getHistoryContext = () => {
       const byCategoryMap = new Map();
       expenseItems.forEach((t)=>{ const k=t.category||'Sin categoría'; const row=byCategoryMap.get(k)||{ Categoría:k, 'Total de movimientos':0, 'Gasto total':0 }; row['Total de movimientos']+=1; row['Gasto total']=round2(row['Gasto total']+safeNumber(t.amount)); byCategoryMap.set(k,row); });
       const byCategory = [...byCategoryMap.values()].map((r)=>({ ...r, 'Porcentaje del gasto': totalExpense ? r['Gasto total']/totalExpense : 0, 'Promedio por movimiento': r['Total de movimientos'] ? round2(r['Gasto total']/r['Total de movimientos']) : 0, 'Responsable principal': '—', Presupuesto: 0, Diferencia: round2(0-r['Gasto total']) }));
-      const msiRows = expenseItems.filter((t)=>t?.isMsi === true).map((t)=>{ const meta=getMsiExportMeta(t, range.endInclusive); const p=resolvePaymentDisplay(t); return { Responsable: normalizeExportOwner(t), Concepto: t.concept||'—', Categoría:t.category||'Sin categoría', 'Banco/Tarjeta':p.cardName||'—', Mensualidad: round2(meta.monthlyAmount || t.msiMonthly || t.amount || 0), 'Mensualidad actual': meta.currentInstallment || 0, 'Total de mensualidades': meta.term || t.msiMonths || 0, 'Mensualidades restantes': meta.remainingInstallments || 0, 'Saldo pendiente estimado': round2(meta.remainingBalance || 0), 'Fecha de compra': toLocalYYYYMMDD(getMovementDate(t)), 'Fecha final estimada': meta.estimatedEndDate || '—', Estado: (meta.remainingInstallments || 0) > 0 ? 'Activo' : 'Liquidado' }; });
+      const normalizedMsiRecords = getNormalizedMsiRecords(options);
+      const msiRows = normalizedMsiRecords.map((r)=>({ Responsable:r.responsibleLabel, Concepto:r.concept, Categoría:r.category, 'Banco/Tarjeta':r.card, Mensualidad:r.monthly, 'Mensualidad actual':r.currentInstallment, 'Total de mensualidades':r.totalInstallments, 'Mensualidades restantes':r.remainingInstallments, 'Saldo pendiente estimado':r.pendingBalance, 'Fecha de compra':r.purchaseDate, 'Fecha final estimada':r.endDate, Estado:r.statusLabel, 'Requiere revisión':r.needsReview ? 'Sí' : 'No', 'Motivo de revisión':r.reviewReason || '—' }));
       const cardRows = (cards || []).filter((c)=>matchesExportOwner(c, options.owner)).map((c)=>{ const payGoal=safeNumber(c.payGoal||c.balance); const abonado=paymentItems.filter((t)=>matchesTargetCard(t,c.id)).reduce((s,t)=>s+safeNumber(t.amount),0); const pendiente=Math.max(round2(payGoal-abonado),0); const cash=safeNumber(cardsBudgetState.availableForCards); return { Responsable:c.owner||OWNER, 'Banco/Tarjeta':c.name||'Tarjeta', 'Últimos 4 dígitos':c.last4||'—', 'Fecha de corte':c.closingDay??c.cutDay??'—', 'Fecha límite de pago':c.dueDay??c.payDay??'—', 'Pago para no generar intereses':payGoal, Abonado:round2(abonado), Pendiente:pendiente, 'Cash asignado':cash, Cobertura: pendiente ? Math.min(cash/pendiente,1) : 1, Estado: pendiente ? 'Pendiente' : 'Cubierta', 'Ciclo vigente': range.label }; });
       const movementRows = items.map((t)=>{ const p=resolvePaymentDisplay(t); const d=getMovementDate(t); return { Fecha:toLocalYYYYMMDD(d), Responsable:normalizeExportOwner(t), Tipo:t.type||getMovementKind(t), Categoría:t.category||'Sin categoría', Concepto:t.concept||'—', Descripción:t.description||'—', 'Método de pago':p.paymentMethod||'—', 'Banco/Tarjeta':p.cardName||'—', Monto:round2(safeNumber(t.amount)), Compartido:normalizeExportOwner(t)==='shared'?'Sí':'No', Estado:t.status||'Confirmado', Notas:t.notes||t.note||'—', Mes:d.getMonth()+1, Año:d.getFullYear(), 'ID interno opcional':t.id||'—' }; });
       const budgetRows = byCategory.map((c)=>{ const pct = c.Presupuesto ? c['Gasto total']/c.Presupuesto : 0; return { Responsable:'Todos', Categoría:c.Categoría, Presupuesto:c.Presupuesto, 'Gasto real':c['Gasto total'], Diferencia:round2(c.Presupuesto-c['Gasto total']), 'Porcentaje consumido':pct, 'Proyección mensual':c['Gasto total'], Estado:pct>=1.1?'Crítico':pct>=1?'Excedido':pct>=.9?'Preventivo':'Saludable' }; });
@@ -10447,7 +10558,15 @@ const getHistoryContext = () => {
       if(options.include.summary){ addWorkbookSheet(wb, 'Resumen familiar', ['Métrica','Valor'], data.summaryRows); addWorkbookSheet(wb, 'Resumen responsables', ['Responsable','Ingresos','Gastos','Balance','Participación del gasto'], data.ownerRows, { money:['Ingresos','Gastos','Balance'], percent:['Participación del gasto'] }); }
       if(options.include.movements) addWorkbookSheet(wb, 'Movimientos', ['Fecha','Responsable','Tipo','Categoría','Concepto','Descripción','Método de pago','Banco/Tarjeta','Monto','Compartido','Estado','Notas','Mes','Año','ID interno opcional'], data.movementRows, { money:['Monto'], date:['Fecha'] });
       if(options.include.cards) addWorkbookSheet(wb, 'Tarjetas', ['Responsable','Banco/Tarjeta','Últimos 4 dígitos','Fecha de corte','Fecha límite de pago','Pago para no generar intereses','Abonado','Pendiente','Cash asignado','Cobertura','Estado','Ciclo vigente'], data.cardRows, { money:['Pago para no generar intereses','Abonado','Pendiente','Cash asignado'], percent:['Cobertura'] });
-      if(options.include.msi) addWorkbookSheet(wb, 'MSI Activos', ['Responsable','Concepto','Categoría','Banco/Tarjeta','Mensualidad','Mensualidad actual','Total de mensualidades','Mensualidades restantes','Saldo pendiente estimado','Fecha de compra','Fecha final estimada','Estado'], data.msiRows, { money:['Mensualidad','Saldo pendiente estimado'], date:['Fecha de compra','Fecha final estimada'] });
+      if(options.include.msi) {
+        const previewCount = getNormalizedMsiRecords(options).length;
+        const exportCount = data.msiRows.length;
+        console.info('[export][msi] conteos', { previewCount, exportCount, sheetRows: exportCount });
+        if(previewCount !== exportCount) throw new Error('La vista previa MSI no coincide con las filas de exportación. No se generó el archivo.');
+        const states = [...new Set(data.msiRows.map((r)=>r.Estado))];
+        const sheetName = states.length === 1 && states[0] === 'Activo' ? 'MSI Activos' : states.length === 1 && states[0] === 'Liquidado' ? 'MSI Liquidados' : 'MSI';
+        addWorkbookSheet(wb, sheetName, ['Responsable','Concepto','Categoría','Banco/Tarjeta','Mensualidad','Mensualidad actual','Total de mensualidades','Mensualidades restantes','Saldo pendiente estimado','Fecha de compra','Fecha final estimada','Estado','Requiere revisión','Motivo de revisión'], data.msiRows, { money:['Mensualidad','Saldo pendiente estimado'], date:['Fecha de compra','Fecha final estimada'] });
+      }
       if(options.include.budget) addWorkbookSheet(wb, 'Presupuesto', ['Responsable','Categoría','Presupuesto','Gasto real','Diferencia','Porcentaje consumido','Proyección mensual','Estado'], data.budgetRows, { money:['Presupuesto','Gasto real','Diferencia','Proyección mensual'], percent:['Porcentaje consumido'] });
       if(options.include.categories) addWorkbookSheet(wb, 'Categorías', ['Categoría','Total de movimientos','Gasto total','Porcentaje del gasto','Promedio por movimiento','Responsable principal','Presupuesto','Diferencia'], data.categoryRows, { money:['Gasto total','Promedio por movimiento','Presupuesto','Diferencia'], percent:['Porcentaje del gasto'] });
       if(options.include.dashboard) addWorkbookSheet(wb, 'Dashboard', ['Indicador','Valor'], data.summaryRows.map((r)=>({ Indicador:r.Métrica, Valor:r.Valor })));
