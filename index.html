@@ -392,6 +392,14 @@
       white-space:normal;
       word-break:keep-all;
     }
+    .family-filtered-summary{
+      display:grid; gap:12px; grid-template-columns:repeat(4, minmax(0, 1fr));
+    }
+    .family-filtered-summary .card-box{padding:14px 16px;}
+    .family-filtered-summary .kpi-label{font-size:.66rem; letter-spacing:.6px;}
+    .family-filtered-summary .kpi-value{font-size:clamp(1.05rem, 2.4vw, 1.55rem);}
+    .family-filtered-summary .kpi-subtext{color:var(--text-muted); font-size:.72rem; font-weight:700; margin-top:3px;}
+    .family-filtered-empty{border-top:1px solid var(--border-color); margin-top:12px; padding-top:10px;}
     .family-table-wrap{overflow-x:auto; -webkit-overflow-scrolling:touch;}
     .family-mobile-list{display:none;}
     .family-table{min-width:760px; margin:0;}
@@ -420,6 +428,7 @@
     @media (max-width: 720px){
       #view-family{padding-bottom:110px !important;}
       .family-summary-grid{grid-template-columns:repeat(2, minmax(0, 1fr));}
+      .family-filtered-summary{grid-template-columns:repeat(2, minmax(0, 1fr));}
       .family-summary-grid .card-box{padding:14px 12px;}
       .family-summary-grid .kpi-label{font-size:.64rem; letter-spacing:.55px;}
       .family-summary-grid .kpi-value{font-size:clamp(1.05rem, 5vw, 1.55rem);}
@@ -1462,6 +1471,25 @@
     </div>
 
     <div class="card-box">
+      <div class="d-flex justify-content-between align-items-start gap-2 mb-3">
+        <div>
+          <div class="kpi-label" id="family-filtered-summary-caption">Resumen de todos los MSI visibles</div>
+          <h6 class="fw-bold m-0">Resumen de la selección actual</h6>
+        </div>
+        <span class="text-muted small" id="family-filtered-summary-range">Próximo / último término</span>
+      </div>
+      <div id="family-filtered-summary" class="family-filtered-summary">
+        <div class="card-box m-0"><div class="kpi-label">Carga mensual</div><div class="kpi-value sensitive-data">$0.00</div></div>
+        <div class="card-box m-0"><div class="kpi-label">MSI encontrados</div><div class="kpi-value">0</div></div>
+        <div class="card-box m-0"><div class="kpi-label">Saldo pendiente</div><div class="kpi-value sensitive-data">$0.00</div></div>
+        <div class="card-box m-0"><div class="kpi-label">Próximo término</div><div class="kpi-value">—</div></div>
+      </div>
+      <div id="family-filtered-empty" class="family-filtered-empty text-muted small d-none">
+        No hay MSI que coincidan con los filtros seleccionados.
+      </div>
+    </div>
+
+    <div class="card-box">
       <div class="d-flex justify-content-between align-items-center mb-2">
         <h6 class="fw-bold m-0">MSI activos</h6>
         <span class="text-muted small" id="family-msi-count">0</span>
@@ -1766,6 +1794,7 @@
     import { getLocalMonthKey, isValidMonthKey, addMonths } from "./utils/monthKey.js";
     import { getCycleWindow, safeDay } from "./utils/billingCycle.js";
     import { calculateMsiProgressCore } from "./utils/msiProgress.js";
+    import { calculateFilteredFamilyMsiMetrics } from "./utils/familyMsiMetrics.js";
     import {
       getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc,
       query, orderBy, writeBatch, Timestamp, enableIndexedDbPersistence, where, getDocs, getDoc, setDoc,
@@ -5845,6 +5874,17 @@
       const label = new Date(year, month - 1, 1).toLocaleDateString("es-MX", { month:"long", year:"numeric" });
       return label.charAt(0).toUpperCase() + label.slice(1);
     };
+    const formatFamilyDateLong = (dateKey) => {
+      const date = parseLocalYYYYMMDDToDate(dateKey);
+      if(!date) return "—";
+      return date.toLocaleDateString("es-MX", { day:"2-digit", month:"short", year:"numeric" });
+    };
+    const hasActiveFamilyFilters = () => (
+      familyFilters.status !== "active" ||
+      familyFilters.owner !== "all" ||
+      familyFilters.card !== "all" ||
+      !!String(familyFilters.search || "").trim()
+    );
     const addFamilyMonths = (date, months) => new Date(date.getFullYear(), date.getMonth() + months, 1, 12, 0, 0, 0);
     function calculateFamilyMsiEndDate(startDate, monthsTotal){
       const start = startDate instanceof Date ? startDate : parseLocalYYYYMMDDToDate(startDate);
@@ -5940,6 +5980,49 @@
         summary.total += payment;
       });
       return summary;
+    }
+    function renderFilteredFamilyMsiSummary(filteredMsiItems = [], summary = calculateFamilyMsiSummary(familyMsiFromTransactions)){
+      const metrics = calculateFilteredFamilyMsiMetrics(filteredMsiItems, { familyMonthlyLoad: summary.total });
+      const summaryEl = document.getElementById("family-filtered-summary");
+      const captionEl = document.getElementById("family-filtered-summary-caption");
+      const rangeEl = document.getElementById("family-filtered-summary-range");
+      const emptyEl = document.getElementById("family-filtered-empty");
+      if(captionEl){
+        captionEl.textContent = hasActiveFamilyFilters()
+          ? "Resumen de la selección actual"
+          : "Resumen de todos los MSI visibles";
+      }
+      if(rangeEl){
+        rangeEl.textContent = metrics.latestEndDate
+          ? `Último término: ${formatFamilyDateLong(metrics.latestEndDate)}`
+          : "Próximo / último término";
+      }
+      if(summaryEl){
+        const shareLabel = metrics.familyLoadShare != null
+          ? `<div class="kpi-subtext">${metrics.familyLoadShare.toFixed(1)}% de la carga mensual familiar</div>`
+          : "";
+        summaryEl.innerHTML = `
+          <div class="card-box m-0">
+            <div class="kpi-label">Carga mensual</div>
+            <div class="kpi-value sensitive-data">${formatMoney(metrics.monthlyLoad)}</div>
+            ${shareLabel}
+          </div>
+          <div class="card-box m-0">
+            <div class="kpi-label">MSI encontrados</div>
+            <div class="kpi-value">${metrics.activeCount}</div>
+          </div>
+          <div class="card-box m-0">
+            <div class="kpi-label">Saldo pendiente</div>
+            <div class="kpi-value sensitive-data">${formatMoney(metrics.pendingBalance)}</div>
+          </div>
+          <div class="card-box m-0">
+            <div class="kpi-label">Próximo término</div>
+            <div class="kpi-value">${formatFamilyDateLong(metrics.nearestEndDate)}</div>
+            ${metrics.latestEndDate ? `<div class="kpi-subtext">Último: ${formatFamilyDateLong(metrics.latestEndDate)}</div>` : ""}
+          </div>
+        `;
+      }
+      if(emptyEl) emptyEl.classList.toggle("d-none", metrics.activeCount > 0);
     }
     function calculateFamilyMsiProjection(msiList = [], monthsAhead = 18){
       const base = addFamilyMonths(new Date(), 0);
@@ -6091,10 +6174,11 @@
       }
       syncFamilyFilterControls();
       renderFamilyCardFilterOptions(familyMsiFromTransactions);
-      const filteredList = getFilteredFamilyMsiList();
-      const sorted = [...filteredList].sort((a,b)=>(a.endDate || "9999-12-31").localeCompare(b.endDate || "9999-12-31"));
-      const activeVisibleList = sorted.filter(item => getFamilyMonthsRemaining(item) > 0);
-      const finishedVisibleList = sorted.filter(item => getFamilyMonthsRemaining(item) <= 0);
+      const filteredMsiItems = getFilteredFamilyMsiList();
+      renderFilteredFamilyMsiSummary(filteredMsiItems, summary);
+      const sorted = [...filteredMsiItems].sort((a,b)=>(a.endDate || "9999-12-31").localeCompare(b.endDate || "9999-12-31"));
+      const activeVisibleList = familyFilters.status === "finished" ? [] : sorted.filter(item => getFamilyMonthsRemaining(item) > 0);
+      const finishedVisibleList = familyFilters.status === "active" ? [] : sorted.filter(item => getFamilyMonthsRemaining(item) <= 0);
       const countEl = document.getElementById("family-msi-count");
       if(countEl) countEl.textContent = `${activeVisibleList.length} activos / ${finishedVisibleList.length} liquidados / ${familyMsiFromTransactions.length} totales`;
       const finishedCountEl = document.getElementById("family-msi-finished-count");
