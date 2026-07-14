@@ -268,15 +268,6 @@
       font-size:1.5rem; transition:border-color .3s, transform .1s; z-index:101; cursor:pointer;
     }
     .fab-main:active{transform:translateY(-12px) scale(.95);}
-    .quick-fab{
-      position:fixed; right:18px; bottom:92px;
-      width:56px; height:56px; border-radius:50%;
-      background:var(--primary); color:#fff; border:none;
-      box-shadow:0 8px 20px rgba(37,99,235,.4);
-      display:flex; align-items:center; justify-content:center;
-      z-index:120; font-size:1.4rem;
-    }
-    .quick-fab:active{transform:scale(.96);}
     .quick-sheet-backdrop{
       position:fixed; inset:0; background:var(--sheet-overlay);
       opacity:0; pointer-events:none; transition:opacity .2s ease;
@@ -1560,9 +1551,6 @@
     </div>
   </div>
 
-  <button class="quick-fab" type="button" onclick="openQuickAdd()" aria-label="Agregar gasto rápido">
-    <i class="fas fa-plus"></i>
-  </button>
   <div id="quick-sheet-backdrop" class="quick-sheet-backdrop" onclick="closeQuickAdd()"></div>
   <div id="quick-sheet" class="quick-sheet" role="dialog" aria-modal="true" aria-labelledby="quick-sheet-title">
     <div class="quick-sheet-handle"></div>
@@ -2546,9 +2534,9 @@
 
     const getCoverageTone = (pct) => {
       const value = safeNumber(pct);
-      if(value >= 100) return { className: 'bg-success', textClass: 'text-success', label: 'Tarjetas cubiertas' };
+      if(value >= 100) return { className: 'bg-success', textClass: 'text-success', label: 'Cubierto' };
       if(value >= 80) return { className: 'bg-warning', textClass: 'text-warning', label: 'Casi cubierto' };
-      if(value >= 40) return { className: 'bg-warning', textClass: 'text-warning', label: 'Cobertura ajustada' };
+      if(value >= 50) return { className: 'bg-warning', textClass: 'text-warning', label: 'Cobertura parcial' };
       return { className: 'bg-danger', textClass: 'text-danger', label: 'Riesgo de pago' };
     };
 
@@ -6818,8 +6806,98 @@
       return safeDay(dueDate.getFullYear(), dueDate.getMonth() + cutMonthOffset, cutDay);
     };
 
+    const getCardCycleId = (cardId, monthKey) => `${cardId || "card"}:${monthKey}`;
+
+    const getCardStatementId = (cardId, monthKey) => `statement:${getCardCycleId(cardId, monthKey)}`;
+
+    const getCardPaymentCycleMeta = (card, monthKey) => {
+      const dueDate = getCardDueDateForMonth(card, monthKey);
+      const cutDate = getCardCutDateForDueMonth(card, monthKey);
+      const cycleId = getCardCycleId(card?.id, monthKey);
+      const statementId = getCardStatementId(card?.id, monthKey);
+      let paymentStart = null;
+      let paymentEndExclusive = null;
+
+      if(cutDate && dueDate){
+        paymentStart = new Date(cutDate);
+        paymentStart.setDate(paymentStart.getDate() + 1);
+        paymentStart.setHours(0, 0, 0, 0);
+        paymentEndExclusive = new Date(dueDate);
+        paymentEndExclusive.setDate(paymentEndExclusive.getDate() + 1);
+        paymentEndExclusive.setHours(0, 0, 0, 0);
+      }else{
+        const monthRange = getMonthRange(monthKey);
+        paymentStart = monthRange.startDate;
+        paymentEndExclusive = monthRange.endExclusive;
+      }
+
+      return { cycleId, statementId, dueDate, cutDate, paymentStart, paymentEndExclusive };
+    };
+
+    const isPaymentAppliedToCardCycle = (payment = {}, card = {}, cycleMeta = {}) => {
+      if(getMovementKind(payment) !== "payment") return false;
+      if(!matchesTargetCard(payment, card?.id)) return false;
+      if(safeNumber(payment?.amount ?? payment?.monto ?? 0) <= 0) return false;
+
+      const explicitCycleId = payment?.cycleId || payment?.cardCycleId || payment?.statementCycleId;
+      if(explicitCycleId) return explicitCycleId === cycleMeta.cycleId;
+
+      const explicitStatementId = payment?.statementId || payment?.cardStatementId;
+      if(explicitStatementId) return explicitStatementId === cycleMeta.statementId;
+
+      const paymentDate = toDate(payment?.date);
+      if(Number.isNaN(paymentDate.getTime())) return false;
+      return paymentDate >= cycleMeta.paymentStart && paymentDate < cycleMeta.paymentEndExclusive;
+    };
+
+    const calculateCardCycleBalance = ({
+      statementAmount = 0,
+      payments = [],
+      card = {},
+      cycleId = "",
+      statementId = "",
+      cutoffDate = null,
+      dueDate = null,
+      paymentStart = null,
+      paymentEndExclusive = null
+    } = {}) => {
+      const cycleMeta = {
+        cycleId,
+        statementId,
+        cutDate: cutoffDate,
+        dueDate,
+        paymentStart,
+        paymentEndExclusive
+      };
+      const seenPayments = new Set();
+      const paidAmount = round2((payments || []).reduce((sum, payment) => {
+        const paymentKey = payment?.id || `${payment?.date || ""}:${payment?.amount ?? payment?.monto ?? ""}:${payment?.targetCardId || payment?.cardId || ""}`;
+        if(seenPayments.has(paymentKey)) return sum;
+        if(!isPaymentAppliedToCardCycle(payment, card, cycleMeta)) return sum;
+        seenPayments.add(paymentKey);
+        return sum + safeNumber(payment?.amount ?? payment?.monto ?? 0);
+      }, 0));
+      const normalizedStatementAmount = Math.max(0, round2(safeNumber(statementAmount)));
+      return {
+        statementAmount: normalizedStatementAmount,
+        paidAmount,
+        pendingAmount: Math.max(0, round2(normalizedStatementAmount - paidAmount))
+      };
+    };
+
+    const getCardPaymentCycleMetaForPaymentDate = (card, paymentDate = new Date()) => {
+      const date = toDate(paymentDate);
+      const anchor = Number.isNaN(date.getTime()) ? new Date() : date;
+      for(let offset = -1; offset <= 1; offset += 1){
+        const candidate = new Date(anchor.getFullYear(), anchor.getMonth() + offset, 1, 12, 0, 0, 0);
+        const monthKey = getPeriodKeyFromDate(candidate);
+        const meta = getCardPaymentCycleMeta(card, monthKey);
+        if(anchor >= meta.paymentStart && anchor < meta.paymentEndExclusive) return meta;
+      }
+      return getCardPaymentCycleMeta(card, getPeriodKeyFromDate(anchor));
+    };
+
     const computeCardPaymentsFromGoals = ({ monthKey = getLocalMonthKey(), cards = [], trans: transactions = [], owner = OWNER } = {}) => {
-      const monthRange = getMonthRange(monthKey);
       const scopeFilter = getActiveScopeFilter();
       const scoped = FEATURES.coupleMode ? applyScopeFilter(transactions || [], scopeFilter) : (transactions || []);
       const ownerItems = scoped.filter((item) => !item?.owner || item.owner === owner);
@@ -6836,52 +6914,20 @@
       const tarjetasDelCiclo = orderedCards
         .map(({ card, index }) => {
           const payGoal = Math.max(0, round2(safeNumber(card?.payGoal)));
-          const dueDate = getCardDueDateForMonth(card, monthKey);
-          const cutDate = getCardCutDateForDueMonth(card, monthKey);
-          const abonadoCiclo = round2(ownerItems.reduce((sum, item) => {
-            const amount = safeNumber(item?.amount ?? item?.monto ?? 0);
-            const d = toDate(item?.date);
-            const movementText = [
-              item?.type,
-              item?.category,
-              item?.subtype,
-              item?.concept,
-              item?.description,
-              item?.label,
-              item?.movementType,
-              item?.paymentMethod
-            ].map(normalizeText).join(" ");
-            const looksLikeCardPayment =
-              getMovementKind(item) === "payment" ||
-              (typeof isCardPaymentMovement === "function" && isCardPaymentMovement(item)) ||
-              movementText.includes("abono capital") ||
-              movementText.includes("abono a capital") ||
-              movementText.includes("pago tarjeta") ||
-              movementText.includes("pago tdc") ||
-              movementText.includes("pago a tarjeta") ||
-              movementText.includes("pago c/ transferencia") ||
-              movementText.includes("pago con transferencia");
-
-            if(!looksLikeCardPayment) return sum;
-            if(!matchesTargetCard(item, card.id)) return sum;
-            if(amount <= 0) return sum;
-            if(d < monthRange.startDate || d >= monthRange.endExclusive) return sum;
-            if(DEBUG_RENDER && looksLikeCardPayment && matchesTargetCard(item, card.id)){
-              console.log("[CARDS_CYCLE_ABONO_MATCH]", {
-                card: card.name,
-                id: item.id,
-                amount,
-                type: item.type,
-                category: item.category,
-                subtype: item.subtype,
-                targetCardId: item.targetCardId,
-                targetCardName: item.targetCardName,
-                date: item.date
-              });
-            }
-            return sum + amount;
-          }, 0));
-          const saldoPendiente = Math.max(0, round2(payGoal - abonadoCiclo));
+          const cycleMeta = getCardPaymentCycleMeta(card, monthKey);
+          const balance = calculateCardCycleBalance({
+            statementAmount: payGoal,
+            payments: ownerItems,
+            card,
+            cycleId: cycleMeta.cycleId,
+            statementId: cycleMeta.statementId,
+            cutoffDate: cycleMeta.cutDate,
+            dueDate: cycleMeta.dueDate,
+            paymentStart: cycleMeta.paymentStart,
+            paymentEndExclusive: cycleMeta.paymentEndExclusive
+          });
+          const abonadoCiclo = balance.paidAmount;
+          const saldoPendiente = balance.pendingAmount;
 
           return {
             id: card.id,
@@ -6891,9 +6937,11 @@
             abonadoCiclo,
             saldoPendiente,
             montoCiclo: saldoPendiente,
-            dueDate,
-            dueDateLabel: dueDate ? formatShortDate(dueDate) : "Sin fecha de pago configurada",
-            cutDate
+            cycleId: cycleMeta.cycleId,
+            statementId: cycleMeta.statementId,
+            dueDate: cycleMeta.dueDate,
+            dueDateLabel: cycleMeta.dueDate ? formatShortDate(cycleMeta.dueDate) : "Sin fecha de pago configurada",
+            cutDate: cycleMeta.cutDate
           };
         })
         .filter((card) => safeNumber(card.payGoal) > 0 || safeNumber(card.abonadoCiclo) > 0 || safeNumber(card.montoCiclo) > 0);
@@ -6957,7 +7005,9 @@
         ? 'Configura el pago para no generar intereses en cada tarjeta para calcular la cobertura.'
         : coverage.faltanteTotal > 0
           ? `Te faltan ${formatMoney(coverage.faltanteTotal)} para cubrir tus tarjetas del mes.`
-          : `Tus tarjetas del mes están cubiertas. Sobrante: ${formatMoney(coverage.sobrante)}.`;
+          : coverage.sobrante > 0
+            ? `Tus tarjetas del mes están cubiertas y te sobran ${formatMoney(coverage.sobrante)}.`
+            : 'Tus tarjetas del mes están completamente cubiertas.';
 
       summaryEl.innerHTML = `
         <div class="row g-2 mt-2">
@@ -9242,6 +9292,9 @@ const getHistoryContext = () => {
         const normalizedConcept = isAbonoMovement
           ? (document.getElementById('t-concept').value || `Abono a ${cObj?.name || "tarjeta"}`)
           : document.getElementById('t-concept').value;
+        const selectedPaymentCycleMeta = isAbonoMovement && cObj
+          ? getCardPaymentCycleMetaForPaymentDate(cObj, parseLocalYYYYMMDDToDate(dateValue) || new Date())
+          : null;
 
         const payloadDraft = {
           owner: OWNER,
@@ -9253,6 +9306,10 @@ const getHistoryContext = () => {
           cardName: (!isAbonoMovement && requiresCardSelection(type, paymentMethod)) ? cObj.name : null,
           targetCardId: isAbonoMovement && cid ? cid : null,
           targetCardName: isAbonoMovement && cObj ? cObj.name : null,
+          cycleId: selectedPaymentCycleMeta?.cycleId || null,
+          statementId: selectedPaymentCycleMeta?.statementId || null,
+          cardCycleId: selectedPaymentCycleMeta?.cycleId || null,
+          cardStatementId: selectedPaymentCycleMeta?.statementId || null,
           concept: normalizedConcept,
           category: normalizedCategory,
           categoryId: selectedCategoryObj?.id || null,
