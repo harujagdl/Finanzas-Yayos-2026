@@ -232,6 +232,14 @@
     .msi-legend .green{background:#16a34a;}
     .msi-legend .yellow{background:#f59e0b;}
     .msi-legend .red{background:#dc2626;}
+    .msi-legend .gray{background:#94a3b8;}
+    .msi-date-cell{display:flex; flex-direction:column; gap:3px; min-width:118px;}
+    .msi-date-main{display:inline-flex; align-items:center; gap:7px; white-space:nowrap;}
+    .msi-date-dot{width:9px; height:9px; border-radius:999px; display:inline-block; flex:0 0 9px;}
+    .msi-sort-button{border:0; background:transparent; color:inherit; font:inherit; font-weight:800; padding:0; display:inline-flex; align-items:center; gap:4px;}
+    .msi-sort-button:hover{color:var(--primary);}
+    .msi-mobile-sort{display:none;}
+    @media (max-width: 767.98px){.msi-mobile-sort{display:block;}.msi-date-cell{min-width:0;}}
     @keyframes spin{to{transform:rotate(360deg);}}
     @keyframes shimmer{to{transform:translateX(100%);}}
 
@@ -1514,6 +1522,18 @@
           <label class="form-label small text-muted mb-1" for="family-filter-search">Búsqueda</label>
           <input class="form-control form-control-sm" id="family-filter-search" type="search" placeholder="Buscar concepto...">
         </div>
+        <div class="col-12 col-md-3 msi-mobile-sort">
+          <label class="form-label small text-muted mb-1" for="family-msi-sort-mobile">Ordenar por</label>
+          <select class="form-select form-select-sm" id="family-msi-sort-mobile">
+            <option value="asc" selected>Próximos a terminar</option>
+            <option value="desc">Más lejanos</option>
+          </select>
+        </div>
+      </div>
+      <div class="msi-legend justify-content-start mt-3 mb-0" aria-label="Leyenda de meses restantes MSI">
+        <span><i class="dot green"></i> 1-3 meses</span>
+        <span><i class="dot yellow"></i> 4-6 meses</span>
+        <span><i class="dot red"></i> +6 meses</span>
       </div>
     </div>
 
@@ -1543,7 +1563,7 @@
       </div>
       <div class="family-table-wrap">
         <table class="table family-table">
-          <thead><tr><th>Responsable</th><th>Concepto</th><th>Banco/Tarjeta</th><th>Mensualidad</th><th>Mensualidad actual</th><th>Inicio</th><th>Fecha fin</th><th>Estado</th></tr></thead>
+          <thead><tr><th>Responsable</th><th>Concepto</th><th>Banco/Tarjeta</th><th>Mensualidad</th><th>Mensualidad actual</th><th>Inicio</th><th><button type="button" class="msi-sort-button" onclick="toggleFamilyMsiEndDateSort()" aria-label="Ordenar por fecha fin">Fecha fin <span id="family-msi-sort-icon">↑</span></button></th><th>Estado</th></tr></thead>
           <tbody id="family-msi-table"><tr><td colspan="8" class="text-muted small">Cargando...</td></tr></tbody>
         </table>
       </div>
@@ -2367,6 +2387,7 @@
       card: "all",
       search: ""
     };
+    let endDateSortDirection = "asc";
     let goalsLoading = true;
     let goalsError = null;
     let goalsLastErrorToastAt = 0;
@@ -6115,10 +6136,47 @@
     };
 
     const parseLocalYYYYMMDDToDate = (value, { hour = 12 } = {}) => {
-      if(!value) return null;
-      const [year, month, day] = value.split("-").map(Number);
+      if(!value || typeof value !== "string") return null;
+      const match = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if(!match) return null;
+      const [, yearRaw, monthRaw, dayRaw] = match;
+      const year = Number(yearRaw), month = Number(monthRaw), day = Number(dayRaw);
       if(!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
       return new Date(year, month - 1, day, hour, 0, 0, 0);
+    };
+
+    const normalizeLocalDate = (value) => {
+      if(!value) return null;
+      if(value?.toDate) return normalizeLocalDate(value.toDate());
+      if(value instanceof Date) return Number.isNaN(value.getTime()) ? null : new Date(value.getFullYear(), value.getMonth(), value.getDate(), 12, 0, 0, 0);
+      if(typeof value === "string"){
+        const local = parseLocalYYYYMMDDToDate(value);
+        if(local) return local;
+        const parsed = new Date(value);
+        return Number.isNaN(parsed.getTime()) ? null : new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate(), 12, 0, 0, 0);
+      }
+      if(typeof value === "number"){
+        const parsed = new Date(value);
+        return Number.isNaN(parsed.getTime()) ? null : new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate(), 12, 0, 0, 0);
+      }
+      return null;
+    };
+
+    function formatLocalDate(value, { locale = "es-MX", format = "dd-MMM-yyyy", fallback = "—" } = {}){
+      const date = normalizeLocalDate(value);
+      if(!date) return fallback;
+      if(format === "dd-MMM-yyyy"){
+        const day = String(date.getDate()).padStart(2, "0");
+        const month = date.toLocaleDateString(locale, { month: "short" }).replace(/\.$/, "").toLowerCase();
+        return `${day}-${month}-${date.getFullYear()}`;
+      }
+      return date.toLocaleDateString(locale);
+    }
+
+    const formatMsiDate = (date, fallback = "Fecha pendiente") => formatLocalDate(date, { locale: "es-MX", format: "dd-MMM-yyyy", fallback });
+    const getNormalizedEndDateMs = (item = {}) => {
+      const date = normalizeLocalDate(item.endDate || calculateFamilyMsiEndDate(item.startDate, item.monthsTotal));
+      return date ? date.getTime() : Number.POSITIVE_INFINITY;
     };
 
     const getLocalDateInputValue = (date = new Date()) => toLocalYYYYMMDD(date);
@@ -6148,11 +6206,7 @@
       const label = new Date(year, month - 1, 1).toLocaleDateString("es-MX", { month:"long", year:"numeric" });
       return label.charAt(0).toUpperCase() + label.slice(1);
     };
-    const formatFamilyDateLong = (dateKey) => {
-      const date = parseLocalYYYYMMDDToDate(dateKey);
-      if(!date) return "—";
-      return date.toLocaleDateString("es-MX", { day:"2-digit", month:"short", year:"numeric" });
-    };
+    const formatFamilyDateLong = (dateKey) => formatMsiDate(dateKey, "—");
     const hasActiveFamilyFilters = () => (
       familyFilters.status !== "active" ||
       familyFilters.owner !== "all" ||
@@ -6336,6 +6390,47 @@
         statusLabel: isActive ? (item.needsReview ? "Activo · revisar" : "Activo") : "Liquidado"
       };
     }
+    function getFamilyMsiEndDateView(item = {}){
+      const remaining = getFamilyMonthsRemaining(item);
+      const endDateValue = item.endDate || calculateFamilyMsiEndDate(item.startDate, item.monthsTotal);
+      const hasValidEndDate = Number.isFinite(getNormalizedEndDateMs({ ...item, endDate: endDateValue }));
+      const range = getMsiTimeRange(remaining, { liquidated: item.status !== "active" || remaining <= 0, insufficient: !hasValidEndDate || item.needsReview });
+      const monthsText = remaining === 1 ? "1 mes restante" : `${remaining} meses restantes`;
+      const ariaLabel = hasValidEndDate && remaining > 0
+        ? `Termina en ${remaining} ${remaining === 1 ? "mes" : "meses"}, ${range.ariaLabel}`
+        : "Fecha pendiente, sin rango activo";
+      return {
+        dateLabel: hasValidEndDate ? formatMsiDate(endDateValue) : "Fecha pendiente",
+        helperLabel: remaining > 0 && hasValidEndDate ? monthsText : range.label,
+        range,
+        ariaLabel
+      };
+    }
+    function renderFamilyMsiEndDateCell(item = {}){
+      const view = getFamilyMsiEndDateView(item);
+      return `
+        <span class="msi-date-cell" aria-label="${familyEscape(view.ariaLabel)}">
+          <span class="msi-date-main"><i class="msi-date-dot" style="background:${view.range.color};" aria-hidden="true"></i>${familyEscape(view.dateLabel)}</span>
+          <small class="text-muted">${familyEscape(view.helperLabel)}</small>
+        </span>`;
+    }
+    function sortFamilyMsiItems(items = [], direction = endDateSortDirection){
+      const dir = direction === "desc" ? -1 : 1;
+      return [...items].sort((a,b)=>{
+        const aDate = getNormalizedEndDateMs(a);
+        const bDate = getNormalizedEndDateMs(b);
+        const aMissing = !Number.isFinite(aDate);
+        const bMissing = !Number.isFinite(bDate);
+        if(aMissing && !bMissing) return 1;
+        if(!aMissing && bMissing) return -1;
+        if(aDate !== bDate) return (aDate - bDate) * dir;
+        const remainingDiff = getFamilyMonthsRemaining(a) - getFamilyMonthsRemaining(b);
+        if(remainingDiff !== 0) return remainingDiff;
+        const ownerDiff = (FAMILY_OWNER_LABELS[getFamilyOwnerForMsi(a)] || "").localeCompare(FAMILY_OWNER_LABELS[getFamilyOwnerForMsi(b)] || "", "es-MX");
+        if(ownerDiff !== 0) return ownerDiff;
+        return String(a.title || "").localeCompare(String(b.title || ""), "es-MX");
+      });
+    }
     function renderFamilyMsiTableRows(items = [], emptyMessage = "No hay MSI que coincidan con los filtros seleccionados."){
       return items.length ? items.map((item)=>{
         const owner = getFamilyOwnerForMsi(item);
@@ -6351,8 +6446,8 @@
             <td>${familyEscape(item.cardName || "—")}</td>
             <td class="sensitive-data fw-bold">${formatMoney(item.monthlyPayment)}</td>
             <td>${familyEscape(item.monthsPaid)}/${familyEscape(item.monthsTotal)}<div class="text-muted small">${getFamilyMonthsRemaining(item)} restantes</div></td>
-            <td>${familyEscape(item.startDate || "—")}</td>
-            <td>${familyEscape(item.endDate || calculateFamilyMsiEndDate(item.startDate, item.monthsTotal) || "—")}</td>
+            <td>${familyEscape(formatMsiDate(item.startDate, "—"))}</td>
+            <td>${renderFamilyMsiEndDateCell(item)}</td>
             <td><span class="badge-status ${statusClass}">${statusLabel}</span></td>
           </tr>`;
       }).join("") : `<tr><td colspan="8" class="text-muted small">${familyEscape(emptyMessage)}</td></tr>`;
@@ -6397,7 +6492,7 @@
             </div>
             <div class="family-msi-card-field">
               <small>Fecha fin</small>
-              <strong>${familyEscape(item.endDate || calculateFamilyMsiEndDate(item.startDate, item.monthsTotal) || "—")}</strong>
+              <strong>${renderFamilyMsiEndDateCell(item)}</strong>
             </div>
           </div>
         </article>`;
@@ -6450,7 +6545,12 @@
       renderFamilyCardFilterOptions(familyMsiFromTransactions);
       const filteredMsiItems = getFilteredFamilyMsiList();
       renderFilteredFamilyMsiSummary(filteredMsiItems, summary);
-      const sorted = [...filteredMsiItems].sort((a,b)=>(a.endDate || "9999-12-31").localeCompare(b.endDate || "9999-12-31"));
+      const filteredAndSortedMsiItems = sortFamilyMsiItems(filteredMsiItems, endDateSortDirection);
+      const sorted = filteredAndSortedMsiItems;
+      const sortIcon = document.getElementById("family-msi-sort-icon");
+      if(sortIcon) sortIcon.textContent = endDateSortDirection === "asc" ? "↑" : "↓";
+      const mobileSort = document.getElementById("family-msi-sort-mobile");
+      if(mobileSort && mobileSort.value !== endDateSortDirection) mobileSort.value = endDateSortDirection;
       const activeVisibleList = familyFilters.status === "finished" ? [] : sorted.filter(item => getFamilyMonthsRemaining(item) > 0);
       const finishedVisibleList = familyFilters.status === "active" ? [] : sorted.filter(item => getFamilyMonthsRemaining(item) <= 0);
       const countEl = document.getElementById("family-msi-count");
@@ -6536,6 +6636,16 @@
 
     document.getElementById("family-filter-search")?.addEventListener("input", e => {
       familyFilters.search = e.target.value;
+      renderFamilyFinancePage();
+    });
+
+    window.toggleFamilyMsiEndDateSort = () => {
+      endDateSortDirection = endDateSortDirection === "asc" ? "desc" : "asc";
+      renderFamilyFinancePage();
+    };
+
+    document.getElementById("family-msi-sort-mobile")?.addEventListener("change", e => {
+      endDateSortDirection = e.target.value === "desc" ? "desc" : "asc";
       renderFamilyFinancePage();
     });
 
@@ -7828,28 +7938,23 @@
     // =========================
     // ✅ MSI: helpers + render
     // =========================
-    const MSI_TRAFFIC_COLORS = {
-      green: "#16a34a",
-      yellow: "#f59e0b",
-      red: "#dc2626",
-      gray: "#94a3b8"
+    const MSI_TIME_RANGES = {
+      near: { min: 1, max: 3, color: "#16a34a", label: "Próxima", ariaLabel: "rango cercano", legend: "1-3 meses" },
+      medium: { min: 4, max: 6, color: "#f59e0b", label: "Intermedia", ariaLabel: "rango medio", legend: "4-6 meses" },
+      far: { min: 7, color: "#dc2626", label: "Lejana", ariaLabel: "rango lejano", legend: "+6 meses" },
+      none: { color: "#94a3b8", label: "Liquidada / sin datos", ariaLabel: "sin rango activo", legend: "Sin fecha" }
     };
 
-    function getMsiTrafficColor(monthsLeft){
-      const n = Number(monthsLeft || 0);
-      if(!Number.isFinite(n) || n <= 0) return MSI_TRAFFIC_COLORS.gray;
-      if(n <= 3) return MSI_TRAFFIC_COLORS.green;
-      if(n <= 6) return MSI_TRAFFIC_COLORS.yellow;
-      return MSI_TRAFFIC_COLORS.red;
+    function getMsiTimeRange(remainingInstallments, { liquidated = false, insufficient = false } = {}){
+      const n = Number(remainingInstallments);
+      if(liquidated || insufficient || !Number.isFinite(n) || n <= 0) return { key: "none", ...MSI_TIME_RANGES.none };
+      if(n >= MSI_TIME_RANGES.near.min && n <= MSI_TIME_RANGES.near.max) return { key: "near", ...MSI_TIME_RANGES.near };
+      if(n >= MSI_TIME_RANGES.medium.min && n <= MSI_TIME_RANGES.medium.max) return { key: "medium", ...MSI_TIME_RANGES.medium };
+      return { key: "far", ...MSI_TIME_RANGES.far };
     }
 
-    function getMsiTrafficLabel(monthsLeft){
-      const n = Number(monthsLeft || 0);
-      if(!Number.isFinite(n) || n <= 0) return "Liquidada";
-      if(n <= 3) return "Próxima";
-      if(n <= 6) return "Intermedia";
-      return "Lejana";
-    }
+    function getMsiTrafficColor(monthsLeft){ return getMsiTimeRange(monthsLeft).color; }
+    function getMsiTrafficLabel(monthsLeft){ return getMsiTimeRange(monthsLeft).label; }
 
     function monthsBetween(a, b){
       // Histórico: esta función descontaba un mes si aún no llegaba el día exacto de compra.
@@ -8117,10 +8222,7 @@
                     callbacks:{
                       label: function(context){
                         const months = Number(context.raw || 0);
-                        let status = "Liquidada / sin datos";
-                        if(months > 0 && months <= 3) status = "Próxima a liquidar";
-                        else if(months >= 4 && months <= 6) status = "Intermedia";
-                        else if(months > 6) status = "Lejana";
+                        const status = getMsiTimeRange(months).label;
                         return `${months} meses restantes — ${status}`;
                       }
                     }
@@ -10589,7 +10691,7 @@ const getHistoryContext = () => {
       expenseItems.forEach((t)=>{ const k=t.category||'Sin categoría'; const row=byCategoryMap.get(k)||{ Categoría:k, 'Total de movimientos':0, 'Gasto total':0 }; row['Total de movimientos']+=1; row['Gasto total']=round2(row['Gasto total']+safeNumber(t.amount)); byCategoryMap.set(k,row); });
       const byCategory = [...byCategoryMap.values()].map((r)=>({ ...r, 'Porcentaje del gasto': totalExpense ? r['Gasto total']/totalExpense : 0, 'Promedio por movimiento': r['Total de movimientos'] ? round2(r['Gasto total']/r['Total de movimientos']) : 0, 'Responsable principal': '—', Presupuesto: 0, Diferencia: round2(0-r['Gasto total']) }));
       const normalizedMsiRecords = getNormalizedMsiRecords(options);
-      const msiRows = normalizedMsiRecords.map((r)=>({ Responsable:r.responsibleLabel, Concepto:r.concept, Categoría:r.category, 'Banco/Tarjeta':r.card, Mensualidad:r.monthly, 'Mensualidad actual':r.currentInstallment, 'Total de mensualidades':r.totalInstallments, 'Mensualidades restantes':r.remainingInstallments, 'Saldo pendiente estimado':r.pendingBalance, 'Fecha de compra':r.purchaseDate, 'Fecha final estimada':r.endDate, Estado:r.statusLabel, 'Requiere revisión':r.needsReview ? 'Sí' : 'No', 'Motivo de revisión':r.reviewReason || '—' }));
+      const msiRows = normalizedMsiRecords.map((r)=>({ Responsable:r.responsibleLabel, Concepto:r.concept, Categoría:r.category, 'Banco/Tarjeta':r.card, Mensualidad:r.monthly, 'Mensualidad actual':r.currentInstallment, 'Total de mensualidades':r.totalInstallments, 'Mensualidades restantes':r.remainingInstallments, 'Saldo pendiente estimado':r.pendingBalance, 'Fecha de compra':formatMsiDate(r.purchaseDate, ''), 'Fecha final estimada':formatMsiDate(r.endDate, ''), Estado:r.statusLabel, 'Requiere revisión':r.needsReview ? 'Sí' : 'No', 'Motivo de revisión':r.reviewReason || '—' }));
       const cardRows = (cards || []).filter((c)=>matchesExportOwner(c, options.owner)).map((c)=>{ const payGoal=safeNumber(c.payGoal||c.balance); const abonado=paymentItems.filter((t)=>matchesTargetCard(t,c.id)).reduce((s,t)=>s+safeNumber(t.amount),0); const pendiente=Math.max(round2(payGoal-abonado),0); const cash=safeNumber(cardsBudgetState.availableForCards); return { Responsable:c.owner||OWNER, 'Banco/Tarjeta':c.name||'Tarjeta', 'Últimos 4 dígitos':c.last4||'—', 'Fecha de corte':c.closingDay??c.cutDay??'—', 'Fecha límite de pago':c.dueDay??c.payDay??'—', 'Pago para no generar intereses':payGoal, Abonado:round2(abonado), Pendiente:pendiente, 'Cash asignado':cash, Cobertura: pendiente ? Math.min(cash/pendiente,1) : 1, Estado: pendiente ? 'Pendiente' : 'Cubierta', 'Ciclo vigente': range.label }; });
       const movementRows = items.map((t)=>{ const p=resolvePaymentDisplay(t); const d=getMovementDate(t); return { Fecha:toLocalYYYYMMDD(d), Responsable:normalizeExportOwner(t), Tipo:t.type||getMovementKind(t), Categoría:t.category||'Sin categoría', Concepto:t.concept||'—', Descripción:t.description||'—', 'Método de pago':p.paymentMethod||'—', 'Banco/Tarjeta':p.cardName||'—', Monto:round2(safeNumber(t.amount)), Compartido:normalizeExportOwner(t)==='shared'?'Sí':'No', Estado:t.status||'Confirmado', Notas:t.notes||t.note||'—', Mes:d.getMonth()+1, Año:d.getFullYear(), 'ID interno opcional':t.id||'—' }; });
       const budgetRows = byCategory.map((c)=>{ const pct = c.Presupuesto ? c['Gasto total']/c.Presupuesto : 0; return { Responsable:'Todos', Categoría:c.Categoría, Presupuesto:c.Presupuesto, 'Gasto real':c['Gasto total'], Diferencia:round2(c.Presupuesto-c['Gasto total']), 'Porcentaje consumido':pct, 'Proyección mensual':c['Gasto total'], Estado:pct>=1.1?'Crítico':pct>=1?'Excedido':pct>=.9?'Preventivo':'Saludable' }; });
