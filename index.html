@@ -899,7 +899,7 @@
           <p id="desktop-view-subtitle">Resumen general de tus finanzas.</p>
         </div>
         <div class="desktop-header-actions">
-          <button id="desktop-export-xlsx" class="btn btn-outline-secondary fw-bold d-none" style="border-color:var(--border-color);color:var(--text-muted);" onclick="exportXLSX()"><i class="fas fa-file-excel me-2"></i>XLSX</button>
+          <button id="desktop-export-xlsx" class="btn btn-outline-secondary fw-bold d-none" style="border-color:var(--border-color);color:var(--text-muted);" onclick="openFinancialExportModal()"><i class="fas fa-file-excel me-2"></i>Descargar Excel</button>
           <button class="btn btn-primary fw-bold" onclick="nav('view-add'); resetForm();"><i class="fas fa-plus me-2"></i>Nuevo movimiento</button>
         </div>
       </header>
@@ -1295,8 +1295,8 @@
   <div id="view-hist" class="view-section p-3">
     <div class="d-flex justify-content-between align-items-center mb-3">
       <h4 class="fw-black m-0">Historial</h4>
-      <button class="btn btn-sm btn-outline-secondary mobile-only-desktop-hide" style="border-color:var(--border-color);color:var(--text-muted);" onclick="exportXLSX()">
-        <i class="fas fa-file-excel me-1"></i> XLSX
+      <button class="btn btn-sm btn-outline-secondary mobile-only-desktop-hide" style="border-color:var(--border-color);color:var(--text-muted);" onclick="openFinancialExportModal()">
+        <i class="fas fa-file-excel me-1"></i> Descargar Excel
       </button>
     </div>
 
@@ -1400,9 +1400,14 @@
         <h4 class="fw-black m-0">MSI</h4>
         <div class="text-muted small">Compras a meses y cuánto falta para que “se liberen”.</div>
       </div>
-      <button class="btn btn-sm btn-outline-secondary" style="border-color:var(--border-color);color:var(--text-muted);" onclick="nav('view-home')">
-        <i class="fas fa-arrow-left me-1"></i> Volver
-      </button>
+      <div class="d-flex gap-2 flex-wrap justify-content-end">
+        <button class="btn btn-sm btn-outline-success" style="border-color:var(--success);color:var(--success);" onclick="openFinancialExportModal()">
+          <i class="fas fa-file-excel me-1"></i> Descargar Excel
+        </button>
+        <button class="btn btn-sm btn-outline-secondary" style="border-color:var(--border-color);color:var(--text-muted);" onclick="nav('view-home')">
+          <i class="fas fa-arrow-left me-1"></i> Volver
+        </button>
+      </div>
     </div>
 
 
@@ -1457,9 +1462,14 @@
         <h4 class="fw-black m-0">Finanzas Familiares</h4>
         <div class="text-muted small">Vista compartida de compromisos MSI y flujo futuro.</div>
       </div>
-      <button class="btn btn-sm btn-outline-secondary" style="border-color:var(--border-color);color:var(--text-muted);" onclick="nav('view-home')">
-        <i class="fas fa-arrow-left me-1"></i> Volver
-      </button>
+      <div class="d-flex gap-2 flex-wrap justify-content-end">
+        <button class="btn btn-sm btn-outline-success" style="border-color:var(--success);color:var(--success);" onclick="openFinancialExportModal()">
+          <i class="fas fa-file-excel me-1"></i> Descargar Excel
+        </button>
+        <button class="btn btn-sm btn-outline-secondary" style="border-color:var(--border-color);color:var(--text-muted);" onclick="nav('view-home')">
+          <i class="fas fa-arrow-left me-1"></i> Volver
+        </button>
+      </div>
     </div>
 
     <div id="family-msi-summary" class="family-summary-grid mb-3">
@@ -1856,6 +1866,42 @@
   </div>
 
   <div id="toast-root" aria-live="polite" aria-atomic="true"></div>
+
+
+  <div class="modal fade" id="modalFinancialExport" tabindex="-1" aria-labelledby="financialExportTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+      <div class="modal-content card-box border-0">
+        <div class="modal-body">
+          <div class="d-flex justify-content-between align-items-start gap-2 mb-3">
+            <div>
+              <h5 class="fw-black m-0" id="financialExportTitle">Descargar Excel</h5>
+              <div class="text-muted small">Configura el reporte familiar en formato .xlsx.</div>
+            </div>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+          </div>
+          <div class="row g-3">
+            <div class="col-md-6"><label class="small fw-bold text-muted mb-1">Periodo</label><select id="export-period" class="form-select" onchange="syncExportCustomRange()"><option value="current-month">Mes actual</option><option value="previous-month">Mes anterior</option><option value="last-3-months">Últimos 3 meses</option><option value="last-6-months">Últimos 6 meses</option><option value="current-year">Año actual</option><option value="custom">Rango personalizado</option></select></div>
+            <div class="col-md-6"><label class="small fw-bold text-muted mb-1">Responsable</label><select id="export-owner" class="form-select"><option value="all">Todos</option><option value="yair">Yair</option><option value="haru">Haru</option><option value="shared">Compartidos</option></select></div>
+            <div class="col-md-6 export-custom-range d-none"><label class="small fw-bold text-muted mb-1">Desde</label><input id="export-start" type="date" class="form-control"></div>
+            <div class="col-md-6 export-custom-range d-none"><label class="small fw-bold text-muted mb-1">Hasta</label><input id="export-end" type="date" class="form-control"></div>
+            <div class="col-md-6"><label class="small fw-bold text-muted mb-1">Estado de movimientos</label><select id="export-status" class="form-select"><option value="all">Todos</option><option value="confirmed">Confirmados</option><option value="pending">Pendientes</option><option value="exclude-cancelled">Excluir cancelados</option></select></div>
+            <div class="col-md-6"><label class="small fw-bold text-muted mb-1">Moneda</label><select id="export-currency" class="form-select"><option value="MXN">MXN</option></select></div>
+            <div class="col-12"><label class="small fw-bold text-muted mb-2">Incluir</label><div class="row g-2" id="export-include-options">
+              <div class="col-sm-6 col-lg-4"><div class="form-check"><input class="form-check-input" type="checkbox" id="export-summary" checked><label class="form-check-label" for="export-summary">Resumen familiar</label></div></div>
+              <div class="col-sm-6 col-lg-4"><div class="form-check"><input class="form-check-input" type="checkbox" id="export-movements" checked><label class="form-check-label" for="export-movements">Movimientos</label></div></div>
+              <div class="col-sm-6 col-lg-4"><div class="form-check"><input class="form-check-input" type="checkbox" id="export-cards" checked><label class="form-check-label" for="export-cards">Tarjetas</label></div></div>
+              <div class="col-sm-6 col-lg-4"><div class="form-check"><input class="form-check-input" type="checkbox" id="export-msi" checked><label class="form-check-label" for="export-msi">MSI</label></div></div>
+              <div class="col-sm-6 col-lg-4"><div class="form-check"><input class="form-check-input" type="checkbox" id="export-budget" checked><label class="form-check-label" for="export-budget">Presupuesto</label></div></div>
+              <div class="col-sm-6 col-lg-4"><div class="form-check"><input class="form-check-input" type="checkbox" id="export-categories" checked><label class="form-check-label" for="export-categories">Categorías</label></div></div>
+              <div class="col-sm-6 col-lg-4"><div class="form-check"><input class="form-check-input" type="checkbox" id="export-dashboard"><label class="form-check-label" for="export-dashboard">Dashboard gráfico</label></div></div>
+            </div></div>
+          </div>
+          <div id="export-status-text" class="text-muted small mt-3">Listo para generar.</div>
+          <div class="d-flex justify-content-end gap-2 mt-4"><button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancelar</button><button type="button" id="btn-generate-excel" class="btn btn-success fw-bold" onclick="generateFinancialExcel()"><i class="fas fa-file-excel me-1"></i> Generar Excel</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
@@ -10263,35 +10309,178 @@ const getHistoryContext = () => {
       a.click();
     };
 
-    window.exportXLSX=()=>{
-      if(typeof XLSX === "undefined"){
-        notify("No se pudo cargar la librería XLSX.", "error");
-        return;
+    const EXCEL_MONEY_FORMAT = '$#,##0.00';
+    const EXCEL_PERCENT_FORMAT = '0.0%';
+    const EXCEL_DATE_FORMAT = 'dd/mm/yyyy';
+
+    const getExportOptionsFromModal = () => ({
+      period: document.getElementById('export-period')?.value || 'current-month',
+      owner: document.getElementById('export-owner')?.value || 'all',
+      status: document.getElementById('export-status')?.value || 'exclude-cancelled',
+      currency: document.getElementById('export-currency')?.value || 'MXN',
+      start: document.getElementById('export-start')?.value || '',
+      end: document.getElementById('export-end')?.value || '',
+      include: {
+        summary: document.getElementById('export-summary')?.checked !== false,
+        movements: document.getElementById('export-movements')?.checked !== false,
+        cards: document.getElementById('export-cards')?.checked !== false,
+        msi: document.getElementById('export-msi')?.checked !== false,
+        budget: document.getElementById('export-budget')?.checked !== false,
+        categories: document.getElementById('export-categories')?.checked !== false,
+        dashboard: document.getElementById('export-dashboard')?.checked === true
       }
+    });
 
-      const { compras, abonos, context } = getHistoryFilteredTransactions();
-      const items = [...compras, ...abonos].sort((a,b)=>toDate(a.date)-toDate(b.date));
-      const exportRows = items.map((movement) => serializeMovementForExport(movement, context));
-      const summary = buildHistoryExportSummary(context, compras, abonos, exportRows);
-      const summaryHeaders = Object.keys(summary);
-      const summaryRows = [summary];
-      const msiRows = buildMsiActiveRows(exportRows);
-
-      const workbook = XLSX.utils.book_new();
-      const historySheet = buildWorksheetFromRows(HISTORY_EXPORT_HEADERS, exportRows, HISTORY_EXPORT_NUMERIC_COLUMNS);
-      const summarySheet = buildWorksheetFromRows(summaryHeaders, summaryRows, SUMMARY_EXPORT_NUMERIC_COLUMNS);
-
-      XLSX.utils.book_append_sheet(workbook, historySheet, "Historial");
-      XLSX.utils.book_append_sheet(workbook, summarySheet, "Resumen");
-
-      if(msiRows.length){
-        const msiSheet = buildWorksheetFromRows(MSI_EXPORT_HEADERS, msiRows, HISTORY_EXPORT_NUMERIC_COLUMNS);
-        XLSX.utils.book_append_sheet(workbook, msiSheet, "MSI Activos");
-      }
-
-      const fileName = `finanzas_yayos_${OWNER}_${getExportTimestamp()}.xlsx`;
-      XLSX.writeFile(workbook, fileName);
+    const parseExportLocalDate = (value) => {
+      const [year, month, day] = String(value || '').split('-').map(Number);
+      if(!year || !month || !day) return new Date();
+      return new Date(year, month - 1, day, 0, 0, 0, 0);
     };
+
+    const getExportPeriodRange = (options = {}) => {
+      const now = new Date();
+      const y = now.getFullYear();
+      const m = now.getMonth();
+      let startDate = new Date(y, m, 1, 0, 0, 0, 0);
+      let endExclusive = new Date(y, m + 1, 1, 0, 0, 0, 0);
+      if(options.period === 'previous-month') { startDate = new Date(y, m - 1, 1); endExclusive = new Date(y, m, 1); }
+      if(options.period === 'last-3-months') { startDate = new Date(y, m - 2, 1); endExclusive = new Date(y, m + 1, 1); }
+      if(options.period === 'last-6-months') { startDate = new Date(y, m - 5, 1); endExclusive = new Date(y, m + 1, 1); }
+      if(options.period === 'current-year') { startDate = new Date(y, 0, 1); endExclusive = new Date(y + 1, 0, 1); }
+      if(options.period === 'custom') {
+        const parsedStart = options.start ? parseExportLocalDate(options.start) : startDate;
+        const parsedEnd = options.end ? parseExportLocalDate(options.end) : new Date(endExclusive.getTime() - 1);
+        startDate = parsedStart;
+        endExclusive = new Date(parsedEnd.getFullYear(), parsedEnd.getMonth(), parsedEnd.getDate() + 1);
+      }
+      const endInclusive = new Date(endExclusive.getTime() - 1);
+      return { startDate, endExclusive, endInclusive, label: `${toLocalYYYYMMDD(startDate)} a ${toLocalYYYYMMDD(endInclusive)}` };
+    };
+
+    window.syncExportCustomRange = () => {
+      const isCustom = document.getElementById('export-period')?.value === 'custom';
+      document.querySelectorAll('.export-custom-range').forEach((el)=>el.classList.toggle('d-none', !isCustom));
+    };
+
+    window.openFinancialExportModal = () => {
+      if(document.getElementById('export-start')) document.getElementById('export-start').value = toLocalYYYYMMDD(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+      if(document.getElementById('export-end')) document.getElementById('export-end').value = toLocalYYYYMMDD(new Date());
+      syncExportCustomRange();
+      const modalEl = document.getElementById('modalFinancialExport');
+      if(window.bootstrap && modalEl) new bootstrap.Modal(modalEl).show(); else generateFinancialExcel();
+    };
+
+    const normalizeExportOwner = (t = {}) => t.scope === 'shared' || t.owner === 'both' || t.shared === true ? 'shared' : (t.owner || OWNER);
+    const matchesExportOwner = (item = {}, ownerFilter = 'all') => ownerFilter === 'all' || normalizeExportOwner(item) === ownerFilter || item.owner === ownerFilter;
+    const matchesExportStatus = (item = {}, statusFilter = 'all') => {
+      const status = String(item.status || item.state || 'confirmed').toLowerCase();
+      if(statusFilter === 'confirmed') return ['confirmed','confirmado','paid','pagado','active',''].includes(status);
+      if(statusFilter === 'pending') return ['pending','pendiente'].includes(status);
+      if(statusFilter === 'exclude-cancelled') return !['cancelled','canceled','cancelado','deleted','eliminado'].includes(status);
+      return true;
+    };
+
+    const getExportMovements = (options = {}) => {
+      const range = getExportPeriodRange(options);
+      const source = options.owner === 'all' && Array.isArray(familyTrans) && familyTrans.length ? familyTrans : trans;
+      const seen = new Set();
+      const items = (source || []).filter((t)=>{
+        const id = t.id || `${t.owner || ''}-${t.concept || ''}-${t.amount || ''}-${toLocalYYYYMMDD(getMovementDate(t))}`;
+        if(seen.has(id)) return false;
+        seen.add(id);
+        const d = getMovementDate(t);
+        return d >= range.startDate && d < range.endExclusive && matchesExportOwner(t, options.owner) && matchesExportStatus(t, options.status);
+      }).sort((a,b)=>getMovementDate(a)-getMovementDate(b));
+      return { range, items };
+    };
+
+    const addWorkbookSheet = (workbook, name, headers, rows, { money = [], percent = [], date = [], formulas = {} } = {}) => {
+      const dataRows = rows.map((row)=>headers.map((h)=>row?.[h] ?? '—'));
+      const sheet = XLSX.utils.aoa_to_sheet([headers, ...dataRows]);
+      const lastColRef = XLSX.utils.encode_col(Math.max(headers.length - 1, 0));
+      const lastRow = Math.max(rows.length + 1, 1);
+      headers.forEach((header, c)=>{
+        for(let r=0; r<rows.length; r+=1){
+          const ref = XLSX.utils.encode_cell({ c, r: r + 1 });
+          const value = rows[r]?.[header];
+          if(value == null || value === '') continue;
+          if(money.includes(header) || percent.includes(header)) sheet[ref] = { t:'n', v:Number(value)||0, z: money.includes(header) ? EXCEL_MONEY_FORMAT : EXCEL_PERCENT_FORMAT };
+          if(date.includes(header) && value !== '—') sheet[ref] = { t:'d', v: toDate(value), z: EXCEL_DATE_FORMAT };
+          if(formulas[header]) sheet[ref] = formulas[header](r + 2, row => XLSX.utils.encode_cell({ c: headers.indexOf(row), r: r + 1 }));
+        }
+      });
+      sheet['!ref'] = `A1:${lastColRef}${lastRow}`;
+      sheet['!autofilter'] = { ref: `A1:${lastColRef}${lastRow}` };
+      sheet['!freeze'] = { xSplit: 0, ySplit: 1 };
+      sheet['!cols'] = headers.map((h)=>({ wch: Math.min(Math.max(String(h).length + 6, 14), 42) }));
+      XLSX.utils.book_append_sheet(workbook, sheet, name.substring(0, 31));
+    };
+
+    const buildFinancialWorkbookData = (options = {}) => {
+      const { range, items } = getExportMovements(options);
+      const expenseItems = items.filter((t)=>getMovementKind(t) === 'expense' || getMovementKind(t) === 'msi');
+      const incomeItems = items.filter((t)=>getMovementKind(t) === 'income' || t.type === 'income');
+      const paymentItems = items.filter((t)=>isCardPaymentMovement(t) || getMovementKind(t) === 'payment');
+      const totalIncome = round2(incomeItems.reduce((s,t)=>s+safeNumber(t.amount),0));
+      const totalExpense = round2(expenseItems.reduce((s,t)=>s+safeNumber(getEffectiveAmount(t, { periodStart: range.startDate, periodEnd: range.endExclusive })),0));
+      const byOwner = ['yair','haru','shared'].map((owner)=>{
+        const ownerItems = items.filter((t)=>normalizeExportOwner(t)===owner);
+        const ingresos = round2(ownerItems.filter((t)=>t.type==='income').reduce((s,t)=>s+safeNumber(t.amount),0));
+        const gastos = round2(ownerItems.filter((t)=>getMovementKind(t)==='expense'||getMovementKind(t)==='msi').reduce((s,t)=>s+safeNumber(t.amount),0));
+        return { Responsable: owner === 'shared' ? 'Compartidos' : owner.charAt(0).toUpperCase()+owner.slice(1), Ingresos: ingresos, Gastos: gastos, Balance: round2(ingresos-gastos), 'Participación del gasto': totalExpense ? gastos/totalExpense : 0 };
+      });
+      const byCategoryMap = new Map();
+      expenseItems.forEach((t)=>{ const k=t.category||'Sin categoría'; const row=byCategoryMap.get(k)||{ Categoría:k, 'Total de movimientos':0, 'Gasto total':0 }; row['Total de movimientos']+=1; row['Gasto total']=round2(row['Gasto total']+safeNumber(t.amount)); byCategoryMap.set(k,row); });
+      const byCategory = [...byCategoryMap.values()].map((r)=>({ ...r, 'Porcentaje del gasto': totalExpense ? r['Gasto total']/totalExpense : 0, 'Promedio por movimiento': r['Total de movimientos'] ? round2(r['Gasto total']/r['Total de movimientos']) : 0, 'Responsable principal': '—', Presupuesto: 0, Diferencia: round2(0-r['Gasto total']) }));
+      const msiRows = expenseItems.filter((t)=>t?.isMsi === true).map((t)=>{ const meta=getMsiExportMeta(t, range.endInclusive); const p=resolvePaymentDisplay(t); return { Responsable: normalizeExportOwner(t), Concepto: t.concept||'—', Categoría:t.category||'Sin categoría', 'Banco/Tarjeta':p.cardName||'—', Mensualidad: round2(meta.monthlyAmount || t.msiMonthly || t.amount || 0), 'Mensualidad actual': meta.currentInstallment || 0, 'Total de mensualidades': meta.term || t.msiMonths || 0, 'Mensualidades restantes': meta.remainingInstallments || 0, 'Saldo pendiente estimado': round2(meta.remainingBalance || 0), 'Fecha de compra': toLocalYYYYMMDD(getMovementDate(t)), 'Fecha final estimada': meta.estimatedEndDate || '—', Estado: (meta.remainingInstallments || 0) > 0 ? 'Activo' : 'Liquidado' }; });
+      const cardRows = (cards || []).filter((c)=>matchesExportOwner(c, options.owner)).map((c)=>{ const payGoal=safeNumber(c.payGoal||c.balance); const abonado=paymentItems.filter((t)=>matchesTargetCard(t,c.id)).reduce((s,t)=>s+safeNumber(t.amount),0); const pendiente=Math.max(round2(payGoal-abonado),0); const cash=safeNumber(cardsBudgetState.availableForCards); return { Responsable:c.owner||OWNER, 'Banco/Tarjeta':c.name||'Tarjeta', 'Últimos 4 dígitos':c.last4||'—', 'Fecha de corte':c.closingDay??c.cutDay??'—', 'Fecha límite de pago':c.dueDay??c.payDay??'—', 'Pago para no generar intereses':payGoal, Abonado:round2(abonado), Pendiente:pendiente, 'Cash asignado':cash, Cobertura: pendiente ? Math.min(cash/pendiente,1) : 1, Estado: pendiente ? 'Pendiente' : 'Cubierta', 'Ciclo vigente': range.label }; });
+      const movementRows = items.map((t)=>{ const p=resolvePaymentDisplay(t); const d=getMovementDate(t); return { Fecha:toLocalYYYYMMDD(d), Responsable:normalizeExportOwner(t), Tipo:t.type||getMovementKind(t), Categoría:t.category||'Sin categoría', Concepto:t.concept||'—', Descripción:t.description||'—', 'Método de pago':p.paymentMethod||'—', 'Banco/Tarjeta':p.cardName||'—', Monto:round2(safeNumber(t.amount)), Compartido:normalizeExportOwner(t)==='shared'?'Sí':'No', Estado:t.status||'Confirmado', Notas:t.notes||t.note||'—', Mes:d.getMonth()+1, Año:d.getFullYear(), 'ID interno opcional':t.id||'—' }; });
+      const budgetRows = byCategory.map((c)=>{ const pct = c.Presupuesto ? c['Gasto total']/c.Presupuesto : 0; return { Responsable:'Todos', Categoría:c.Categoría, Presupuesto:c.Presupuesto, 'Gasto real':c['Gasto total'], Diferencia:round2(c.Presupuesto-c['Gasto total']), 'Porcentaje consumido':pct, 'Proyección mensual':c['Gasto total'], Estado:pct>=1.1?'Crítico':pct>=1?'Excedido':pct>=.9?'Preventivo':'Saludable' }; });
+      const totalMsi = round2(msiRows.reduce((s,r)=>s+safeNumber(r.Mensualidad),0));
+      return { range, movementRows, cardRows, msiRows, budgetRows, categoryRows: byCategory, ownerRows: byOwner, summaryRows: [{ Métrica:'Periodo', Valor:range.label },{ Métrica:'Fecha de generación', Valor:new Date().toLocaleString('es-MX',{timeZone:'America/Mexico_City'}) },{ Métrica:'Moneda', Valor:options.currency||'MXN' },{ Métrica:'Total de ingresos', Valor:totalIncome },{ Métrica:'Total de gastos', Valor:totalExpense },{ Métrica:'Balance', Valor:round2(totalIncome-totalExpense) },{ Métrica:'Gastos de Yair', Valor:byOwner[0].Gastos },{ Métrica:'Gastos de Haru', Valor:byOwner[1].Gastos },{ Métrica:'Gastos compartidos', Valor:byOwner[2].Gastos },{ Métrica:'Carga mensual de MSI', Valor:totalMsi },{ Métrica:'Total pendiente de tarjetas', Valor:round2(cardRows.reduce((s,r)=>s+safeNumber(r.Pendiente),0)) },{ Métrica:'Total abonado', Valor:round2(cardRows.reduce((s,r)=>s+safeNumber(r.Abonado),0)) },{ Métrica:'Cash disponible para pago', Valor:safeNumber(cardsBudgetState.availableForCards) },{ Métrica:'Cobertura de tarjetas', Valor:cardRows.length ? cardRows.reduce((s,r)=>s+safeNumber(r.Cobertura),0)/cardRows.length : 1 },{ Métrica:'Presupuesto mensual', Valor:0 },{ Métrica:'Gasto real', Valor:totalExpense },{ Métrica:'Proyección de cierre', Valor:totalExpense },{ Métrica:'Diferencia contra presupuesto', Valor:round2(0-totalExpense) }] };
+    };
+
+    window.exportFinancialReportToExcel = (options = getExportOptionsFromModal()) => {
+      if(typeof XLSX === 'undefined') throw new Error('No se pudo cargar la librería XLSX.');
+      const data = buildFinancialWorkbookData(options);
+      const wb = XLSX.utils.book_new();
+      if(options.include.summary){ addWorkbookSheet(wb, 'Resumen familiar', ['Métrica','Valor'], data.summaryRows); addWorkbookSheet(wb, 'Resumen responsables', ['Responsable','Ingresos','Gastos','Balance','Participación del gasto'], data.ownerRows, { money:['Ingresos','Gastos','Balance'], percent:['Participación del gasto'] }); }
+      if(options.include.movements) addWorkbookSheet(wb, 'Movimientos', ['Fecha','Responsable','Tipo','Categoría','Concepto','Descripción','Método de pago','Banco/Tarjeta','Monto','Compartido','Estado','Notas','Mes','Año','ID interno opcional'], data.movementRows, { money:['Monto'], date:['Fecha'] });
+      if(options.include.cards) addWorkbookSheet(wb, 'Tarjetas', ['Responsable','Banco/Tarjeta','Últimos 4 dígitos','Fecha de corte','Fecha límite de pago','Pago para no generar intereses','Abonado','Pendiente','Cash asignado','Cobertura','Estado','Ciclo vigente'], data.cardRows, { money:['Pago para no generar intereses','Abonado','Pendiente','Cash asignado'], percent:['Cobertura'] });
+      if(options.include.msi) addWorkbookSheet(wb, 'MSI Activos', ['Responsable','Concepto','Categoría','Banco/Tarjeta','Mensualidad','Mensualidad actual','Total de mensualidades','Mensualidades restantes','Saldo pendiente estimado','Fecha de compra','Fecha final estimada','Estado'], data.msiRows, { money:['Mensualidad','Saldo pendiente estimado'], date:['Fecha de compra','Fecha final estimada'] });
+      if(options.include.budget) addWorkbookSheet(wb, 'Presupuesto', ['Responsable','Categoría','Presupuesto','Gasto real','Diferencia','Porcentaje consumido','Proyección mensual','Estado'], data.budgetRows, { money:['Presupuesto','Gasto real','Diferencia','Proyección mensual'], percent:['Porcentaje consumido'] });
+      if(options.include.categories) addWorkbookSheet(wb, 'Categorías', ['Categoría','Total de movimientos','Gasto total','Porcentaje del gasto','Promedio por movimiento','Responsable principal','Presupuesto','Diferencia'], data.categoryRows, { money:['Gasto total','Promedio por movimiento','Presupuesto','Diferencia'], percent:['Porcentaje del gasto'] });
+      if(options.include.dashboard) addWorkbookSheet(wb, 'Dashboard', ['Indicador','Valor'], data.summaryRows.map((r)=>({ Indicador:r.Métrica, Valor:r.Valor })));
+      const firstMonth = `${data.range.startDate.getFullYear()}-${String(data.range.startDate.getMonth()+1).padStart(2,'0')}`;
+      const lastMonth = `${data.range.endInclusive.getFullYear()}-${String(data.range.endInclusive.getMonth()+1).padStart(2,'0')}`;
+      const fileName = firstMonth === lastMonth ? `PocketFlow_Finanzas_Familiares_${firstMonth}.xlsx` : `PocketFlow_Finanzas_${firstMonth}_a_${lastMonth}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+      return fileName;
+    };
+
+    window.generateFinancialExcel = async () => {
+      const btn = document.getElementById('btn-generate-excel');
+      const statusEl = document.getElementById('export-status-text');
+      try{
+        setLoading(btn, true, { label: 'Generando Excel…' });
+        if(statusEl) statusEl.textContent = 'Generando Excel…';
+        await new Promise((resolve)=>setTimeout(resolve, 30));
+        const fileName = exportFinancialReportToExcel(getExportOptionsFromModal());
+        if(statusEl) statusEl.textContent = 'Reporte descargado correctamente.';
+        showToast('Reporte descargado correctamente.', { tone:'success', duration:2600 });
+        const modalEl = document.getElementById('modalFinancialExport');
+        if(window.bootstrap && modalEl) bootstrap.Modal.getInstance(modalEl)?.hide();
+        console.info('[export] Excel generado', fileName);
+      }catch(err){
+        console.error('[export] Excel error', err);
+        if(statusEl) statusEl.textContent = 'No se pudo generar el Excel. Intenta de nuevo.';
+        showToast('No se pudo generar el Excel. Intenta de nuevo.', { tone:'error', duration:3200 });
+      }finally{
+        setLoading(btn, false);
+      }
+    };
+
+    window.exportXLSX = () => openFinancialExportModal();
 
     on("DATA_LOADED", () => {
       invalidateCategoryAggCacheForOwner(OWNER);
