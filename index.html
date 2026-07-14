@@ -1225,6 +1225,14 @@
               </div>
             </div>
 
+            <div class="row g-2 mt-2">
+              <div class="col-12">
+                <label class="small fw-bold text-muted mb-1">Mensualidad actual según estado de cuenta (opcional)</label>
+                <input type="number" id="t-msi-current" class="form-control" placeholder="Ej: 8" min="0" step="1" inputmode="numeric" />
+                <small class="text-muted" id="t-msi-card-cycle-hint">Selecciona una tarjeta para consultar su día de corte.</small>
+              </div>
+            </div>
+
             <div class="mt-3 d-flex justify-content-between align-items-center">
               <small class="text-muted">Mensualidad estimada</small>
               <div class="fw-black sensitive-data" id="msi-monthly">$0.00</div>
@@ -1460,7 +1468,7 @@
       </div>
       <div class="family-table-wrap">
         <table class="table family-table">
-          <thead><tr><th>Responsable</th><th>Concepto</th><th>Banco/Tarjeta</th><th>Mensualidad</th><th>Avance</th><th>Inicio</th><th>Fecha fin</th><th>Estado</th></tr></thead>
+          <thead><tr><th>Responsable</th><th>Concepto</th><th>Banco/Tarjeta</th><th>Mensualidad</th><th>Mensualidad actual</th><th>Inicio</th><th>Fecha fin</th><th>Estado</th></tr></thead>
           <tbody id="family-msi-table"><tr><td colspan="8" class="text-muted small">Cargando...</td></tr></tbody>
         </table>
       </div>
@@ -1474,7 +1482,7 @@
       </div>
       <div class="family-table-wrap">
         <table class="table family-table">
-          <thead><tr><th>Responsable</th><th>Concepto</th><th>Banco/Tarjeta</th><th>Mensualidad</th><th>Avance</th><th>Inicio</th><th>Fecha fin</th><th>Estado</th></tr></thead>
+          <thead><tr><th>Responsable</th><th>Concepto</th><th>Banco/Tarjeta</th><th>Mensualidad</th><th>Mensualidad actual</th><th>Inicio</th><th>Fecha fin</th><th>Estado</th></tr></thead>
           <tbody id="family-msi-finished-table"><tr><td colspan="8" class="text-muted small">Cargando...</td></tr></tbody>
         </table>
       </div>
@@ -1757,6 +1765,7 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
     import { getLocalMonthKey, isValidMonthKey, addMonths } from "./utils/monthKey.js";
     import { getCycleWindow, safeDay } from "./utils/billingCycle.js";
+    import { calculateMsiProgressCore } from "./utils/msiProgress.js";
     import {
       getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc,
       query, orderBy, writeBatch, Timestamp, enableIndexedDbPersistence, where, getDocs, getDoc, setDoc,
@@ -7485,14 +7494,54 @@
     }
 
     function monthsBetween(a, b){
-      // a,b = Date
+      // Histórico: esta función descontaba un mes si aún no llegaba el día exacto de compra.
+      // Por eso una compra del 2025-11-19 anclada al 2026-07-14 devolvía 7 y no 8.
       const ay=a.getFullYear(), am=a.getMonth();
       const by=b.getFullYear(), bm=b.getMonth();
       let diff=(by-ay)*12 + (bm-am);
-
-      // si el día del mes aún no llega, no contamos el mes completo
       if(b.getDate() < a.getDate()) diff -= 1;
       return Math.max(0, diff);
+    }
+
+    function getCardForMsiTransaction(transaction = {}){
+      const id = transaction?.cardId || transaction?.targetCardId || transaction?.card || null;
+      if(id){
+        const byId = cards.find((c) => c.id === id);
+        if(byId) return byId;
+      }
+      const name = String(transaction?.cardName || transaction?.targetCardName || '').trim().toLowerCase();
+      return name ? cards.find((c) => String(c.name || '').trim().toLowerCase() === name) || null : null;
+    }
+
+    function addLocalMonths(date, monthsToAdd){
+      const base = toDate(date);
+      const d = new Date(base.getFullYear(), base.getMonth() + Number(monthsToAdd || 0), 1, 12, 0, 0, 0);
+      d.setDate(Math.min(base.getDate(), new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()));
+      return d;
+    }
+
+    function getMsiCutoffCycleDate(purchaseDate, cutoffDay){
+      const purchase = toDate(purchaseDate);
+      if(!(purchase instanceof Date) || Number.isNaN(purchase.getTime())) return null;
+      const cut = Number(cutoffDay);
+      if(!Number.isFinite(cut)) return null;
+      let cycle = getSafeCutoffDate(purchase.getFullYear(), purchase.getMonth(), cut);
+      cycle.setHours(12, 0, 0, 0);
+      if(purchase.getDate() > cycle.getDate()){
+        cycle = getSafeCutoffDate(purchase.getFullYear(), purchase.getMonth() + 1, cut);
+        cycle.setHours(12, 0, 0, 0);
+      }
+      return cycle;
+    }
+
+    function calculateMsiProgress({ purchaseDate, totalInstallments, anchorDate = new Date(), card = null, currentInstallment = null } = {}){
+      return calculateMsiProgressCore({
+        purchaseDate,
+        totalInstallments,
+        anchorDate,
+        cutoffDay: card?.closingDay ?? card?.cutDay ?? null,
+        currentInstallment
+      });
     }
 
     function selectMsiPurchases({ activeFilter = 'active', cardFilter = 'all', source = trans } = {}){
@@ -7509,8 +7558,15 @@
           const totalMonths = parseInt(t?.msiMonths ?? t?.months ?? 0, 10) || 0;
           const total = Number(t?.msiTotal ?? t?.totalAmount ?? t?.amount ?? 0);
           const hasCoreFields = totalMonths > 0 && Number.isFinite(start.getTime()) && total > 0;
-          const passed = hasCoreFields ? monthsBetween(start, now) : 0;
-          const remaining = hasCoreFields ? Math.max(totalMonths - passed, 0) : 0;
+          const msiProgress = hasCoreFields ? calculateMsiProgress({
+            purchaseDate: start,
+            totalInstallments: totalMonths,
+            anchorDate: now,
+            card: getCardForMsiTransaction(t),
+            currentInstallment: t?.currentInstallment ?? t?.installmentsPaid ?? null
+          }) : null;
+          const passed = msiProgress?.currentInstallment ?? 0;
+          const remaining = msiProgress?.remainingInstallments ?? 0;
           const monthly = totalMonths > 0 ? (total / Math.max(totalMonths, 1)) : 0;
           return {
             ...t,
@@ -7778,18 +7834,21 @@
       const startDate = startRaw?.toDate ? startRaw.toDate() : toDate(startRaw || transaction?.date);
       const hasValidStartDate = startDate instanceof Date && !Number.isNaN(startDate.getTime());
 
-      const rawCurrentInstallment = transaction?.msiInstallmentIndex
-        ?? transaction?.msiInstallmentNumber
-        ?? transaction?.currentInstallment
+      const rawCurrentInstallment = transaction?.currentInstallment
+        ?? transaction?.installmentsPaid
         ?? transaction?.pagoActual;
-      const persistedInstallment = parsePositiveInt(rawCurrentInstallment);
-      const calculatedInstallment = (term && hasValidStartDate)
-        ? getMsiPaymentIndex(startDate, anchorDate, term)
+      const persistedInstallment = rawCurrentInstallment === '' || rawCurrentInstallment == null ? null : Number.parseInt(rawCurrentInstallment, 10);
+      const progress = (term && hasValidStartDate)
+        ? calculateMsiProgress({
+          purchaseDate: startDate,
+          totalInstallments: term,
+          anchorDate,
+          card: getCardForMsiTransaction(transaction),
+          currentInstallment: Number.isFinite(persistedInstallment) ? persistedInstallment : null
+        })
         : null;
-      let currentInstallment = calculatedInstallment ?? persistedInstallment;
-      if(term && currentInstallment != null){
-        currentInstallment = Math.min(Math.max(currentInstallment, 1), term);
-      }
+      const calculatedInstallment = progress?.currentInstallment ?? null;
+      const currentInstallment = calculatedInstallment;
 
       const rawOriginalAmount = transaction?.msiTotal
         ?? transaction?.totalAmount
@@ -7812,9 +7871,9 @@
       }
       if(!(monthlyAmount > 0)) monthlyAmount = null;
 
-      const remainingInstallments = (term && currentInstallment != null)
+      const remainingInstallments = progress?.remainingInstallments ?? ((term && currentInstallment != null)
         ? Math.max(term - currentInstallment, 0)
-        : null;
+        : null);
 
       const needsInstallmentReview = (
         calculatedInstallment != null
@@ -7840,7 +7899,11 @@
         originalAmount,
         startDate: hasValidStartDate ? startDate : null,
         isComplete: !!(term && currentInstallment != null && monthlyAmount != null && originalAmount != null),
-        needsReview: !!transaction?.needsReviewMsi || needsInstallmentReview
+        needsReview: !!transaction?.needsReviewMsi || !!progress?.isEstimated || needsInstallmentReview,
+        status: progress?.status || null,
+        isEstimated: !!progress?.isEstimated,
+        firstCycleDate: progress?.firstCycleDate || null,
+        lastCycleDate: progress?.lastCycleDate || null
       };
     };
 
@@ -7862,9 +7925,10 @@
       }
 
       let estimatedEndDate = null;
-      if(baseMeta.startDate instanceof Date && !Number.isNaN(baseMeta.startDate.getTime()) && baseMeta.term){
-        const endDate = new Date(baseMeta.startDate);
-        endDate.setMonth(endDate.getMonth() + (baseMeta.term - 1));
+      if(baseMeta.lastCycleDate instanceof Date && !Number.isNaN(baseMeta.lastCycleDate.getTime())){
+        estimatedEndDate = toLocalYYYYMMDD(baseMeta.lastCycleDate);
+      }else if(baseMeta.startDate instanceof Date && !Number.isNaN(baseMeta.startDate.getTime()) && baseMeta.term){
+        const endDate = addLocalMonths(baseMeta.startDate, baseMeta.term - 1);
         estimatedEndDate = toLocalYYYYMMDD(endDate);
       }
 
@@ -7907,7 +7971,7 @@
 
       return {
         amount,
-        subtitle: `MSI ${msiMeta.term} • Pago ${msiMeta.currentInstallment}/${msiMeta.term} • Total ${formatMoney(msiMeta.originalAmount)}`,
+        subtitle: `MSI ${msiMeta.term} • Mensualidad actual ${msiMeta.currentInstallment} de ${msiMeta.term} • Restantes: ${msiMeta.remainingInstallments}${msiMeta.lastCycleDate ? ` • Último cargo estimado: ${msiMeta.lastCycleDate.toLocaleDateString('es-MX', { month:'long', year:'numeric' })}` : ''}${msiMeta.isEstimated ? ' • Estimado' : ''} • Total ${formatMoney(msiMeta.originalAmount)}`,
         incomplete: false,
         needsReview: false
       };
@@ -8071,6 +8135,7 @@ const getHistoryContext = () => {
                     </button>
                     <div class="action-menu" id="trans-menu-${t.id}">
                       <button type="button" onclick="handleTransAction('edit','${t.id}', event)">Editar</button>
+                      ${isMsiExpense ? `<button type="button" onclick="handleTransAction('adjustMsi','${t.id}', event)">Ajustar mensualidad actual</button>` : ""}
                       <button type="button" onclick="handleTransAction('review','${t.id}', event)">Revisado</button>
                       <button type="button" onclick="handleTransAction('delete','${t.id}', event)" class="text-danger">Borrar</button>
                     </div>
@@ -8400,10 +8465,32 @@ const getHistoryContext = () => {
       closeAllTransMenus();
       if(action === "edit") return editTrans(id);
       if(action === "review") return markTransactionReviewed(id);
+      if(action === "adjustMsi") return quickAdjustMsiCurrentInstallment(id);
       if(action === "delete"){
         document.getElementById('trans-id').value = id;
         return deleteTrans();
       }
+    };
+
+    window.quickAdjustMsiCurrentInstallment = async (id) => {
+      const t = trans.find((x) => x.id === id);
+      if(!t || t.isMsi !== true) return;
+      const term = Number(t.msiMonths || 0);
+      const current = t.currentInstallment ?? t.installmentsPaid ?? getMsiMeta(t).currentInstallment ?? 0;
+      const raw = prompt(`Mensualidad actual según estado de cuenta (0 a ${term})`, current);
+      if(raw === null) return;
+      const next = parseInt(raw, 10);
+      if(!Number.isFinite(next) || next < 0 || next > term){
+        showToast(`La mensualidad actual debe estar entre 0 y ${term}.`, { tone: "warning", duration: 2600 });
+        return;
+      }
+      await updateDoc(doc(db, "expenses", id), { currentInstallment: next, installmentsPaid: next });
+      t.currentInstallment = next;
+      t.installmentsPaid = next;
+      showToast("Mensualidad actual actualizada.", { tone: "success", duration: 2200 });
+      renderHistory();
+      await window.renderMsi?.();
+      window.renderFamilyFinancePage?.();
     };
 
     document.addEventListener("click", (event) => {
@@ -8795,6 +8882,7 @@ const getHistoryContext = () => {
         const d = document.getElementById('t-date').value;
         if(d) document.getElementById('t-msi-start').value = d;
       }
+      updateMsiCardCycleHint();
       uiCalcMsiMonthly();
     };
 
@@ -8810,6 +8898,17 @@ const getHistoryContext = () => {
       const monthly = months > 0 ? round2(total / months) : 0;
       monthlyEl.textContent = formatMoney(monthly);
       document.getElementById('t-amount').value = monthly ? monthly.toFixed(2) : "";
+    }
+
+    function updateMsiCardCycleHint(){
+      const hint = document.getElementById('t-msi-card-cycle-hint');
+      if(!hint) return;
+      const card = cards.find((c) => c.id === document.getElementById('t-card')?.value);
+      const cut = card?.closingDay ?? card?.cutDay;
+      const pay = card?.dueDay ?? card?.payDay;
+      hint.textContent = card
+        ? `Tarjeta ${card.name}: corte día ${Number.isFinite(Number(cut)) ? cut : 'sin configurar'}${Number.isFinite(Number(pay)) ? ` · pago día ${pay}` : ''}.`
+        : 'Selecciona una tarjeta para consultar su día de corte.';
     }
 
     function updateCardFieldContext(){
@@ -8867,6 +8966,9 @@ const getHistoryContext = () => {
 
     document.getElementById('t-payment-method')?.addEventListener('change', () => {
       syncCardRequirement();
+    });
+    document.getElementById('t-card')?.addEventListener('change', () => {
+      updateMsiCardCycleHint();
     });
     document.getElementById('t-exp')?.addEventListener('change', () => {
       syncCardRequirement();
@@ -9211,6 +9313,8 @@ const getHistoryContext = () => {
       const msiTotal = isMsi ? parseFloat(document.getElementById('t-msi-total').value || 0) : null;
       const msiMonths = isMsi ? parseInt(document.getElementById('t-msi-months').value || 0) : null;
       const msiStartStr = isMsi ? (document.getElementById('t-msi-start').value || document.getElementById('t-date').value) : null;
+      const msiCurrentRaw = isMsi ? (document.getElementById('t-msi-current')?.value || '') : '';
+      const msiCurrentInstallment = msiCurrentRaw === '' ? null : parseInt(msiCurrentRaw, 10);
       const msiStartDate = isMsi && msiStartStr ? parseLocalYYYYMMDDToDate(msiStartStr) : null;
       const msiStart = msiStartDate ? Timestamp.fromDate(msiStartDate) : null;
       const amountInput = parseFloat(document.getElementById('t-amount').value);
@@ -9219,6 +9323,11 @@ const getHistoryContext = () => {
       if(isMsi){
         if(!Number.isFinite(msiTotal) || msiTotal <= 0 || !Number.isFinite(msiMonths) || msiMonths <= 0){
           showToast("Completa el total y los meses de MSI para guardar.", { tone: "warning", duration: 2400 });
+          haptic("error");
+          return;
+        }
+        if(msiCurrentRaw !== '' && (!Number.isFinite(msiCurrentInstallment) || msiCurrentInstallment < 0 || msiCurrentInstallment > msiMonths)){
+          showToast(`La mensualidad actual debe estar entre 0 y ${msiMonths}.`, { tone: "warning", duration: 2600 });
           haptic("error");
           return;
         }
@@ -9323,6 +9432,8 @@ const getHistoryContext = () => {
           msiStart: msiStart,
           msiTotal: isMsi ? msiTotal : null,
           msiMonthly: isMsi ? amountApplied : null,
+          currentInstallment: isMsi ? msiCurrentInstallment : null,
+          installmentsPaid: isMsi ? msiCurrentInstallment : null,
           msiInstallmentNumber: isMsi ? msiInstallmentNumber : null
         };
         const payload = normalizeMovementInput(payloadDraft);
@@ -9480,6 +9591,8 @@ const getHistoryContext = () => {
         document.getElementById('t-msi-months').value = String(t.msiMonths || 6);
         const s = t.msiStart?.toDate ? t.msiStart.toDate() : null;
         document.getElementById('t-msi-start').value = s ? toLocalYYYYMMDD(s) : document.getElementById('t-date').value;
+        document.getElementById('t-msi-current').value = (t.currentInstallment ?? t.installmentsPaid ?? '') === null ? '' : (t.currentInstallment ?? t.installmentsPaid ?? '');
+        updateMsiCardCycleHint();
       }
 
       uiCalcMsiMonthly();
@@ -9587,6 +9700,8 @@ const getHistoryContext = () => {
       document.getElementById('t-msi-months').value="6";
       document.getElementById('t-msi-total').value="";
       document.getElementById('t-msi-start').value = document.getElementById('t-date').value;
+      document.getElementById('t-msi-current').value = "";
+      updateMsiCardCycleHint();
       uiToggleMsiFields();
       uiCalcMsiMonthly();
 
