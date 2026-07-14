@@ -1,4 +1,4 @@
-const CACHE_VERSION = "v1.0.0"; // actualizar en cada deploy
+const CACHE_VERSION = "v1.1.0"; // actualizar en cada deploy
 const STATIC_CACHE = `static-${CACHE_VERSION}`;
 const STATIC_ASSETS = [
   "/manifest.json",
@@ -101,31 +101,45 @@ const messaging = firebase.messaging();
 
 // Cuando llega push con app cerrada / background
 messaging.onBackgroundMessage((payload) => {
-  const title = payload?.notification?.title || "Recordatorio de pago";
-  const body  = payload?.notification?.body  || "";
-  const url   = payload?.data?.url || "/index.html";
+  const data = payload?.data || {};
+  const title = data.title || payload?.notification?.title || "Tienes una alerta financiera";
+  const body = data.body || payload?.notification?.body || "Abre PocketFlow para revisar el detalle.";
+  const targetRoute = data.targetRoute || data.url || "/notifications";
 
   self.registration.showNotification(title, {
     body,
     icon: "/icons/icon-192.png",
     badge: "/icons/icon-192.png",
-    data: { url }
+    tag: data.deduplicationKey || data.type || "pocketflow-alert",
+    renotify: false,
+    data: {
+      type: data.type || "FINANCIAL_ALERT",
+      workspaceId: data.workspaceId || "",
+      entityId: data.entityId || "",
+      targetRoute,
+      deduplicationKey: data.deduplicationKey || ""
+    }
   });
 });
 
 // Click en notificación
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const url = event.notification?.data?.url || "/index.html";
+  const targetRoute = event.notification?.data?.targetRoute || "/notifications";
+  const targetUrl = new URL(targetRoute, self.location.origin).href;
 
-  event.waitUntil(
-    clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
-      for (const client of clientList) {
-        if (client.url.includes(url) && "focus" in client) return client.focus();
+  event.waitUntil((async () => {
+    const clientList = await clients.matchAll({ type: "window", includeUncontrolled: true });
+    for (const client of clientList) {
+      if (new URL(client.url).origin === self.location.origin && "focus" in client) {
+        await client.focus();
+        if ("navigate" in client) return client.navigate(targetUrl);
+        client.postMessage({ type: "NOTIFICATION_CLICK", targetRoute });
+        return client;
       }
-      if (clients.openWindow) return clients.openWindow(url);
-    })
-  );
+    }
+    if (clients.openWindow) return clients.openWindow(targetUrl);
+  })());
 });
 
 // =========================

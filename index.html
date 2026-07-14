@@ -883,6 +883,7 @@
       <button class="nav-btn navItem" onclick="nav('view-cards')" id="d-nav-cards"><i class="fas fa-wallet"></i> Tarjetas</button>
       <button class="nav-btn navItem" onclick="nav('view-msi')" id="d-nav-msi"><i class="fas fa-layer-group"></i> MSI</button>
       <button class="nav-btn navItem" onclick="nav('view-family')" id="d-nav-family"><i class="fas fa-people-roof"></i> Familia</button>
+      <button class="nav-btn navItem" onclick="nav('view-notifications')" id="d-nav-notifications"><i class="fas fa-bell"></i> Notificaciones</button>
       <button class="nav-btn navItem" onclick="nav('view-hist')" id="d-nav-hist"><i class="fas fa-list-ul"></i> Historial</button>
       <button class="nav-btn navItem" onclick="nav('view-goals')" id="d-nav-goals"><span class="nav-emoji trophy-icon">🏆</span> Metas</button>
       <div class="desktop-shortcuts desktop-only">
@@ -1564,6 +1565,39 @@
     </div>
   </div>
 
+
+  <div id="view-notifications" class="view-section p-3">
+    <div class="topbar topbar-ios mb-4">
+      <div><h5 class="fw-black m-0">Notificaciones</h5><div class="text-muted small">Recordatorios push de cortes, pagos y presupuesto.</div></div>
+      <button class="btn btn-sm btn-outline-secondary" type="button" onclick="nav('view-home')">Volver</button>
+    </div>
+    <section class="card-box card">
+      <h6 class="fw-bold mb-2"><i class="fas fa-bell me-2"></i>Activar recordatorios</h6>
+      <p class="text-muted small mb-3">PocketFlow puede avisarte antes de tus cortes y pagos, y alertarte si tu gasto se está alejando de tu meta mensual.</p>
+      <div id="notification-status" class="text-muted small mb-3">Revisando compatibilidad...</div>
+      <div id="notification-ios-help" class="alert alert-warning small d-none">En iPhone/iPad instala primero la PWA en pantalla de inicio desde Compartir → Agregar a inicio. Después abre PocketFlow desde el ícono instalado para activar notificaciones.</div>
+      <div class="d-grid gap-2 d-md-flex">
+        <button class="btn btn-primary fw-bold" type="button" onclick="enablePushNotifications()">Activar recordatorios</button>
+        <button class="btn btn-outline-secondary" type="button" onclick="sendLocalTestNotification()">Enviar notificación de prueba</button>
+      </div>
+    </section>
+    <section class="card-box card">
+      <h6 class="fw-bold mb-3">Preferencias</h6>
+      <div class="form-check form-switch mb-2"><input class="form-check-input" type="checkbox" id="np-enabled"><label class="form-check-label" for="np-enabled">Notificaciones push activas</label></div>
+      <div class="form-check form-switch mb-2"><input class="form-check-input" type="checkbox" id="np-cutoff"><label class="form-check-label" for="np-cutoff">Recordatorios de corte</label></div>
+      <label class="small text-muted fw-bold">Días antes de corte</label><input id="np-cutoff-days" class="form-control mb-2" value="3,1,0">
+      <div class="form-check form-switch mb-2"><input class="form-check-input" type="checkbox" id="np-payment"><label class="form-check-label" for="np-payment">Recordatorios de pago</label></div>
+      <label class="small text-muted fw-bold">Días antes de pago</label><input id="np-payment-days" class="form-control mb-2" value="7,3,1,0">
+      <div class="form-check form-switch mb-2"><input class="form-check-input" type="checkbox" id="np-budget"><label class="form-check-label" for="np-budget">Alertas de presupuesto</label></div>
+      <div class="form-check form-switch mb-2"><input class="form-check-input" type="checkbox" id="np-coverage"><label class="form-check-label" for="np-coverage">Alertas de cobertura de tarjetas</label></div>
+      <div class="form-check form-switch mb-2"><input class="form-check-input" type="checkbox" id="np-overdue"><label class="form-check-label" for="np-overdue">Alertas de pagos vencidos</label></div>
+      <div class="form-check form-switch mb-2"><input class="form-check-input" type="checkbox" id="np-positive"><label class="form-check-label" for="np-positive">Avisos positivos de pago cubierto</label></div>
+      <label class="small text-muted fw-bold">Privacidad en pantalla bloqueada</label><select id="np-privacy" class="form-select mb-2"><option value="full">Mostrar cantidades y tarjeta</option><option value="limited">Ocultar cantidades</option><option value="private">Privada</option></select>
+      <div class="form-check form-switch mb-2"><input class="form-check-input" type="checkbox" id="np-quiet"><label class="form-check-label" for="np-quiet">Horario silencioso 21:00–08:00</label></div>
+      <button class="btn btn-primary w-100 fw-bold" type="button" onclick="saveNotificationPreferences()">Guardar preferencias</button>
+    </section>
+  </div>
+
   <div id="menuSheetOverlay" class="sheetOverlay hidden" onclick="closeMenuSheet(event)">
     <div class="sheet" role="dialog" aria-modal="true" onclick="event.stopPropagation()">
       <div class="sheetHeader">
@@ -1574,7 +1608,7 @@
         <button class="themeOption" type="button" onclick="openThemeSheet()">Tema</button>
         <button class="themeOption" type="button" onclick="openCategoriesSheet()">Categorías</button>
         <button class="themeOption" type="button" onclick="nav('view-family'); closeMenuSheet();">Ver Finanzas Familiares</button>
-        <button class="themeOption" type="button" onclick="menuAction('enablePush')">Notificaciones</button>
+        <button class="themeOption" type="button" onclick="nav('view-notifications'); closeMenuSheet();">Notificaciones</button>
         <button class="themeOption" type="button" onclick="menuAction('togglePrivacy')">Privacidad</button>
         <button id="mobile-owner-repair" class="themeOption d-none" type="button" onclick="menuAction('repairLegacyOwnerData')">Reparar owner</button>
       </div>
@@ -2274,7 +2308,8 @@
       "view-msi": { title: "MSI", subtitle: "Seguimiento de compras a meses sin intereses." },
       "view-family": { title: "Finanzas Familiares", subtitle: "Vista compartida de compromisos MSI y flujo futuro." },
       "view-hist": { title: "Historial", subtitle: "Consulta, filtra y exporta tus movimientos." },
-      "view-goals": { title: "Metas", subtitle: "Organiza objetivos y avances financieros." }
+      "view-goals": { title: "Metas", subtitle: "Organiza objetivos y avances financieros." },
+      "view-notifications": { title: "Notificaciones", subtitle: "Configura recordatorios push financieros." }
     };
     function updateDesktopHeader(vid = "view-home"){
       const meta = DESKTOP_VIEW_META[vid] || DESKTOP_VIEW_META["view-home"];
@@ -5041,6 +5076,100 @@
     }
     updateStatus();
 
+
+    // =========================
+    // 🔔 Notificaciones push
+    // =========================
+    const NOTIFICATION_PREF_DOC_ID = "default";
+    const parseDaysList = (value) => String(value || "").split(",").map((item) => Number.parseInt(item.trim(), 10)).filter((n) => Number.isFinite(n) && n >= 0 && n <= 31);
+    const getNotificationUserId = () => (document.getElementById("owner-select")?.value || "yair").toLowerCase();
+    const getNotificationPrefRef = () => doc(db, "users", getNotificationUserId(), "notificationPreferences", NOTIFICATION_PREF_DOC_ID);
+    const isIosDevice = () => /iphone|ipad|ipod/i.test(navigator.userAgent || "");
+    const isStandalonePwa = () => window.matchMedia?.("(display-mode: standalone)").matches || window.navigator.standalone === true;
+
+    function updateNotificationStatus(message){
+      const el = document.getElementById("notification-status");
+      if(el) el.textContent = message;
+      const iosHelp = document.getElementById("notification-ios-help");
+      iosHelp?.classList.toggle("d-none", !(isIosDevice() && !isStandalonePwa()));
+    }
+
+    async function loadNotificationPreferences(){
+      if(!db) return;
+      const supported = "Notification" in window && "serviceWorker" in navigator;
+      updateNotificationStatus(supported ? `Permiso: ${Notification.permission}. Dispositivo ${isStandalonePwa() ? "PWA instalada" : "en navegador"}.` : "Este navegador no soporta notificaciones push.");
+      try{
+        const snap = await getDoc(getNotificationPrefRef());
+        const prefs = snap.exists() ? snap.data() : {};
+        document.getElementById("np-enabled").checked = prefs.enabled !== false;
+        document.getElementById("np-cutoff").checked = prefs.cutoffReminders?.enabled !== false;
+        document.getElementById("np-cutoff-days").value = (prefs.cutoffReminders?.daysBefore || [3,1,0]).join(",");
+        document.getElementById("np-payment").checked = prefs.paymentReminders?.enabled !== false;
+        document.getElementById("np-payment-days").value = (prefs.paymentReminders?.daysBefore || [7,3,1,0]).join(",");
+        document.getElementById("np-budget").checked = prefs.budgetAlerts?.enabled !== false;
+        document.getElementById("np-coverage").checked = prefs.coverageAlerts?.enabled !== false;
+        document.getElementById("np-overdue").checked = prefs.overdueAlerts?.enabled !== false;
+        document.getElementById("np-positive").checked = prefs.positiveCoveredPaymentAlerts?.enabled === true;
+        document.getElementById("np-privacy").value = prefs.notificationPrivacy || "full";
+        document.getElementById("np-quiet").checked = prefs.quietHours?.enabled !== false;
+      }catch(e){
+        updateNotificationStatus(`No se pudieron cargar preferencias: ${e?.message || e}`);
+      }
+    }
+
+    async function saveNotificationPreferences(){
+      const prefs = {
+        enabled: document.getElementById("np-enabled")?.checked === true,
+        timezone: "America/Mexico_City",
+        cutoffReminders: { enabled: document.getElementById("np-cutoff")?.checked === true, daysBefore: parseDaysList(document.getElementById("np-cutoff-days")?.value) },
+        paymentReminders: { enabled: document.getElementById("np-payment")?.checked === true, daysBefore: parseDaysList(document.getElementById("np-payment-days")?.value) },
+        overdueAlerts: { enabled: document.getElementById("np-overdue")?.checked === true, daysAfter: [1, 3] },
+        budgetAlerts: { enabled: document.getElementById("np-budget")?.checked === true, warningThreshold: 0.90, exceededThreshold: 1.00, criticalThreshold: 1.10, resendDeltaRatio: 0.05 },
+        coverageAlerts: { enabled: document.getElementById("np-coverage")?.checked === true },
+        positiveCoveredPaymentAlerts: { enabled: document.getElementById("np-positive")?.checked === true },
+        notificationPrivacy: document.getElementById("np-privacy")?.value || "full",
+        quietHours: { enabled: document.getElementById("np-quiet")?.checked === true, start: "21:00", end: "08:00" },
+        updatedAt: serverTimestamp()
+      };
+      await setDoc(getNotificationPrefRef(), prefs, { merge: true });
+      showToast("Preferencias de notificación guardadas", { tone: "success" });
+      updateNotificationStatus(`Permiso: ${Notification?.permission || "no disponible"}. Preferencias guardadas.`);
+    }
+
+    window.saveNotificationPreferences = saveNotificationPreferences;
+    window.loadNotificationPreferences = loadNotificationPreferences;
+
+    window.enablePushNotifications = async () => {
+      if(!("Notification" in window) || !("serviceWorker" in navigator)) return updateNotificationStatus("Este navegador no soporta notificaciones push.");
+      if(isIosDevice() && !isStandalonePwa()) return updateNotificationStatus("Instala primero la PWA en pantalla de inicio para activar notificaciones en iOS.");
+      const permission = await Notification.requestPermission();
+      if(permission !== "granted") return updateNotificationStatus(`Permiso ${permission}. Revisa la configuración del navegador.`);
+      await saveNotificationPreferences();
+      const registration = await navigator.serviceWorker.ready;
+      const deviceId = `${getNotificationUserId()}-${Date.now()}`;
+      await setDoc(doc(db, "users", getNotificationUserId(), "pushDevices", deviceId), {
+        token: `web-push-pending-fcm-token-${deviceId}`,
+        platform: isIosDevice() ? "ios" : (/android/i.test(navigator.userAgent || "") ? "android" : "desktop"),
+        browser: navigator.userAgent || "unknown",
+        enabled: true,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        lastSeenAt: serverTimestamp()
+      }, { merge: true });
+      updateNotificationStatus(`Permiso concedido. Dispositivo registrado. SW: ${registration.active ? "activo" : "pendiente"}.`);
+      showToast("Recordatorios activados", { tone: "success" });
+    };
+
+    window.sendLocalTestNotification = async () => {
+      if(Notification.permission !== "granted") return updateNotificationStatus("Activa el permiso antes de enviar una prueba.");
+      const registration = await navigator.serviceWorker.ready;
+      await registration.showNotification("Prueba de PocketFlow", {
+        body: "Las notificaciones financieras están funcionando en este dispositivo.",
+        icon: "/icons/icon-192.png",
+        data: { targetRoute: "/notifications", type: "TEST_NOTIFICATION" }
+      });
+    };
+
     // Nav + toggles
     window.nav=(vid)=>{
       document.querySelectorAll('.view-section').forEach(e=>e.classList.remove('active'));
@@ -5054,6 +5183,7 @@
       if(vid.includes('msi') && vid !== 'view-family') { document.getElementById('nav-msi')?.classList.add('active'); document.getElementById('d-nav-msi')?.classList.add('active'); }
       if(vid.includes('family')) { document.getElementById('nav-family')?.classList.add('active'); document.getElementById('d-nav-family')?.classList.add('active'); }
       if(vid.includes('goals')) { document.getElementById('nav-goals')?.classList.add('active'); document.getElementById('d-nav-goals')?.classList.add('active'); }
+      if(vid.includes('notifications')) { document.getElementById('d-nav-notifications')?.classList.add('active'); }
       updateDesktopHeader(vid);
       const routePath = vid === 'view-family' ? '/finanzas-familiares' : window.location.pathname;
       if(vid === 'view-family' && window.location.pathname !== routePath){
@@ -5075,6 +5205,7 @@
         setTimeout(() => window.renderCharts?.(), 50);
       }
       if(vid === 'view-hist') renderHistory();
+      if(vid === 'view-notifications') loadNotificationPreferences();
     };
     updateDesktopHeader("view-home");
     updateHistoryModeButtons();
