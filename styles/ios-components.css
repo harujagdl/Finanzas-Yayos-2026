@@ -68,6 +68,67 @@ textarea:focus,
   background: var(--input-bg);
 }
 
+/*
+ * All application selectors are native <select> controls. These theme tokens
+ * also reach browser-created popup layers because they live on :root; the
+ * explicit color-scheme prevents a dark OS popup from being paired with light
+ * option text (and vice versa).
+ */
+select,
+.form-select{
+  color-scheme: inherit;
+  background-color: var(--select-bg);
+  border-color: var(--select-border);
+  color: var(--select-text);
+  box-shadow: var(--select-shadow);
+  accent-color: var(--select-selected-bg);
+}
+.form-select:not([multiple]):not([size]),
+select:not([multiple]):not([size]){
+  background-image: var(--select-arrow);
+  background-repeat: no-repeat;
+  background-position: right .75rem center;
+  background-size: 16px 12px;
+}
+select option,
+select optgroup,
+.form-select option,
+.form-select optgroup{
+  background-color: var(--select-bg);
+  color: var(--select-text);
+}
+select option:hover,
+select option:focus,
+.form-select option:hover,
+.form-select option:focus{
+  background-color: var(--select-hover-bg);
+  color: var(--select-text);
+}
+select option:checked,
+.form-select option:checked{
+  background: var(--select-selected-bg) linear-gradient(0deg, var(--select-selected-bg), var(--select-selected-bg));
+  color: var(--select-selected-text);
+}
+select:focus,
+.form-select:focus,
+select:focus-visible,
+.form-select:focus-visible{
+  background-color: var(--select-bg);
+  border-color: var(--select-focus);
+  color: var(--select-text);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--select-focus) 28%, transparent), var(--select-shadow);
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+}
+select:disabled,
+.form-select:disabled{
+  background-color: var(--select-disabled-bg);
+  border-color: var(--select-border);
+  color: var(--select-disabled-text);
+  cursor: not-allowed;
+  opacity: 1;
+}
+
 .btnPrimary,
 .btn-primary{
   background: linear-gradient(180deg, rgba(47,124,255,.95), rgba(47,124,255,.78));
