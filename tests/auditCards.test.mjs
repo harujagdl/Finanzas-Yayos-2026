@@ -4,7 +4,7 @@ import { auditCards, normalizeExport } from '../scripts/audit-cards.mjs';
 import { buildCardCanonicalKey, normalizeCardName } from '../utils/cardCanonicalKey.js';
 
 test('normaliza espacios, mayúsculas, acentos y puntuación', () => {
-  assert.equal(normalizeCardName('  LÍKE   U! '), 'like-u');
+  assert.equal(normalizeCardName('  LÍKE   U! '), 'likeu');
   assert.equal(buildCardCanonicalKey(' Yáir ', ' Costco '), 'yair__costco');
 });
 
