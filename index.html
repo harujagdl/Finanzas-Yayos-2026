@@ -5977,6 +5977,8 @@
 
         originalCardDocuments=tempAll.filter(c=>c.owner===OWNER);
         const consolidated=consolidateCards(originalCardDocuments);
+        // The logical cards carry configuration resolved across every alias;
+        // payment-cycle filters must never inspect only the canonical document.
         const temp=consolidated.logicalCards;
         cardAliasToCanonical=consolidated.cardAliasToCanonical;
         // Transactions are runtime projections only; Firestore documents are never rewritten.
