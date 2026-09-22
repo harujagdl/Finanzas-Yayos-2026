@@ -34,6 +34,12 @@ service cloud.firestore {
       allow delete: if canUpdateOrDeleteStrict();
     }
 
+    match /installment_plans/{id} {
+      allow read: if canRead();
+      allow create: if canCreate();
+      allow update, delete: if canUpdateOrDelete();
+    }
+
     match /expenses/{id} {
       allow read: if canReadMaintenance();
       allow create: if canCreate();
