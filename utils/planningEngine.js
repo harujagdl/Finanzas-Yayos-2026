@@ -65,9 +65,13 @@ export function projectInstallments(plans = [], { startMonth = getLocalMonthKey(
       const cardKey = plan.cardId || 'unassigned';
       row.byCardCents[cardKey] = (row.byCardCents[cardKey] || 0) + monthlyCents;
       if(index === count - 1 && plan.remainingInstallments <= horizon){
-        row.releasedFlowCents += effectiveCents;
         row.endingPlans.push({ id: plan.id, description: plan.description || 'Plan sin descripción', releasedMonthlyAmount: fromCents(effectiveCents) });
       }
+    }
+    // The last payment month remains committed. Flow is released in the first
+    // subsequent month, when that installment is no longer due.
+    if(plan.remainingInstallments < horizon){
+      rows[plan.remainingInstallments].releasedFlowCents += effectiveCents;
     }
   });
 

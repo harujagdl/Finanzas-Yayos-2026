@@ -13,6 +13,10 @@ Las colecciones activas son `cards`, `expenses`, `goals`, `goal_contributions` y
 - `monthKey.js` y las convenciones existentes de MSI/fechas.
 - `cards`, `expenses`, `goals` y `monthly_summaries` sin migrarlas ni reescribirlas.
 
+## Hallazgo al auditar el main de partida
+
+El main entregado ya contenía la mayor parte del P0: módulo puro, colección y reglas, sección de navegación, alta de planes, simuladores y documentación. La proyección, sin embargo, atribuía `releasedFlow` al mismo mes de `endingPlans`. Este porte conserva toda la arquitectura actual y corrige únicamente esa regresión semántica, sus consumidores de UI, sus pruebas y la regla de mantenimiento de la colección.
+
 ## Qué se extiende
 
 - `cards`: campos opcionales de producto, saldos, propiedad y estado; los aliases actuales siguen siendo válidos.
