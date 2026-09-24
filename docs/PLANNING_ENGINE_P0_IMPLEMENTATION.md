@@ -16,6 +16,8 @@ Cada documento contiene `owner`, `cardId`, `description`, `merchant`, `originalA
 
 `projectInstallments` produce 12 meses por defecto con compromiso MSI, compromiso con interés, total por tarjeta, total personal, deuda compartida del hogar, participación efectiva individual, flujo liberado y planes que terminan. La mensualidad actual pendiente aparece en el primer mes proyectado; por ello 1/6 produce cinco pagos y 11/12 uno.
 
+El mes del último pago continúa comprometido. `endingPlans` señala el plan en ese mes, mientras que `releasedFlow` representa el primer mes posterior en el que esa mensualidad deja de estar comprometida. Si ese primer mes libre cae fuera de los 12 meses proyectados, la interfaz lo indica como **fuera del horizonte** en vez de atribuir la liberación al último pago.
+
 Para planes compartidos, la deuda total de la tarjeta se conserva y `effectiveCommitment` aplica `ownerSharePercentage`. `costToFreeOneMonthlyPeso = remainingBalance / installmentAmount` es informativo y nunca una recomendación.
 
 El disponible seguro requiere ingreso, gastos fijos, gasto corriente, pagos corrientes TDC, metas y colchón; descuenta además el próximo compromiso efectivo y el objetivo de reducción. Si falta cualquier base devuelve una lista de faltantes y ningún total.
