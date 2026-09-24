@@ -849,6 +849,15 @@
         grid-template-columns:repeat(3,minmax(0,1fr));
       }
     }
+    .planning-kpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+    .planning-timeline{display:flex;gap:10px;overflow-x:auto;padding:4px 2px 14px;scroll-snap-type:x mandatory}
+    .planning-month{min-width:150px;scroll-snap-align:start;background:var(--bg-card);border:1px solid var(--border-color);border-radius:16px;padding:14px}
+    .planning-month strong{display:block;font-size:1.05rem;margin:5px 0}
+    .planning-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+    .planning-form-grid .wide{grid-column:1/-1}
+    .planning-plan{border-bottom:1px solid var(--border-color);padding:12px 0}
+    .planning-plan:last-child{border-bottom:0}
+    @media(min-width:768px){.planning-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.planning-form-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
     .msi-status-pill{
       display:inline-flex;
       align-items:center;
@@ -890,6 +899,7 @@
       <button class="nav-btn navItem" onclick="nav('view-summary')" id="d-nav-summary"><i class="fas fa-calendar-days"></i> Resumen</button>
       <button class="nav-btn navItem" onclick="nav('view-cards')" id="d-nav-cards"><i class="fas fa-wallet"></i> Tarjetas</button>
       <button class="nav-btn navItem" onclick="nav('view-msi')" id="d-nav-msi"><i class="fas fa-layer-group"></i> MSI</button>
+      <button class="nav-btn navItem" onclick="nav('view-planning')" id="d-nav-planning"><i class="fas fa-chart-line"></i> Planeación</button>
       <button class="nav-btn navItem" onclick="nav('view-family')" id="d-nav-family"><i class="fas fa-people-roof"></i> Familia</button>
       <button class="nav-btn navItem" onclick="nav('view-notifications')" id="d-nav-notifications"><i class="fas fa-bell"></i> Notificaciones</button>
       <button class="nav-btn navItem" onclick="nav('view-hist')" id="d-nav-hist"><i class="fas fa-list-ul"></i> Historial</button>
@@ -990,6 +1000,8 @@
         <button type="button" id="scope-filter-personal" onclick="handleScopeFilterChange('personal')">Personal</button>
       </div>
     </section>
+
+    <button class="card-box w-100 border-0 text-start mb-3" type="button" onclick="nav('view-planning')" aria-label="Abrir Planeación"><div class="d-flex justify-content-between align-items-center"><div><div class="fw-bold"><i class="fas fa-chart-line me-2 text-primary"></i>Planeación financiera</div><div class="text-muted small">Disponible seguro, próximos compromisos y simulador</div></div><i class="fas fa-chevron-right text-muted"></i></div></button>
 
     <section id="dashboard-summary" class="card-box card">
       <div class="d-flex justify-content-between align-items-center mb-3">
@@ -1159,6 +1171,23 @@
   <!-- =======================
         ✅ TARJETAS
   ======================= -->
+  <div id="view-planning" class="view-section p-3">
+    <div class="d-flex justify-content-between align-items-start gap-2 mb-3"><div><h4 class="fw-black mb-1">Planeación</h4><div class="text-muted small">Decide con claridad cuánto ya está comprometido.</div></div><button class="btn btn-primary btn-sm" type="button" onclick="openPlanForm()"><i class="fas fa-plus me-1"></i> Plan</button></div>
+    <div class="planning-kpis mb-3">
+      <div class="card-box m-0"><div class="kpi-label">Disponible seguro / mes</div><div id="planning-safe-month" class="kpi-value sensitive-data">Datos pendientes</div><small id="planning-safe-why" class="text-muted">Completa tus supuestos abajo.</small></div>
+      <div class="card-box m-0"><div class="kpi-label">Compromiso efectivo</div><div id="planning-current" class="kpi-value sensitive-data">$0.00</div><small class="text-muted">Personal + tu parte compartida</small></div>
+      <div class="card-box m-0"><div class="kpi-label">Próxima liberación</div><div id="planning-next-release" class="kpi-value sensitive-data">—</div><small id="planning-next-release-month" class="text-muted">Sin planes próximos</small></div>
+    </div>
+    <div class="card-box mb-3"><div class="d-flex justify-content-between align-items-center mb-2"><div><h6 class="fw-bold m-0">Proyección 12 meses</h6><small class="text-muted">Compromiso, liberación y planes que terminan</small></div></div><div id="planning-timeline" class="planning-timeline"></div></div>
+    <div class="card-box mb-3"><h6 class="fw-bold">Disponible seguro</h6><div class="planning-form-grid">
+      <input class="form-control" id="safe-income" type="number" step=".01" placeholder="Ingreso disponible"><input class="form-control" id="safe-fixed" type="number" step=".01" placeholder="Gastos fijos"><input class="form-control" id="safe-spending" type="number" step=".01" placeholder="Gasto corriente"><input class="form-control" id="safe-card-payments" type="number" step=".01" placeholder="Pagos corrientes TDC"><input class="form-control" id="safe-goals" type="number" step=".01" placeholder="Metas / apartados"><input class="form-control" id="safe-buffer" type="number" step=".01" placeholder="Colchón"><input class="form-control" id="safe-target" type="number" step=".01" value="0" placeholder="Objetivo de reducción"><button class="btn btn-outline-primary" type="button" onclick="calculatePlanningSafe()">Calcular</button>
+    </div><div id="planning-safe-detail" class="small text-muted mt-2">No se inventarán importes faltantes.</div></div>
+    <div class="card-box mb-3"><h6 class="fw-bold">¿Qué pasa si compro?</h6><div class="planning-form-grid"><input id="sim-amount" class="form-control" type="number" step=".01" placeholder="Monto"><select id="sim-card" class="form-select"></select><input id="sim-months" class="form-control" type="number" min="1" value="12" placeholder="Meses"><select id="sim-ownership" class="form-select"><option value="personal">Personal</option><option value="shared">Compartida 50/50</option></select><button class="btn btn-primary wide" type="button" onclick="runPurchaseSimulation()">Simular sin guardar</button></div><div id="planning-simulation" class="mt-3 small text-muted">La simulación no escribe en Firestore.</div></div>
+    <div class="card-box"><h6 class="fw-bold">MSI y diferidos</h6><div id="planning-plans" class="text-muted small">Cargando planes…</div></div>
+  </div>
+
+  <div class="modal fade" id="modalPlan" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content card-box border-0"><div class="modal-body"><h5 class="fw-black">Registrar compra diferida</h5><form id="form-plan"><div class="mb-2"><label class="small fw-bold">Descripción</label><input id="p-description" class="form-control" required></div><div class="row g-2 mb-2"><div class="col-6"><label class="small fw-bold">Tarjeta</label><select id="p-card" class="form-select" required></select></div><div class="col-6"><label class="small fw-bold">Monto original</label><input id="p-amount" type="number" step=".01" class="form-control" required></div></div><div class="row g-2 mb-2"><div class="col-4"><label class="small fw-bold">Mensualidades</label><input id="p-total" type="number" min="1" class="form-control" required></div><div class="col-4"><label class="small fw-bold">Pagada #</label><input id="p-current" type="number" min="0" value="0" class="form-control" required></div><div class="col-4"><label class="small fw-bold">Mensualidad</label><input id="p-installment" type="number" step=".01" class="form-control" required></div></div><div class="row g-2 mb-3"><div class="col-6"><select id="p-interest" class="form-select"><option value="none">MSI</option><option value="interest">Con interés</option></select></div><div class="col-6"><select id="p-ownership" class="form-select"><option value="personal">Personal</option><option value="shared">Compartida 50/50</option></select></div></div><button class="btn btn-primary w-100" type="submit">Guardar plan</button></form></div></div></div></div>
+
   <div id="view-cards" class="view-section p-3">
     <h4 class="fw-black mb-4">Mis Tarjetas</h4>
     <div class="text-muted small mb-2">* Ya están precargadas. Aquí solo editas corte/pago/límite/deuda/meta.</div>
@@ -1786,6 +1815,8 @@
               <input type="number" id="c-bal" class="form-control" value="0" step="0.01" inputmode="decimal" required />
             </div>
 
+            <details class="mb-3"><summary class="small fw-bold text-primary mb-2">Datos de planeación (opcionales)</summary><div class="row g-2 mt-1"><div class="col-6"><label class="small text-muted">Banco</label><input id="c-bank" class="form-control"></div><div class="col-6"><label class="small text-muted">Últimos dígitos</label><input id="c-last-digits" class="form-control" maxlength="4" inputmode="numeric"></div><div class="col-6"><label class="small text-muted">Tipo</label><select id="c-type" class="form-select"><option value="credit">Crédito</option><option value="debit">Débito</option></select></div><div class="col-6"><label class="small text-muted">Propiedad</label><select id="c-ownership" class="form-select"><option value="personal">Personal</option><option value="shared">Compartida</option></select></div><div class="col-6"><label class="small text-muted">Saldo al corte</label><input id="c-statement" type="number" step=".01" class="form-control"></div><div class="col-6"><label class="small text-muted">Pago mínimo</label><input id="c-minimum" type="number" step=".01" class="form-control"></div><div class="col-6"><label class="small text-muted">Crédito disponible</label><input id="c-available" type="number" step=".01" class="form-control"></div><div class="col-6 d-flex align-items-end"><div class="form-check form-switch mb-2"><input id="c-active" class="form-check-input" type="checkbox" checked><label class="form-check-label">Activa</label></div></div></div></details>
+
             <button type="submit" id="btn-save-card" class="btn btn-primary w-100 py-2 rounded-3 fw-bold">Guardar</button>
             <button type="button" id="btn-del-card" class="btn btn-link text-danger w-100 mt-2 text-decoration-none" onclick="deleteCard()">Eliminar</button>
           </form>
@@ -1949,6 +1980,7 @@
     import { calculateFilteredFamilyMsiMetrics } from "./utils/familyMsiMetrics.js";
     import { groupMsiByCard, getMsiCardGroupKey } from "./utils/groupMsiByCard.js";
     import { buildCardLogicalKey } from "./utils/cardCanonicalKey.js";
+    import { normalizeCard, projectInstallments, calculateSafeAvailable, simulateNewPurchase, simulatePlanPayoff, calculateCostToFreeOneMonthlyPeso } from "./utils/planningEngine.js";
     import { consolidateCards, hasLogicalCardName, resolveCanonicalCardId, resolveTransactionCardAliases } from "./utils/cardConsolidation.js";
     import {
       getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc,
@@ -2276,6 +2308,7 @@
         unsubFamilyTransactions();
         unsubFamilyTransactions = null;
       }
+      if(unsubInstallmentPlans){ unsubInstallmentPlans(); unsubInstallmentPlans=null; }
     }
 
     function retryStartup(){
@@ -2383,7 +2416,8 @@
     let goalModal=null;
     let goalDetailModal=null;
     let goalContributionModal=null;
-    let unsubCards=null, unsubTrans=null, unsubGoals=null, unsubFamilyTransactions=null;
+    let unsubCards=null, unsubTrans=null, unsubGoals=null, unsubFamilyTransactions=null, unsubInstallmentPlans=null;
+    let installmentPlans=[];
     let familyTrans = [];
     let familyMsiFromTransactions = [];
     let familyFilters = {
@@ -2434,6 +2468,7 @@
       "view-cards": { title: "Tarjetas", subtitle: "Administra tarjetas, cortes y límites." },
       "view-add": { title: "Nuevo movimiento", subtitle: "Registra gastos, abonos o compras a MSI." },
       "view-msi": { title: "MSI", subtitle: "Seguimiento de compras a meses sin intereses." },
+      "view-planning": { title: "Planeación", subtitle: "Proyecta compromisos y prueba decisiones sin alterar tus datos." },
       "view-family": { title: "Finanzas Familiares", subtitle: "Vista compartida de compromisos MSI y flujo futuro." },
       "view-hist": { title: "Historial", subtitle: "Consulta, filtra y exporta tus movimientos." },
       "view-goals": { title: "Metas", subtitle: "Organiza objetivos y avances financieros." },
@@ -5313,6 +5348,7 @@
       if(vid.includes('cards')) { document.getElementById('nav-cards')?.classList.add('active'); document.getElementById('d-nav-cards')?.classList.add('active'); }
       if(vid.includes('hist')) { document.getElementById('nav-hist')?.classList.add('active'); document.getElementById('d-nav-hist')?.classList.add('active'); }
       if(vid.includes('msi') && vid !== 'view-family') { document.getElementById('nav-msi')?.classList.add('active'); document.getElementById('d-nav-msi')?.classList.add('active'); }
+      if(vid.includes('planning')) { document.getElementById('d-nav-planning')?.classList.add('active'); }
       if(vid.includes('family')) { document.getElementById('nav-family')?.classList.add('active'); document.getElementById('d-nav-family')?.classList.add('active'); }
       if(vid.includes('goals')) { document.getElementById('nav-goals')?.classList.add('active'); document.getElementById('d-nav-goals')?.classList.add('active'); }
       if(vid.includes('notifications')) { document.getElementById('d-nav-notifications')?.classList.add('active'); }
@@ -5331,6 +5367,7 @@
         setTimeout(() => window.renderCharts?.(), 50);
       }
       if(vid === 'view-family') renderFamilyFinancePage();
+      if(vid === 'view-planning') renderPlanning();
       if(vid === 'view-goals') renderGoals();
       if(vid === 'view-summary') {
         renderSummaryView();
@@ -5944,6 +5981,7 @@
       subscribeTrans();
       subscribeGoals();
       subscribeFamilyTransactions();
+      subscribeInstallmentPlans();
       resetForm();
       refreshAll({ owner: OWNER, force: true, source: "resubscribe" });
       updateMonthlyFootprint({ force: true });
@@ -5965,8 +6003,7 @@
         }
         const tempAll=[];
         snap.forEach(d=>{
-          const c=d.data();
-          c.id=d.id;
+          const c=normalizeCard({ id:d.id, ...d.data() });
           const normalizedClosingDay = Number(c.closingDay ?? c.cutDay ?? NaN);
           const normalizedDueDay = Number(c.dueDay ?? c.payDay ?? NaN);
           c.closingDay = Number.isFinite(normalizedClosingDay) ? normalizedClosingDay : null;
@@ -7153,6 +7190,25 @@
       listEl.addEventListener('pointerup', finishDrag);
       listEl.addEventListener('pointercancel', finishDrag);
     }
+
+    function subscribeInstallmentPlans(){
+      const qPlans=query(collection(db,"installment_plans"),where("owner","==",OWNER));
+      unsubInstallmentPlans=onSnapshot(qPlans,(snap)=>{ installmentPlans=snap.docs.map(d=>({id:d.id,...d.data()})); renderPlanning(); },(err)=>{ console.error("Installment plans error",err); installmentPlans=[]; renderPlanning(); });
+    }
+    const planningMoney=(value)=>new Intl.NumberFormat('es-MX',{style:'currency',currency:'MXN'}).format(Number(value)||0);
+    function fillPlanningCards(){ ['p-card','sim-card'].forEach(id=>{ const el=document.getElementById(id); if(!el)return; const old=el.value; el.innerHTML=cards.map(c=>`<option value="${c.id}">${c.name}</option>`).join(''); if([...el.options].some(o=>o.value===old))el.value=old; }); }
+    function renderPlanning(){
+      fillPlanningCards(); const projection=projectInstallments(installmentPlans,{months:12}); const current=projection[0];
+      const currentEl=document.getElementById('planning-current'); if(currentEl)currentEl.textContent=planningMoney(current?.effectiveCommitment||0);
+      const next=projection.find(row=>row.releasedFlow>0); const release=document.getElementById('planning-next-release'); if(release)release.textContent=next?`+${planningMoney(next.releasedFlow)}/mes`:'—'; const releaseMonth=document.getElementById('planning-next-release-month'); if(releaseMonth)releaseMonth.textContent=next?next.monthKey:'Sin planes próximos';
+      const timeline=document.getElementById('planning-timeline'); if(timeline)timeline.innerHTML=projection.map(row=>`<div class="planning-month"><small class="text-muted">${row.monthKey}</small><strong>${planningMoney(row.effectiveCommitment)}</strong><div class="small">Libera: <b>${planningMoney(row.releasedFlow)}</b></div><div class="small text-muted">${row.endingPlans.length?row.endingPlans.map(p=>p.description).join(', '):'Sin cierres'}</div></div>`).join('');
+      const list=document.getElementById('planning-plans'); if(list)list.innerHTML=installmentPlans.length?installmentPlans.map(plan=>{ const remaining=Number(plan.remainingInstallments??(Number(plan.totalInstallments)-Number(plan.currentInstallment)))||0; return `<div class="planning-plan"><div class="d-flex justify-content-between gap-2"><div><b>${plan.description||'Plan sin descripción'}</b><div class="text-muted">${plan.interestType==='interest'?'Diferido con interés':'MSI'} · ${remaining} pagos · ${plan.ownershipType==='shared'?(plan.ownerSharePercentage||50)+'% propio':'Personal'}</div></div><b>${planningMoney(plan.installmentAmount)}/mes</b></div><div class="small mt-1">Pendiente: ${planningMoney(plan.remainingBalance)} · costo/flujo: ${calculateCostToFreeOneMonthlyPeso(plan)?.toFixed(2)||'—'}</div><button class="btn btn-sm btn-link px-0" onclick="simulatePayoff('${plan.id}')">Simular liquidación</button></div>`;}).join(''):'No hay planes explícitos. Registra el primero sin alterar tus MSI históricos.';
+    }
+    window.openPlanForm=()=>{ fillPlanningCards(); new bootstrap.Modal(document.getElementById('modalPlan')).show(); };
+    window.calculatePlanningSafe=()=>{ const val=id=>document.getElementById(id)?.value; const projection=projectInstallments(installmentPlans,{months:12}); const result=calculateSafeAvailable({incomeAvailable:val('safe-income'),fixedExpenses:val('safe-fixed'),currentSpending:val('safe-spending'),currentCardPayments:val('safe-card-payments'),goalsReserved:val('safe-goals'),buffer:val('safe-buffer'),reductionTarget:val('safe-target')||0,nextInstallments:projection[0]?.effectiveCommitment||0}); const output=document.getElementById('planning-safe-month'), detail=document.getElementById('planning-safe-detail'); if(result.missing.length){ output.textContent='Datos pendientes'; detail.textContent='Falta: '+result.missing.join(', ')+'. No se inventaron cantidades.'; }else{ output.textContent=planningMoney(result.availableSafeMonth); detail.textContent=`Aproximación semanal: ${planningMoney(result.availableSafeWeek)}. Incluye ${planningMoney(projection[0]?.effectiveCommitment||0)} de planes próximos.`; } };
+    window.runPurchaseSimulation=()=>{ const amount=Number(document.getElementById('sim-amount')?.value), months=Number(document.getElementById('sim-months')?.value), ownershipType=document.getElementById('sim-ownership')?.value, cardId=document.getElementById('sim-card')?.value; if(!(amount>0&&months>0))return showToast('Ingresa monto y mensualidades válidos.',{tone:'warning'}); const result=simulateNewPurchase(installmentPlans,{amount,totalInstallments:months,cardId,ownershipType,ownerSharePercentage:ownershipType==='shared'?50:100}); const before=result.before[0]?.effectiveCommitment||0, after=result.after[0]?.effectiveCommitment||0; document.getElementById('planning-simulation').innerHTML=`Mensualidad aproximada: <b>${planningMoney(result.plan.installmentAmount)}</b>. Tu compromiso cambia de <b>${planningMoney(before)}</b> a <b>${planningMoney(after)}</b>. Liberación estimada: ${result.after[months]?.monthKey||'fuera del horizonte de 12 meses'}. <br><b>No se escribió en Firestore.</b>`; };
+    window.simulatePayoff=(id)=>{ const result=simulatePlanPayoff(installmentPlans,id,{months:12}); const before=result.before[0]?.effectiveCommitment||0, after=result.after[0]?.effectiveCommitment||0; document.getElementById('planning-simulation').innerHTML=`Liquidación simulada: compromiso potencial ${planningMoney(before)} → <b>${planningMoney(after)}</b>.<br>${result.warning} No se modificaron datos reales.`; document.getElementById('planning-simulation').scrollIntoView({behavior:'smooth'}); };
+    document.getElementById('form-plan')?.addEventListener('submit',async(e)=>{ e.preventDefault(); const total=Number(document.getElementById('p-total').value), current=Number(document.getElementById('p-current').value), installmentAmount=Number(document.getElementById('p-installment').value), originalAmount=Number(document.getElementById('p-amount').value), remainingInstallments=Math.max(total-current,0); const now=new Date(); const end=new Date(now.getFullYear(),now.getMonth()+remainingInstallments,1); const ownershipType=document.getElementById('p-ownership').value; await addDoc(collection(db,'installment_plans'),{owner:OWNER,cardId:document.getElementById('p-card').value,description:document.getElementById('p-description').value.trim(),merchant:'',originalAmount,remainingBalance:Math.round(installmentAmount*remainingInstallments*100)/100,installmentAmount,totalInstallments:total,currentInstallment:current,remainingInstallments,startDate:Timestamp.fromDate(now),estimatedEndDate:Timestamp.fromDate(end),interestType:document.getElementById('p-interest').value,annualInterestRate:null,active:remainingInstallments>0,ownershipType,ownerSharePercentage:ownershipType==='shared'?50:100,notes:'',createdAt:serverTimestamp()}); bootstrap.Modal.getInstance(document.getElementById('modalPlan'))?.hide(); e.target.reset(); showToast('Plan guardado.',{tone:'success'}); });
 
     // Smart pick
 
@@ -9667,7 +9723,15 @@ const getHistoryContext = () => {
       document.getElementById('c-cycle-billing').checked = normalizeCycleMode(c.cycleMode) === 'billing';
       document.getElementById('c-limit').value=c.limit;
       document.getElementById('c-bal').value=c.balance;
-      document.getElementById('c-goal').value=c.payGoal||0;
+      document.getElementById('c-goal').value=c.paymentToAvoidInterest ?? c.payGoal ?? 0;
+      document.getElementById('c-bank').value=c.bank||'';
+      document.getElementById('c-last-digits').value=c.lastDigits||'';
+      document.getElementById('c-type').value=c.type||'credit';
+      document.getElementById('c-ownership').value=c.ownershipType||'personal';
+      document.getElementById('c-statement').value=c.statementBalance??'';
+      document.getElementById('c-minimum').value=c.minimumPayment??'';
+      document.getElementById('c-available').value=c.availableCredit??'';
+      document.getElementById('c-active').checked=c.active!==false;
       document.getElementById('btn-del-card').style.display = (c.owner==="both") ? "none" : "block";
       cardModal = new bootstrap.Modal(document.getElementById('modalCard'));
       cardModal.show();
@@ -9705,7 +9769,19 @@ const getHistoryContext = () => {
         cycleMode,
         limit: parseFloat(document.getElementById('c-limit').value||0),
         balance: parseFloat(document.getElementById('c-bal').value||0),
-        payGoal: parseFloat(document.getElementById('c-goal').value||0)
+        payGoal: parseFloat(document.getElementById('c-goal').value||0),
+        paymentToAvoidInterest: parseFloat(document.getElementById('c-goal').value||0),
+        creditLimit: parseFloat(document.getElementById('c-limit').value||0),
+        currentBalance: parseFloat(document.getElementById('c-bal').value||0),
+        bank: document.getElementById('c-bank').value.trim(),
+        lastDigits: document.getElementById('c-last-digits').value.trim(),
+        type: document.getElementById('c-type').value,
+        ownershipType: document.getElementById('c-ownership').value,
+        sharedWith: document.getElementById('c-ownership').value==='shared' ? ALLOWED_APP_OWNERS.filter(o=>o!==OWNER) : [],
+        statementBalance: parseFloat(document.getElementById('c-statement').value||0),
+        minimumPayment: parseFloat(document.getElementById('c-minimum').value||0),
+        availableCredit: parseFloat(document.getElementById('c-available').value||0),
+        active: document.getElementById('c-active').checked
       };
 
       if(saveButton) saveButton.disabled=true;
