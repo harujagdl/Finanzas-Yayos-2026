@@ -587,6 +587,13 @@
       white-space:normal;
       overflow-wrap:anywhere;
     }
+    .summary-payment-kpi{
+      grid-column:span 2; padding:16px; border:1px solid rgba(37,99,235,.4);
+      background:linear-gradient(135deg,rgba(37,99,235,.12),rgba(37,99,235,.03));
+    }
+    .summary-payment-kpi .kpi-value{font-size:clamp(1.55rem,3.4vw,2.25rem); color:var(--primary);}
+    .summary-payment-note,.summary-card-payment-source{font-size:.76rem; color:var(--text-muted); margin-top:4px; font-weight:600;}
+    .summary-card-payment{min-width:150px; text-align:right;}
     .summary-cards-list{display:flex; flex-direction:column;}
     .summary-card-item{
       display:flex; justify-content:space-between; align-items:flex-start;
@@ -614,6 +621,8 @@
       .summary-card-net{text-align:right; min-width:110px;}
       .owner-pill,.owner-select{max-width:126px;}
       .summary-kpis{grid-template-columns:repeat(2,minmax(0,1fr));}
+      .summary-payment-kpi{grid-column:1/-1;}
+      .summary-card-payment{min-width:112px;}
       .summary-kpi-card{min-width:0;}
       .summary-kpis .kpi-value{font-size:clamp(.95rem,5vw,1.2rem);}
     }
@@ -2010,7 +2019,7 @@
     import { groupMsiByCard, getMsiCardGroupKey } from "./utils/groupMsiByCard.js";
     import { buildCardLogicalKey } from "./utils/cardCanonicalKey.js";
     import { normalizeCard, projectInstallments, calculateSafeAvailable, simulateNewPurchase, simulatePlanPayoff, calculateCostToFreeOneMonthlyPeso } from "./utils/planningEngine.js";
-    import { normalizeFinancialCommitments, calculateMonthlyFinancialSummary } from "./utils/financialCore.js";
+    import { normalizeFinancialCommitments, calculateMonthlyFinancialSummary, calculateMonthlyPaymentSummary } from "./utils/financialCore.js";
     import { resolveCommitmentOwnership } from "./utils/commitmentOwnership.js";
     import { consolidateCards, hasLogicalCardName, resolveCanonicalCardId, resolveTransactionCardAliases } from "./utils/cardConsolidation.js";
     import {
@@ -4761,15 +4770,22 @@
       const unclassifiedCount = safeNumber(summary?.totals?.unclassifiedCommitmentCount);
       const txCount = safeNumber(summary?.counts?.txCount);
       const abonosKpiLabel = summary?.labels?.abonosKpi || "Abonos";
+      const payment = summary?.monthlyPayment;
+      const paymentPending = !payment || payment.totalAmount == null || payment.sourceStatus === "insufficient_data";
+      const paymentConfirmed = payment?.sourceStatus === "confirmed";
+      const paymentLabel = paymentConfirmed ? "Pago del mes" : (paymentPending ? "Pago del mes" : "Pago estimado del mes");
+      const paymentNote = paymentPending ? "Datos pendientes"
+        : payment?.sourceStatus === "mixed" ? "Incluye datos bancarios y estimaciones."
+        : payment?.sourceStatus === "estimated" ? "Calculado con movimientos y compromisos registrados."
+        : "Confirmado por datos bancarios.";
 
-      if(!txCount && !installments){
-        kpisEl.innerHTML = "";
-        emptyEl.classList.remove("d-none");
-        return;
-      }
-
-      emptyEl.classList.add("d-none");
+      emptyEl.classList.toggle("d-none", Boolean(txCount || installments || !paymentPending));
       kpisEl.innerHTML = `
+        <div class="summary-kpi-card summary-payment-kpi">
+          <div class="kpi-label">${paymentLabel}</div>
+          <div class="kpi-value sensitive-data">${paymentPending ? "Datos pendientes" : formatCurrency(payment.totalAmount)}</div>
+          <div class="summary-payment-note">${paymentNote}</div>
+        </div>
         <div class="summary-kpi-card">
           <div class="kpi-label">Compras del periodo</div>
           <div class="kpi-value sensitive-data">${formatCurrency(expense)}</div>
@@ -4803,7 +4819,9 @@
       const countEl = document.getElementById("summary-card-count");
       if(!listEl || !countEl) return;
 
-      const entries = Object.entries(summary?.byCard || {});
+      const paymentCards = new Map((summary?.monthlyPayment?.cards || []).map((item) => [item.cardId || "sin-tarjeta", item]));
+      const ids = new Set([...Object.keys(summary?.byCard || {}), ...paymentCards.keys()]);
+      const entries = Array.from(ids, (id) => [id, summary?.byCard?.[id] || {}]);
       countEl.textContent = `${entries.length} ${entries.length === 1 ? "tarjeta" : "tarjetas"}`;
 
       if(!entries.length){
@@ -4812,18 +4830,31 @@
       }
 
       entries.sort(([, a], [, b]) => safeNumber(b?.householdCommitment ?? b?.expense) - safeNumber(a?.householdCommitment ?? a?.expense));
-      listEl.innerHTML = entries.map(([, card]) => {
+      listEl.innerHTML = entries.map(([id, card]) => {
         const expense = safeNumber(card?.expense);
         const income = safeNumber(card?.payments ?? card?.income);
-        const installments = safeNumber(card?.installmentCommitment) + safeNumber(card?.interestDeferredCommitment);
+        const resolvedPayment = paymentCards.get(id);
+        const installments = safeNumber(card?.installmentCommitment) + safeNumber(card?.interestDeferredCommitment)
+          || safeNumber(resolvedPayment?.components?.installments);
         const commitment = safeNumber(card?.effectiveCommitment ?? card?.expense);
+        const household = safeNumber(card?.householdCommitment ?? resolvedPayment?.components?.installments);
+        const paymentKnown = resolvedPayment?.amount != null;
+        const paymentTitle = resolvedPayment?.source === "statement" ? "Pago del mes" : "Pago estimado";
+        const sourceLabel = resolvedPayment?.source === "statement" ? "Confirmado por datos bancarios"
+          : resolvedPayment?.source === "estimated" ? "Estimado por Yayos" : "Datos pendientes";
+        const cardName = card?.cardName || cards.find((item) => item.id === id)?.name || "Sin tarjeta";
         return `
           <div class="summary-card-item breakRow">
             <div class="summary-card-main breakLeft">
-              <div class="summary-card-title breakTitle">${card?.cardName || "Sin tarjeta"}</div>
-              <div class="summary-card-subline breakSub">Compras: <span class="sensitive-data">${formatCurrency(card?.purchases ?? expense)}</span> · MSI/diferidos: <span class="sensitive-data">${formatCurrency(installments)}</span> · Abonos: <span class="sensitive-data">${formatCurrency(income)}</span></div>
+              <div class="summary-card-title breakTitle">${cardName}</div>
+              <div class="summary-card-subline breakSub">Compras: <span class="sensitive-data">${formatCurrency(card?.purchases ?? resolvedPayment?.components?.purchases ?? expense)}</span> · MSI/diferidos: <span class="sensitive-data">${formatCurrency(installments)}</span> · Abonos: <span class="sensitive-data">${formatCurrency(income)}</span></div>
+              <div class="summary-card-subline">Compromiso MSI del hogar: <span class="sensitive-data">${formatCurrency(household)}</span>${commitment !== household ? ` · Efectivo: <span class="sensitive-data">${formatCurrency(commitment)}</span>` : ""}</div>
             </div>
-            <div class="summary-card-net breakRight breakNet sensitive-data">${formatCurrency(commitment)}</div>
+            <div class="summary-card-payment breakRight">
+              <div class="small fw-bold">${paymentTitle}</div>
+              <div class="summary-card-net sensitive-data">${paymentKnown ? formatCurrency(resolvedPayment.amount) : "Pendiente"}</div>
+              <div class="summary-card-payment-source">${sourceLabel}</div>
+            </div>
           </div>
         `;
       }).join("");
@@ -4835,28 +4866,8 @@
     const renderSummaryEstimatedPayment = (summary, context) => {
       const wrap = document.getElementById("summary-estimated-payment");
       if(!wrap) return;
-      if(context?.mode !== "statement" || !context?.statement){
-        wrap.classList.add("d-none");
-        wrap.innerHTML = "";
-        return;
-      }
-
-      const saldoEstimado = safeNumber(summary?.totals?.saldoEstimado);
-      const statement = context.statement;
-      const statementLabel = `Estado de cuenta: ${formatShortDate(statement.statementStart)} → ${formatShortDate(statement.statementEndInclusive)}`;
-      const abonosLabel = statement.mode === "cashflow_ciclo"
-        ? `Cashflow del ciclo: ${formatShortDate(statement.statementStart)} → ${formatShortDate(statement.statementEndInclusive)}`
-        : `Pagos aplicados: ${formatShortDate(statement.payStart)} → ${formatShortDate(statement.payEndInclusive)}`;
-      const badge = saldoEstimado > 0
-        ? `<span class="badge-status bg-warning-light">Te faltan ${formatMoney(saldoEstimado)} para quedar tablas</span>`
-        : `<span class="badge-status bg-success-light">Vas al día en este estado de cuenta</span>`;
-
-      wrap.classList.remove("d-none");
-      wrap.innerHTML = `
-        <div class="small fw-bold mb-1">${statementLabel}</div>
-        <div class="small text-muted mb-1">${abonosLabel}</div>
-        ${badge}
-      `;
+      wrap.classList.add("d-none");
+      wrap.innerHTML = "";
     };
 
     const renderSummaryView = async ({ force = false, periodKey } = {}) => {
@@ -4934,6 +4945,7 @@
         }
 
         const itemsByOwner = scoped.filter((item) => !item?.owner || item.owner === owner);
+        const commitments = getFinancialCommitments();
         let summary;
 
         if(context.mode === "statement" && context.statement){
@@ -4982,7 +4994,6 @@
             const d = toDate(item?.date);
             return context.range ? (d >= context.range.startDate && d < context.range.endExclusive) : true;
           });
-          const commitments = getFinancialCommitments();
           const core = calculateMonthlyFinancialSummary({ movements: ranged, commitments, monthKey: currentSelected, cardId: context.selectedCardId });
           summary = {
             totals: { expense: core.purchases, installments: round2(core.installmentCommitment + core.interestDeferredCommitment), income: core.payments, effectiveCommitment: core.effectiveCommitment, householdCommitment: core.householdCommitment, unclassifiedCommitmentCount: core.unclassifiedCommitmentCount, unclassifiedCommitment: core.unclassifiedCommitment },
@@ -4990,6 +5001,21 @@
             counts: { txCount: core.movementCount }
           };
         }
+
+        const selectedCards = cards.filter((card) => context.selectedCardId === "all" || card.id === context.selectedCardId);
+        const cycleMeta = context.statement?.card ? getCardPaymentCycleMeta(context.statement.card, currentSelected) : null;
+        const paymentPeriod = context.mode === "statement" && context.statement
+          ? { key: currentSelected, mode: "statement", start: context.statement.statementStart,
+            end: context.statement.statementEndExclusive, cycleId: cycleMeta?.cycleId, statementId: cycleMeta?.statementId }
+          : { key: currentSelected, mode: "month", start: context.range?.startDate, end: context.range?.endExclusive };
+        summary.monthlyPayment = calculateMonthlyPaymentSummary({
+          cards: selectedCards,
+          movements: itemsByOwner,
+          commitments,
+          period: paymentPeriod,
+          cardId: context.selectedCardId,
+          asOfMonth: getLocalMonthKey()
+        });
 
         summaryState.cache.set(getSummaryCacheKey(owner, currentSelected, scopeFilter), summary);
         renderSummaryTotals(summary);
