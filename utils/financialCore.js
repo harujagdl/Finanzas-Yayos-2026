@@ -1,5 +1,6 @@
 import { addMonths, getLocalMonthKey } from './monthKey.js';
 import { normalizeInstallmentPlan, projectInstallments } from './planningEngine.js';
+import { resolveCommitmentOwnership } from './commitmentOwnership.js';
 
 const money = (value) => Math.round((Number(value) || 0) * 100) / 100;
 const monthFrom = (value) => {
@@ -8,13 +9,6 @@ const monthFrom = (value) => {
   return date && !Number.isNaN(date.getTime()) ? getLocalMonthKey(date) : null;
 };
 const isPayment = (item) => item?.type === 'payment' || item?.type === 'card_payment' || item?.isCardPayment === true;
-const share = (item) => {
-  // Ownership is a property of the commitment. Card ownership and the person
-  // who created the document are intentionally not consulted here.
-  const shared = item?.ownershipType === 'shared' || item?.owner === 'both' || item?.scope === 'shared';
-  const supplied = Number(item?.ownerSharePercentage);
-  return { ownershipType: shared ? 'shared' : 'personal', ownerSharePercentage: shared && Number.isFinite(supplied) ? Math.min(100, Math.max(0, supplied)) : shared ? 50 : 100 };
-};
 
 const monthDistance = (from, to) => ((Number(to.slice(0, 4)) - Number(from.slice(0, 4))) * 12)
   + Number(to.slice(5, 7)) - Number(from.slice(5, 7));
@@ -81,7 +75,7 @@ export function normalizeFinancialCommitments({ expenses = [], installmentPlans 
         asOfMonth
       });
       const { currentInstallment: current, remainingInstallments: remaining } = position;
-      const ownership = share(item);
+      const ownership = resolveCommitmentOwnership(item);
       return normalizeInstallmentPlan({
         ...item, ...ownership, id: `expense:${item.id}`, description: item.concept || item.description || 'MSI sin descripción',
         originalAmount: item.msiTotal, installmentAmount: item.msiMonthly ?? item.amount,
@@ -111,16 +105,23 @@ export function calculateMonthlyFinancialSummary({ movements = [], commitments =
     else if(item.type === 'expense' && item.isMsi !== true){ purchases = money(purchases + amount); card.purchases = money(card.purchases + amount); }
   });
   let installmentCommitment = 0, interestDeferredCommitment = 0, householdCommitment = 0, effectiveCommitment = 0;
+  let unclassifiedCommitment = 0, unclassifiedCommitmentCount = 0;
   active.forEach((item) => {
     const amount = money(item.installmentAmount);
-    const effective = money(amount * Number(item.ownerSharePercentage ?? 100) / 100);
+    const effective = item.needsClassification ? 0 : money(amount * Number(item.effectiveMultiplier ?? 1));
     const card = ensure(item.cardId, item.cardName);
     if(item.interestType === 'interest'){ interestDeferredCommitment = money(interestDeferredCommitment + amount); card.interestDeferredCommitment = money(card.interestDeferredCommitment + amount); }
     else { installmentCommitment = money(installmentCommitment + amount); card.installmentCommitment = money(card.installmentCommitment + amount); }
     householdCommitment = money(householdCommitment + amount); effectiveCommitment = money(effectiveCommitment + effective);
     card.householdCommitment = money(card.householdCommitment + amount); card.effectiveCommitment = money(card.effectiveCommitment + effective);
+    if(item.needsClassification){
+      unclassifiedCommitment = money(unclassifiedCommitment + amount);
+      unclassifiedCommitmentCount += 1;
+    }
   });
-  return { purchases, installmentCommitment, interestDeferredCommitment, payments, householdCommitment, effectiveCommitment, movementCount: filteredMovements.length, byCard };
+  return { purchases, installmentCommitment, interestDeferredCommitment, payments, householdCommitment, effectiveCommitment,
+    effectiveCommitmentPartial: unclassifiedCommitmentCount > 0, unclassifiedCommitment, unclassifiedCommitmentCount,
+    movementCount: filteredMovements.length, byCard };
 }
 
 export function projectFinancialCommitments(sources = {}, options = {}) {

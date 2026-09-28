@@ -2,8 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeFinancialCommitments, calculateMonthlyFinancialSummary, resolveInstallmentPosition } from '../utils/financialCore.js';
 import { projectInstallments, calculateSafeAvailable, simulateNewPurchase } from '../utils/planningEngine.js';
+import { resolveCommitmentOwnership } from '../utils/commitmentOwnership.js';
 
-const legacy = (overrides = {}) => ({ id:'expense-1', type:'expense', isMsi:true, concept:'SharkNinja', cardId:'free', msiTotal:5280, msiMonthly:440, msiMonths:12, currentInstallment:11, msiStart:new Date(2025,9,1), owner:'yair', ...overrides });
+const legacy = (overrides = {}) => ({ id:'expense-1', type:'expense', isMsi:true, concept:'SharkNinja', cardId:'free', msiTotal:5280, msiMonthly:440, msiMonths:12, currentInstallment:11, msiStart:new Date(2025,9,1), owner:'yair', ownershipType:'personal', ...overrides });
 const explicit = (overrides = {}) => ({ id:'plan-1', description:'Manual', cardId:'like', originalAmount:1000, installmentAmount:500, totalInstallments:2, currentInstallment:0, remainingInstallments:2, active:true, ownershipType:'personal', ...overrides });
 
 test('MSI legacy alimenta Resumen y Planeación con última mensualidad y liberación posterior', () => {
@@ -44,7 +45,7 @@ test('periodo incluye último pago y excluye el posterior', () => {
 
 test('simulación no muta compromisos normalizados', () => {
   const commitments=normalizeFinancialCommitments({installmentPlans:[explicit()],asOfMonth:'2026-09'}); const before=structuredClone(commitments);
-  const result=simulateNewPurchase(commitments,{amount:6000,totalInstallments:12},{months:12});
+  const result=simulateNewPurchase(commitments,{amount:6000,totalInstallments:12,ownershipType:'personal'},{months:12});
   assert.deepEqual(commitments,before); assert.equal(result.after[0].effectiveCommitment-result.before[0].effectiveCommitment,500);
 });
 
@@ -62,11 +63,46 @@ test('ownership se calcula por compromiso: personal 100%, shared 50% y mezcla 15
   assert.equal(summary.effectiveCommitment,1500);
 });
 
-test('fallback 50% sólo aplica a legacy explícitamente shared', () => {
-  const personal=normalizeFinancialCommitments({expenses:[legacy({id:'personal',owner:'yair',scope:undefined,ownershipType:undefined})],asOfMonth:'2026-09'})[0];
+test('fallback 50% sólo aplica a legacy explícitamente shared y el ambiguo queda pendiente', () => {
+  const unknown=normalizeFinancialCommitments({expenses:[legacy({id:'unknown',owner:'yair',scope:undefined,ownershipType:undefined})],asOfMonth:'2026-09'})[0];
   const shared=normalizeFinancialCommitments({expenses:[legacy({id:'shared',owner:'yair',scope:'shared',ownershipType:undefined})],asOfMonth:'2026-09'})[0];
-  assert.deepEqual([personal.ownershipType,personal.ownerSharePercentage],['personal',100]);
+  assert.deepEqual([unknown.ownershipType,unknown.ownerSharePercentage,unknown.needsClassification],['unknown',null,true]);
   assert.deepEqual([shared.ownershipType,shared.ownerSharePercentage],['shared',50]);
+});
+
+test('personal 100%, shared 50%, shared 70% y porcentajes no globales', () => {
+  const commitments=normalizeFinancialCommitments({installmentPlans:[
+    explicit({id:'personal',cardId:'card-a',installmentAmount:1000,ownershipType:'personal'}),
+    explicit({id:'shared-50',cardId:'card-a',installmentAmount:1000,ownershipType:'shared',ownerSharePercentage:50}),
+    explicit({id:'shared-70',cardId:'card-b',installmentAmount:1000,ownershipType:'shared',ownerSharePercentage:70})
+  ],asOfMonth:'2026-09'});
+  const summary=calculateMonthlyFinancialSummary({commitments,monthKey:'2026-09'});
+  assert.equal(summary.householdCommitment,3000);
+  assert.equal(summary.effectiveCommitment,2200);
+});
+
+test('nombres Costco y Like U no infieren ownership ni cambian precedencia', () => {
+  assert.equal(resolveCommitmentOwnership({cardName:'Costco'}).ownershipType,'unknown');
+  assert.equal(resolveCommitmentOwnership({cardName:'Like U'}).ownershipType,'unknown');
+  assert.equal(resolveCommitmentOwnership({cardName:'Costco',ownershipType:'personal'}).effectiveMultiplier,1);
+  assert.equal(resolveCommitmentOwnership({cardName:'Like U',ownershipType:'shared',ownerSharePercentage:30}).effectiveMultiplier,.3);
+});
+
+test('cambiar ownership sólo cambia effective: shared 50 → personal y personal → shared 30', () => {
+  const summarize=(ownership)=>calculateMonthlyFinancialSummary({commitments:normalizeFinancialCommitments({installmentPlans:[explicit({installmentAmount:1000,...ownership})],asOfMonth:'2026-09'}),monthKey:'2026-09'});
+  const shared=summarize({ownershipType:'shared',ownerSharePercentage:50});
+  const personal=summarize({ownershipType:'personal',ownerSharePercentage:100});
+  const shared30=summarize({ownershipType:'shared',ownerSharePercentage:30});
+  assert.deepEqual([shared.householdCommitment,personal.householdCommitment,shared30.householdCommitment],[1000,1000,1000]);
+  assert.deepEqual([shared.effectiveCommitment,personal.effectiveCommitment,shared30.effectiveCommitment],[500,1000,300]);
+});
+
+test('ambiguo conserva household y marca effective parcial sin inventar 50%', () => {
+  const commitments=normalizeFinancialCommitments({expenses:[legacy({ownershipType:undefined,scope:undefined,msiMonthly:1000})],asOfMonth:'2026-09'});
+  const summary=calculateMonthlyFinancialSummary({commitments,monthKey:'2026-09'});
+  const planning=projectInstallments(commitments,{startMonth:'2026-09',months:1})[0];
+  assert.deepEqual([summary.householdCommitment,summary.effectiveCommitment,summary.unclassifiedCommitmentCount],[1000,0,1]);
+  assert.deepEqual([planning.householdCommitment,planning.effectiveCommitment,planning.unclassifiedCommitmentCount],[1000,0,1]);
 });
 
 test('una tarjeta admite MSI personal y shared sin heredar ownership de tarjeta', () => {
