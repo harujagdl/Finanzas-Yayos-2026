@@ -569,7 +569,7 @@
     body.ios-fallback .goal-move-controls{display:inline-flex;}
     .summary-kpis{
       display:grid; gap:12px;
-      grid-template-columns:repeat(auto-fit, minmax(160px, 1fr));
+      grid-template-columns:repeat(auto-fit, minmax(210px, 1fr));
     }
     .summary-kpi{
       background:var(--bg-body); border:1px solid var(--border-color);
@@ -579,7 +579,14 @@
       font-size:.7rem; text-transform:uppercase; letter-spacing:1px;
       color:var(--text-muted); font-weight:700;
     }
-    .summary-kpi-value{font-size:1.25rem; font-weight:800;}
+    .summary-kpis .kpi-value{
+      font-size:clamp(1.05rem, 2.2vw, 1.45rem);
+      font-weight:800;
+      overflow:visible;
+      text-overflow:clip;
+      white-space:normal;
+      overflow-wrap:anywhere;
+    }
     .summary-cards-list{display:flex; flex-direction:column;}
     .summary-card-item{
       display:flex; justify-content:space-between; align-items:flex-start;
@@ -606,6 +613,9 @@
       .summary-card-main,.summary-card-title,.summary-card-subline{text-align:left;}
       .summary-card-net{text-align:right; min-width:110px;}
       .owner-pill,.owner-select{max-width:126px;}
+      .summary-kpis{grid-template-columns:repeat(2,minmax(0,1fr));}
+      .summary-kpi-card{min-width:0;}
+      .summary-kpis .kpi-value{font-size:clamp(.95rem,5vw,1.2rem);}
     }
 
     .sheetOverlay{position:fixed; inset:0; background:var(--overlay); display:flex; align-items:flex-end; justify-content:center; padding:18px; z-index:9999;}

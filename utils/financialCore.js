@@ -9,10 +9,41 @@ const monthFrom = (value) => {
 };
 const isPayment = (item) => item?.type === 'payment' || item?.type === 'card_payment' || item?.isCardPayment === true;
 const share = (item) => {
+  // Ownership is a property of the commitment. Card ownership and the person
+  // who created the document are intentionally not consulted here.
   const shared = item?.ownershipType === 'shared' || item?.owner === 'both' || item?.scope === 'shared';
   const supplied = Number(item?.ownerSharePercentage);
   return { ownershipType: shared ? 'shared' : 'personal', ownerSharePercentage: shared && Number.isFinite(supplied) ? Math.min(100, Math.max(0, supplied)) : shared ? 50 : 100 };
 };
+
+const monthDistance = (from, to) => ((Number(to.slice(0, 4)) - Number(from.slice(0, 4))) * 12)
+  + Number(to.slice(5, 7)) - Number(from.slice(5, 7));
+
+/**
+ * `currentInstallment` is the number of installments already covered before
+ * `asOfMonth`; consequently `remainingInstallments` includes the payment due
+ * in `asOfMonth`. The returned pending range is shared by Summary/Planning.
+ */
+export function resolveInstallmentPosition({ totalInstallments, currentInstallment, remainingInstallments, firstPaymentMonth, asOfMonth = getLocalMonthKey() } = {}) {
+  const total = Math.max(0, Math.trunc(Number(totalInstallments) || 0));
+  const first = firstPaymentMonth || asOfMonth;
+  const elapsedBeforeAsOf = Math.max(0, monthDistance(first, asOfMonth));
+  const suppliedCurrent = currentInstallment === '' || currentInstallment == null ? null : Number(currentInstallment);
+  const completed = Number.isFinite(suppliedCurrent)
+    ? Math.min(total, Math.max(0, Math.trunc(suppliedCurrent)))
+    : Math.min(total, elapsedBeforeAsOf);
+  const suppliedRemaining = remainingInstallments === '' || remainingInstallments == null ? null : Number(remainingInstallments);
+  const remaining = Number.isFinite(suppliedRemaining)
+    ? Math.min(total, Math.max(0, Math.trunc(suppliedRemaining)))
+    : Math.max(0, total - completed);
+  const pendingStartMonth = first > asOfMonth ? first : asOfMonth;
+  return {
+    currentInstallment: completed,
+    remainingInstallments: remaining,
+    pendingStartMonth,
+    pendingEndMonth: remaining ? addMonths(pendingStartMonth, remaining - 1) : addMonths(pendingStartMonth, -1)
+  };
+}
 
 /**
  * Adapts the two non-destructive sources of commitments to one model. Explicit
@@ -20,11 +51,12 @@ const share = (item) => {
  */
 export function normalizeFinancialCommitments({ expenses = [], installmentPlans = [], asOfMonth = getLocalMonthKey() } = {}) {
   const plans = installmentPlans.map((raw) => {
-    const plan = normalizeInstallmentPlan(raw);
-    const remaining = plan.remainingInstallments;
-    const startMonth = raw.scheduleStartMonth || asOfMonth;
-    const endMonth = remaining ? addMonths(startMonth, remaining - 1) : addMonths(startMonth, -1);
-    return { ...plan, sourceType: raw.sourceType || 'installment_plan', sourceId: raw.sourceId || raw.id, startMonth, endMonth, billingStartMonth: startMonth, billingEndMonth: endMonth };
+    const firstPaymentMonth = raw.scheduleStartMonth || monthFrom(raw.startDate) || asOfMonth;
+    const position = resolveInstallmentPosition({ ...raw, firstPaymentMonth, asOfMonth });
+    const plan = normalizeInstallmentPlan({ ...raw, ...position });
+    return { ...plan, sourceType: raw.sourceType || 'installment_plan', sourceId: raw.sourceId || raw.id,
+      startMonth: position.pendingStartMonth, endMonth: position.pendingEndMonth,
+      billingStartMonth: position.pendingStartMonth, billingEndMonth: position.pendingEndMonth };
   });
   const linkedExpenseIds = new Set();
   plans.forEach((plan) => {
@@ -41,10 +73,14 @@ export function normalizeFinancialCommitments({ expenses = [], installmentPlans 
     .map((item) => {
       const total = Math.max(0, Math.trunc(Number(item.msiMonths || item.totalInstallments || 0)));
       const actualStart = monthFrom(item.msiStart || item.date);
-      const suppliedCurrent = Number(item.currentInstallment ?? item.installmentsPaid);
-      const elapsedAtAsOf = actualStart ? Math.max(0, ((Number(asOfMonth.slice(0, 4)) - Number(actualStart.slice(0, 4))) * 12) + Number(asOfMonth.slice(5, 7)) - Number(actualStart.slice(5, 7))) : 0;
-      const current = Number.isFinite(suppliedCurrent) ? Math.max(0, Math.min(total, Math.trunc(suppliedCurrent))) : Math.min(total, elapsedAtAsOf);
-      const remaining = Math.max(0, total - current);
+      const position = resolveInstallmentPosition({
+        totalInstallments: total,
+        currentInstallment: item.currentInstallment ?? item.installmentsPaid,
+        remainingInstallments: item.remainingInstallments,
+        firstPaymentMonth: actualStart || asOfMonth,
+        asOfMonth
+      });
+      const { currentInstallment: current, remainingInstallments: remaining } = position;
       const ownership = share(item);
       return normalizeInstallmentPlan({
         ...item, ...ownership, id: `expense:${item.id}`, description: item.concept || item.description || 'MSI sin descripción',
@@ -52,8 +88,8 @@ export function normalizeFinancialCommitments({ expenses = [], installmentPlans 
         totalInstallments: total, currentInstallment: current, remainingInstallments: remaining,
         remainingBalance: money((item.msiMonthly ?? item.amount) * remaining), interestType: item.interestType === 'interest' ? 'interest' : 'none',
         active: item.active !== false && remaining > 0, sourceType: 'expense', sourceId: item.id,
-        startMonth: asOfMonth, endMonth: remaining ? addMonths(asOfMonth, remaining - 1) : addMonths(asOfMonth, -1),
-        billingStartMonth: actualStart || asOfMonth, billingEndMonth: actualStart && total ? addMonths(actualStart, total - 1) : (remaining ? addMonths(asOfMonth, remaining - 1) : addMonths(asOfMonth, -1))
+        startMonth: position.pendingStartMonth, endMonth: position.pendingEndMonth,
+        billingStartMonth: position.pendingStartMonth, billingEndMonth: position.pendingEndMonth
       });
     });
   return [...plans, ...legacy];
