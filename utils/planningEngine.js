@@ -53,10 +53,16 @@ export function projectInstallments(plans = [], { startMonth = getLocalMonthKey(
   }));
 
   plans.map(normalizeInstallmentPlan).filter((plan) => plan.active).forEach((plan) => {
-    const count = Math.min(plan.remainingInstallments, horizon);
+    const planStart = plan.billingStartMonth || plan.startMonth || startMonth;
+    const startIndex = ((Number(planStart.slice(0, 4)) - Number(startMonth.slice(0, 4))) * 12)
+      + Number(planStart.slice(5, 7)) - Number(startMonth.slice(5, 7));
+    const firstIndex = Math.max(0, startIndex);
+    const skipped = Math.max(0, -startIndex);
+    const count = Math.min(Math.max(0, plan.remainingInstallments - skipped), Math.max(0, horizon - firstIndex));
     const monthlyCents = asCents(plan.installmentAmount);
     const effectiveCents = Math.round(monthlyCents * plan.ownerSharePercentage / 100);
-    for(let index = 0; index < count; index += 1){
+    for(let offset = 0; offset < count; offset += 1){
+      const index = firstIndex + offset;
       const row = rows[index];
       row.totalCommitmentCents += monthlyCents;
       row[plan.interestType === 'interest' ? 'interestCommitmentCents' : 'msiCommitmentCents'] += monthlyCents;
@@ -64,14 +70,15 @@ export function projectInstallments(plans = [], { startMonth = getLocalMonthKey(
       row.effectiveCommitmentCents += effectiveCents;
       const cardKey = plan.cardId || 'unassigned';
       row.byCardCents[cardKey] = (row.byCardCents[cardKey] || 0) + monthlyCents;
-      if(index === count - 1 && plan.remainingInstallments <= horizon){
+      if(offset === count - 1 && skipped + count === plan.remainingInstallments){
         row.endingPlans.push({ id: plan.id, description: plan.description || 'Plan sin descripción', releasedMonthlyAmount: fromCents(effectiveCents) });
       }
     }
     // The last payment month remains committed. Flow is released in the first
     // subsequent month, when that installment is no longer due.
-    if(plan.remainingInstallments < horizon){
-      rows[plan.remainingInstallments].releasedFlowCents += effectiveCents;
+    const releaseIndex = firstIndex + Math.max(0, plan.remainingInstallments - skipped);
+    if(releaseIndex < horizon && skipped < plan.remainingInstallments){
+      rows[releaseIndex].releasedFlowCents += effectiveCents;
     }
   });
 
@@ -81,7 +88,8 @@ export function projectInstallments(plans = [], { startMonth = getLocalMonthKey(
     msiCommitment: fromCents(row.msiCommitmentCents),
     interestCommitment: fromCents(row.interestCommitmentCents),
     personalCommitment: fromCents(row.personalCommitmentCents),
-    householdCommitment: fromCents(row.sharedHouseholdCommitmentCents),
+    householdCommitment: fromCents(row.totalCommitmentCents),
+    sharedHouseholdCommitment: fromCents(row.sharedHouseholdCommitmentCents),
     effectiveCommitment: fromCents(row.effectiveCommitmentCents),
     releasedFlow: fromCents(row.releasedFlowCents),
     byCard: Object.fromEntries(Object.entries(row.byCardCents).map(([key, cents]) => [key, fromCents(cents)])),

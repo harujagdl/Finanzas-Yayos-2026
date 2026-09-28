@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeFinancialCommitments, calculateMonthlyFinancialSummary } from '../utils/financialCore.js';
+import { normalizeFinancialCommitments, calculateMonthlyFinancialSummary, resolveInstallmentPosition } from '../utils/financialCore.js';
 import { projectInstallments, calculateSafeAvailable, simulateNewPurchase } from '../utils/planningEngine.js';
 
 const legacy = (overrides = {}) => ({ id:'expense-1', type:'expense', isMsi:true, concept:'SharkNinja', cardId:'free', msiTotal:5280, msiMonthly:440, msiMonths:12, currentInstallment:11, msiStart:new Date(2025,9,1), owner:'yair', ...overrides });
@@ -51,3 +51,63 @@ test('simulación no muta compromisos normalizados', () => {
 test('disponible seguro pendiente nunca inventa cero', () => assert.equal(calculateSafeAvailable({incomeAvailable:''}).availableSafeMonth,null));
 test('plan manual permanece en Planeación', () => assert.equal(normalizeFinancialCommitments({installmentPlans:[explicit()],asOfMonth:'2026-09'})[0].sourceType,'installment_plan'));
 test('legacy sin enlace se conserva y no se deduplica peligrosamente por monto', () => assert.equal(normalizeFinancialCommitments({expenses:[legacy()],installmentPlans:[explicit({installmentAmount:440})],asOfMonth:'2026-09'}).length,2));
+
+test('ownership se calcula por compromiso: personal 100%, shared 50% y mezcla 1500', () => {
+  const commitments=normalizeFinancialCommitments({installmentPlans:[
+    explicit({id:'personal',installmentAmount:1000,totalInstallments:1,remainingInstallments:1,ownershipType:'personal'}),
+    explicit({id:'shared',installmentAmount:1000,totalInstallments:1,remainingInstallments:1,ownershipType:'shared',ownerSharePercentage:50})
+  ],asOfMonth:'2026-09'});
+  const summary=calculateMonthlyFinancialSummary({commitments,monthKey:'2026-09'});
+  assert.equal(summary.householdCommitment,2000);
+  assert.equal(summary.effectiveCommitment,1500);
+});
+
+test('fallback 50% sólo aplica a legacy explícitamente shared', () => {
+  const personal=normalizeFinancialCommitments({expenses:[legacy({id:'personal',owner:'yair',scope:undefined,ownershipType:undefined})],asOfMonth:'2026-09'})[0];
+  const shared=normalizeFinancialCommitments({expenses:[legacy({id:'shared',owner:'yair',scope:'shared',ownershipType:undefined})],asOfMonth:'2026-09'})[0];
+  assert.deepEqual([personal.ownershipType,personal.ownerSharePercentage],['personal',100]);
+  assert.deepEqual([shared.ownershipType,shared.ownerSharePercentage],['shared',50]);
+});
+
+test('una tarjeta admite MSI personal y shared sin heredar ownership de tarjeta', () => {
+  const commitments=normalizeFinancialCommitments({expenses:[
+    legacy({id:'p',cardId:'same',msiMonthly:1000,ownershipType:'personal'}),
+    legacy({id:'s',cardId:'same',msiMonthly:1000,ownershipType:'shared',ownerSharePercentage:25})
+  ],asOfMonth:'2026-09'});
+  const summary=calculateMonthlyFinancialSummary({commitments,monthKey:'2026-09',cardId:'same'});
+  assert.equal(summary.householdCommitment,2000);
+  assert.equal(summary.effectiveCommitment,1250);
+});
+
+test('fixture 4871.60 coincide entre MSI normalizado, Resumen y Planeación', async () => {
+  const {regressionExpenses,regressionHousehold,regressionMonth}=await import('./fixtures/financialCoreRegression.mjs');
+  const commitments=normalizeFinancialCommitments({expenses:regressionExpenses,asOfMonth:regressionMonth});
+  const msiTotal=commitments.reduce((sum,item)=>sum+item.installmentAmount,0);
+  const summary=calculateMonthlyFinancialSummary({commitments,monthKey:regressionMonth});
+  const planning=projectInstallments(commitments,{startMonth:regressionMonth,months:1})[0];
+  assert.equal(msiTotal,regressionHousehold);
+  assert.equal(summary.householdCommitment,regressionHousehold);
+  assert.equal(planning.householdCommitment,regressionHousehold);
+});
+
+test('posición temporal común incluye asOf y no adelanta un MSI futuro', () => {
+  assert.deepEqual(resolveInstallmentPosition({totalInstallments:3,currentInstallment:1,firstPaymentMonth:'2026-08',asOfMonth:'2026-09'}),{
+    currentInstallment:1,remainingInstallments:2,pendingStartMonth:'2026-09',pendingEndMonth:'2026-10'
+  });
+  const commitments=normalizeFinancialCommitments({expenses:[legacy({msiMonths:2,currentInstallment:0,msiStart:'2026-10-01'})],asOfMonth:'2026-09'});
+  assert.equal(calculateMonthlyFinancialSummary({commitments,monthKey:'2026-09'}).householdCommitment,0);
+  assert.equal(calculateMonthlyFinancialSummary({commitments,monthKey:'2026-10'}).householdCommitment,440);
+  assert.deepEqual(projectInstallments(commitments,{startMonth:'2026-09',months:3}).map(row=>row.totalCommitment),[0,440,440]);
+});
+
+test('filtro por tarjeta coincide entre Resumen y proyección Financial Core', () => {
+  const commitments=normalizeFinancialCommitments({installmentPlans:[explicit({cardId:'a'}),explicit({id:'b',cardId:'b'})],asOfMonth:'2026-09'});
+  const summary=calculateMonthlyFinancialSummary({commitments,monthKey:'2026-09',cardId:'a'});
+  const projection=projectInstallments(commitments.filter(item=>item.cardId==='a'),{startMonth:'2026-09',months:1})[0];
+  assert.equal(summary.householdCommitment,projection.householdCommitment);
+});
+
+test('disponible seguro resta flujos disjuntos una sola vez', () => {
+  const result=calculateSafeAvailable({incomeAvailable:10000,fixedExpenses:1000,currentSpending:1000,currentCardPayments:500,goalsReserved:500,buffer:500,nextInstallments:1000});
+  assert.equal(result.availableSafeMonth,5500);
+});
