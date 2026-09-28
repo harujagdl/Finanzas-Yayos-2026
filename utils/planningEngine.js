@@ -1,9 +1,8 @@
 import { addMonths, getLocalMonthKey } from './monthKey.js';
+import { resolveCommitmentOwnership } from './commitmentOwnership.js';
 
 const asCents = (value) => Math.round((Number(value) || 0) * 100);
 const fromCents = (value) => Math.round(value) / 100;
-const clampPercent = (value, fallback = 100) => Math.min(100, Math.max(0, Number.isFinite(Number(value)) ? Number(value) : fallback));
-
 export const normalizeCard = (card = {}) => ({
   ...card,
   name: card.name || card.nombre || 'Tarjeta sin nombre',
@@ -23,7 +22,7 @@ export const normalizeInstallmentPlan = (plan = {}) => {
   const total = Math.max(0, Math.trunc(Number(plan.totalInstallments ?? plan.msiMonths ?? 0)));
   const current = Math.min(total, Math.max(0, Math.trunc(Number(plan.currentInstallment ?? plan.msiInstallmentNumber ?? 0))));
   const remaining = Math.max(0, Math.trunc(Number(plan.remainingInstallments ?? (total - current))));
-  const ownershipType = plan.ownershipType === 'shared' || plan.owner === 'both' ? 'shared' : 'personal';
+  const ownership = resolveCommitmentOwnership(plan);
   return {
     ...plan,
     originalAmount: Number(plan.originalAmount ?? plan.msiTotal ?? 0),
@@ -33,8 +32,7 @@ export const normalizeInstallmentPlan = (plan = {}) => {
     currentInstallment: current,
     remainingInstallments: remaining,
     interestType: plan.interestType === 'interest' ? 'interest' : 'none',
-    ownershipType,
-    ownerSharePercentage: ownershipType === 'shared' ? clampPercent(plan.ownerSharePercentage, 50) : 100,
+    ...ownership,
     active: plan.active !== false && remaining > 0
   };
 };
@@ -49,7 +47,8 @@ export function projectInstallments(plans = [], { startMonth = getLocalMonthKey(
   const rows = Array.from({ length: horizon }, (_, index) => ({
     monthKey: addMonths(startMonth, index), totalCommitmentCents: 0, msiCommitmentCents: 0,
     interestCommitmentCents: 0, personalCommitmentCents: 0, sharedHouseholdCommitmentCents: 0,
-    effectiveCommitmentCents: 0, releasedFlowCents: 0, byCardCents: {}, endingPlans: []
+    effectiveCommitmentCents: 0, unclassifiedCommitmentCents: 0, unclassifiedCommitmentCount: 0,
+    releasedFlowCents: 0, byCardCents: {}, endingPlans: []
   }));
 
   plans.map(normalizeInstallmentPlan).filter((plan) => plan.active).forEach((plan) => {
@@ -60,14 +59,19 @@ export function projectInstallments(plans = [], { startMonth = getLocalMonthKey(
     const skipped = Math.max(0, -startIndex);
     const count = Math.min(Math.max(0, plan.remainingInstallments - skipped), Math.max(0, horizon - firstIndex));
     const monthlyCents = asCents(plan.installmentAmount);
-    const effectiveCents = Math.round(monthlyCents * plan.ownerSharePercentage / 100);
+    const effectiveCents = plan.needsClassification ? 0 : Math.round(monthlyCents * plan.effectiveMultiplier);
     for(let offset = 0; offset < count; offset += 1){
       const index = firstIndex + offset;
       const row = rows[index];
       row.totalCommitmentCents += monthlyCents;
       row[plan.interestType === 'interest' ? 'interestCommitmentCents' : 'msiCommitmentCents'] += monthlyCents;
-      row[plan.ownershipType === 'shared' ? 'sharedHouseholdCommitmentCents' : 'personalCommitmentCents'] += monthlyCents;
+      if(plan.ownershipType === 'shared') row.sharedHouseholdCommitmentCents += monthlyCents;
+      if(plan.ownershipType === 'personal') row.personalCommitmentCents += monthlyCents;
       row.effectiveCommitmentCents += effectiveCents;
+      if(plan.needsClassification){
+        row.unclassifiedCommitmentCents += monthlyCents;
+        row.unclassifiedCommitmentCount += 1;
+      }
       const cardKey = plan.cardId || 'unassigned';
       row.byCardCents[cardKey] = (row.byCardCents[cardKey] || 0) + monthlyCents;
       if(offset === count - 1 && skipped + count === plan.remainingInstallments){
@@ -91,6 +95,9 @@ export function projectInstallments(plans = [], { startMonth = getLocalMonthKey(
     householdCommitment: fromCents(row.totalCommitmentCents),
     sharedHouseholdCommitment: fromCents(row.sharedHouseholdCommitmentCents),
     effectiveCommitment: fromCents(row.effectiveCommitmentCents),
+    effectiveCommitmentPartial: row.unclassifiedCommitmentCount > 0,
+    unclassifiedCommitment: fromCents(row.unclassifiedCommitmentCents),
+    unclassifiedCommitmentCount: row.unclassifiedCommitmentCount,
     releasedFlow: fromCents(row.releasedFlowCents),
     byCard: Object.fromEntries(Object.entries(row.byCardCents).map(([key, cents]) => [key, fromCents(cents)])),
     endingPlans: row.endingPlans

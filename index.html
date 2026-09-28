@@ -879,6 +879,9 @@
       font-weight:800;
       line-height:1;
     }
+    .ownership-badge{display:inline-flex;align-items:center;padding:4px 8px;border-radius:999px;font-size:.72rem;font-weight:800;background:var(--bg-body);border:1px solid var(--border-color);}
+    .ownership-badge.shared{color:var(--primary);border-color:var(--primary);}
+    .ownership-badge.unknown{color:var(--warning);border-color:var(--warning);}
   </style>
   <link href="./styles/ios-components.css" rel="stylesheet" />
 </head>
@@ -1185,7 +1188,7 @@
     <div class="d-flex justify-content-between align-items-start gap-2 mb-3"><div><h4 class="fw-black mb-1">Planeación</h4><div class="text-muted small">Tus MSI registrados aparecen automáticamente; agrega aquí sólo compromisos externos.</div></div><button class="btn btn-primary btn-sm" type="button" onclick="openPlanForm()"><i class="fas fa-plus me-1"></i> Otro compromiso</button></div>
     <div class="planning-kpis mb-3">
       <div class="card-box m-0"><div class="kpi-label">Disponible seguro / mes</div><div id="planning-safe-month" class="kpi-value sensitive-data">Datos pendientes</div><small id="planning-safe-why" class="text-muted">Completa tus supuestos abajo.</small></div>
-      <div class="card-box m-0"><div class="kpi-label">Compromiso efectivo</div><div id="planning-current" class="kpi-value sensitive-data">$0.00</div><small class="text-muted">Personal + tu parte compartida</small></div>
+      <div class="card-box m-0"><div class="kpi-label">Compromiso efectivo</div><div id="planning-current" class="kpi-value sensitive-data">$0.00</div><small id="planning-current-note" class="text-muted">Personal + tu parte compartida</small></div>
       <div class="card-box m-0"><div class="kpi-label">Próxima liberación</div><div id="planning-next-release" class="kpi-value sensitive-data">—</div><small id="planning-next-release-month" class="text-muted">Sin planes próximos</small></div>
     </div>
     <div class="card-box mb-3"><div class="d-flex justify-content-between align-items-center mb-2"><div><h6 class="fw-bold m-0">Proyección 12 meses</h6><small class="text-muted">Compromiso, liberación y planes que terminan</small></div></div><div id="planning-timeline" class="planning-timeline"></div></div>
@@ -1280,6 +1283,21 @@
           </div>
 
           <div id="msi-fields" style="display:none;">
+            <div class="row g-2 mb-2">
+              <div class="col-7">
+                <label class="small fw-bold text-muted mb-1">Ownership del MSI</label>
+                <select id="t-msi-ownership" class="form-select" onchange="uiToggleMsiOwnership()">
+                  <option value="personal">Personal</option>
+                  <option value="shared">Compartido</option>
+                  <option value="unknown" disabled>Por clasificar</option>
+                </select>
+              </div>
+              <div class="col-5" id="t-msi-share-wrap" style="display:none;">
+                <label class="small fw-bold text-muted mb-1">Tu participación</label>
+                <div class="input-group"><input type="number" id="t-msi-share" class="form-control" value="50" min="0.01" max="100" step="0.01"><span class="input-group-text">%</span></div>
+              </div>
+              <small class="text-muted">Se aplica sólo a este MSI; la tarjeta no determina su ownership.</small>
+            </div>
             <div class="mb-2">
               <label class="small fw-bold text-muted mb-1">Monto total de la compra (total)</label>
               <input type="number" id="t-msi-total" class="form-control" placeholder="0.00" step="0.01" inputmode="decimal" />
@@ -1498,6 +1516,7 @@
         <h6 class="fw-bold m-0">Detalle</h6>
         <span class="text-muted small" id="msi-count">0</span>
       </div>
+      <div id="msi-ownership-notice" class="alert alert-warning py-2 px-3 small d-none" role="status"></div>
       <div id="msi-list"><small class="text-muted">Cargando...</small></div>
     </div>
   </div>
@@ -1992,6 +2011,7 @@
     import { buildCardLogicalKey } from "./utils/cardCanonicalKey.js";
     import { normalizeCard, projectInstallments, calculateSafeAvailable, simulateNewPurchase, simulatePlanPayoff, calculateCostToFreeOneMonthlyPeso } from "./utils/planningEngine.js";
     import { normalizeFinancialCommitments, calculateMonthlyFinancialSummary } from "./utils/financialCore.js";
+    import { resolveCommitmentOwnership } from "./utils/commitmentOwnership.js";
     import { consolidateCards, hasLogicalCardName, resolveCanonicalCardId, resolveTransactionCardAliases } from "./utils/cardConsolidation.js";
     import {
       getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc,
@@ -4738,6 +4758,7 @@
       const income = safeNumber(summary?.totals?.income);
       const commitment = safeNumber(summary?.totals?.effectiveCommitment ?? summary?.totals?.expense);
       const householdCommitment = safeNumber(summary?.totals?.householdCommitment ?? commitment);
+      const unclassifiedCount = safeNumber(summary?.totals?.unclassifiedCommitmentCount);
       const txCount = safeNumber(summary?.counts?.txCount);
       const abonosKpiLabel = summary?.labels?.abonosKpi || "Abonos";
 
@@ -4768,6 +4789,7 @@
         <div class="summary-kpi-card">
           <div class="kpi-label">Compromiso efectivo</div>
           <div class="kpi-value sensitive-data">${formatCurrency(commitment)}</div>
+          ${unclassifiedCount ? `<div class="small text-warning fw-semibold">${unclassifiedCount} ${unclassifiedCount === 1 ? 'compromiso por clasificar' : 'compromisos por clasificar'} · total parcial</div>` : ''}
         </div>
         <div class="summary-kpi-card">
           <div class="kpi-label">Movimientos</div>
@@ -4963,7 +4985,7 @@
           const commitments = getFinancialCommitments();
           const core = calculateMonthlyFinancialSummary({ movements: ranged, commitments, monthKey: currentSelected, cardId: context.selectedCardId });
           summary = {
-            totals: { expense: core.purchases, installments: round2(core.installmentCommitment + core.interestDeferredCommitment), income: core.payments, effectiveCommitment: core.effectiveCommitment, householdCommitment: core.householdCommitment },
+            totals: { expense: core.purchases, installments: round2(core.installmentCommitment + core.interestDeferredCommitment), income: core.payments, effectiveCommitment: core.effectiveCommitment, householdCommitment: core.householdCommitment, unclassifiedCommitmentCount: core.unclassifiedCommitmentCount, unclassifiedCommitment: core.unclassifiedCommitment },
             byCard: core.byCard,
             counts: { txCount: core.movementCount }
           };
@@ -7227,9 +7249,10 @@
     function renderPlanning(){
       fillPlanningCards(); const commitments=getFinancialCommitments(); const projection=projectInstallments(commitments,{months:12}); const current=projection[0];
       const currentEl=document.getElementById('planning-current'); if(currentEl)currentEl.textContent=planningMoney(current?.effectiveCommitment||0);
+      const currentNote=document.getElementById('planning-current-note'); if(currentNote)currentNote.textContent=current?.unclassifiedCommitmentCount?`${current.unclassifiedCommitmentCount} por clasificar · total efectivo parcial`:'Personal + tu parte compartida';
       const next=projection.find(row=>row.releasedFlow>0); const release=document.getElementById('planning-next-release'); if(release)release.textContent=next?`+${planningMoney(next.releasedFlow)}/mes`:'—'; const releaseMonth=document.getElementById('planning-next-release-month'); if(releaseMonth)releaseMonth.textContent=next?next.monthKey:'Sin planes próximos';
       const timeline=document.getElementById('planning-timeline'); if(timeline)timeline.innerHTML=projection.map(row=>`<div class="planning-month"><small class="text-muted">${row.monthKey}</small><strong>${planningMoney(row.effectiveCommitment)}</strong><div class="small">Hogar: <b>${planningMoney(row.totalCommitment)}</b></div><div class="small">Libera: <b>${planningMoney(row.releasedFlow)}</b></div><div class="small text-muted">${row.endingPlans.length?row.endingPlans.map(p=>p.description).join(', '):'Sin cierres'}</div></div>`).join('');
-      const list=document.getElementById('planning-plans'); if(list)list.innerHTML=commitments.length?commitments.map(plan=>{ const remaining=Number(plan.remainingInstallments??(Number(plan.totalInstallments)-Number(plan.currentInstallment)))||0; return `<div class="planning-plan"><div class="d-flex justify-content-between gap-2"><div><b>${plan.description||'Plan sin descripción'}</b><div class="text-muted">${plan.interestType==='interest'?'Diferido con interés':'MSI'} · ${remaining} pagos · ${plan.ownershipType==='shared'?(plan.ownerSharePercentage||50)+'% propio':'Personal'} · ${plan.sourceType==='expense'?'Registrado en MSI':'Otro compromiso'}</div></div><b>${planningMoney(plan.installmentAmount)}/mes</b></div><div class="small mt-1">Pendiente: ${planningMoney(plan.remainingBalance)} · costo/flujo: ${calculateCostToFreeOneMonthlyPeso(plan)?.toFixed(2)||'—'}</div><button class="btn btn-sm btn-link px-0" onclick="simulatePayoff('${plan.id}')">Simular liquidación</button></div>`;}).join(''):'No hay MSI ni otros compromisos activos.';
+      const list=document.getElementById('planning-plans'); if(list)list.innerHTML=commitments.length?commitments.map(plan=>{ const remaining=Number(plan.remainingInstallments??(Number(plan.totalInstallments)-Number(plan.currentInstallment)))||0; const ownershipLabel=plan.needsClassification?'Por clasificar':plan.ownershipType==='shared'?`${plan.ownerSharePercentage}% propio`:'Personal'; return `<div class="planning-plan"><div class="d-flex justify-content-between gap-2"><div><b>${plan.description||'Plan sin descripción'}</b><div class="text-muted">${plan.interestType==='interest'?'Diferido con interés':'MSI'} · ${remaining} pagos · ${ownershipLabel} · ${plan.sourceType==='expense'?'Registrado en MSI':'Otro compromiso'}</div></div><b>${planningMoney(plan.installmentAmount)}/mes</b></div><div class="small mt-1">Pendiente: ${planningMoney(plan.remainingBalance)} · costo/flujo: ${calculateCostToFreeOneMonthlyPeso(plan)?.toFixed(2)||'—'}</div>${plan.sourceType==='expense'?`<button class="btn btn-sm btn-link px-0" onclick="editTrans('${plan.sourceId}')">Editar ownership</button>`:''}<button class="btn btn-sm btn-link px-0" onclick="simulatePayoff('${plan.id}')">Simular liquidación</button></div>`;}).join(''):'No hay MSI ni otros compromisos activos.';
     }
     window.openPlanForm=()=>{ fillPlanningCards(); new bootstrap.Modal(document.getElementById('modalPlan')).show(); };
     window.calculatePlanningSafe=()=>{
@@ -8221,6 +8244,7 @@
       const count = document.getElementById('msi-count');
       const canvas = document.getElementById('msiChart');
       const noData = document.getElementById('msi-no-data');
+      const ownershipNotice = document.getElementById('msi-ownership-notice');
 
       if(!list || !canvas || !noData) return;
 
@@ -8239,6 +8263,13 @@
           ? baseFilteredItems
           : baseFilteredItems.filter((item) => getMsiCardGroupKey(item) === selectedMsiCardKey);
         const items = selectedCardItems;
+        const pendingOwnership = items.filter((item) => resolveCommitmentOwnership(item).needsClassification).length;
+        if(ownershipNotice){
+          ownershipNotice.classList.toggle('d-none', pendingOwnership === 0);
+          ownershipNotice.innerHTML = pendingOwnership
+            ? `<b>Revisa la clasificación de tus MSI:</b> ${pendingOwnership} ${pendingOwnership === 1 ? 'pendiente' : 'pendientes'}. Puedes corregir cada compra con Editar.`
+            : '';
+        }
         if(count) count.textContent = `${items.length} compras`;
 
         // List
@@ -8249,6 +8280,12 @@
           items.forEach(t => {
             const pct = t.totalMonths > 0 ? Math.min((t.passed / t.totalMonths) * 100, 100) : 0;
             const trafficColor = getMsiTrafficColor(t.remaining);
+            const ownership = resolveCommitmentOwnership(t);
+            const ownershipLabel = ownership.ownershipType === 'personal'
+              ? 'Personal'
+              : ownership.ownershipType === 'shared'
+                ? `Compartido · ${ownership.ownerSharePercentage}%`
+                : 'Por clasificar';
 
             list.innerHTML += `
               <div class="mb-3">
@@ -8256,12 +8293,14 @@
                   <div>
                     <div class="fw-bold">${t.concept || 'Compra MSI'}</div>
                     <small class="text-muted">${t.cardName || ''} • Inicio: ${t.start.toLocaleDateString()} • ${t.totalMonths || '?'} MSI</small>
+                    <div class="mt-1"><span class="ownership-badge ${ownership.ownershipType}">${ownershipLabel}</span></div>
                     ${t.msiIncomplete ? '<div class="text-warning small fw-semibold">MSI incompleto</div>' : ''}
                   </div>
                   <div class="text-end">
                     <div class="fw-black sensitive-data" style="color:${trafficColor};">${t.remaining === 0 ? '✅ Liquidada' : `${t.remaining} meses`}</div>
                     <span class="msi-status-pill" style="border-color:${trafficColor}; color:${trafficColor};">${getMsiTrafficLabel(t.remaining)}</span>
                     <small class="d-block text-muted sensitive-data">${formatMoney(t.monthly)}/mes</small>
+                    <button type="button" class="btn btn-sm btn-link px-0" onclick="editTrans('${t.id}')">Editar ownership</button>
                   </div>
                 </div>
                 <div class="progress mt-2" style="height:12px;background-color:var(--bg-body);">
@@ -9517,7 +9556,14 @@ const getHistoryContext = () => {
         if(d) document.getElementById('t-msi-start').value = d;
       }
       updateMsiCardCycleHint();
+      window.uiToggleMsiOwnership();
       uiCalcMsiMonthly();
+    };
+
+    window.uiToggleMsiOwnership = () => {
+      const type = document.getElementById('t-msi-ownership')?.value;
+      const shareWrap = document.getElementById('t-msi-share-wrap');
+      if(shareWrap) shareWrap.style.display = type === 'shared' ? 'block' : 'none';
     };
 
     function uiCalcMsiMonthly(){
@@ -9986,6 +10032,10 @@ const getHistoryContext = () => {
       const msiStartStr = isMsi ? (document.getElementById('t-msi-start').value || document.getElementById('t-date').value) : null;
       const msiCurrentRaw = isMsi ? (document.getElementById('t-msi-current')?.value || '') : '';
       const msiCurrentInstallment = msiCurrentRaw === '' ? null : parseInt(msiCurrentRaw, 10);
+      const msiOwnershipType = isMsi ? document.getElementById('t-msi-ownership')?.value : null;
+      const msiSharePercentage = isMsi && msiOwnershipType === 'shared'
+        ? Number(document.getElementById('t-msi-share')?.value)
+        : (isMsi && msiOwnershipType === 'personal' ? 100 : null);
       const msiStartDate = isMsi && msiStartStr ? parseLocalYYYYMMDDToDate(msiStartStr) : null;
       const msiStart = msiStartDate ? Timestamp.fromDate(msiStartDate) : null;
       const amountInput = parseFloat(document.getElementById('t-amount').value);
@@ -10000,6 +10050,14 @@ const getHistoryContext = () => {
         if(msiCurrentRaw !== '' && (!Number.isFinite(msiCurrentInstallment) || msiCurrentInstallment < 0 || msiCurrentInstallment > msiMonths)){
           showToast(`La mensualidad actual debe estar entre 0 y ${msiMonths}.`, { tone: "warning", duration: 2600 });
           haptic("error");
+          return;
+        }
+        if(msiOwnershipType !== 'personal' && msiOwnershipType !== 'shared'){
+          showToast('Clasifica el MSI como Personal o Compartido antes de guardar.', { tone: 'warning', duration: 2800 });
+          return;
+        }
+        if(msiOwnershipType === 'shared' && (!Number.isFinite(msiSharePercentage) || msiSharePercentage <= 0 || msiSharePercentage > 100)){
+          showToast('Tu participación debe ser mayor a 0% y máximo 100%.', { tone: 'warning', duration: 2800 });
           return;
         }
         amountApplied = round2(msiTotal / msiMonths);
@@ -10105,7 +10163,9 @@ const getHistoryContext = () => {
           msiMonthly: isMsi ? amountApplied : null,
           currentInstallment: isMsi ? msiCurrentInstallment : null,
           installmentsPaid: isMsi ? msiCurrentInstallment : null,
-          msiInstallmentNumber: isMsi ? msiInstallmentNumber : null
+          msiInstallmentNumber: isMsi ? msiInstallmentNumber : null,
+          ownershipType: isMsi ? msiOwnershipType : null,
+          ownerSharePercentage: isMsi ? msiSharePercentage : null
         };
         const payload = normalizeMovementInput(payloadDraft);
         if (payload.type === "card_payment" && !payload.targetCardId) {
@@ -10254,6 +10314,13 @@ const getHistoryContext = () => {
 
       uiToggleMsiFields();
       if(isMsi){
+        const ownership = resolveCommitmentOwnership(t);
+        const ownershipSelect = document.getElementById('t-msi-ownership');
+        const unknownOption = ownershipSelect?.querySelector('option[value="unknown"]');
+        if(unknownOption) unknownOption.disabled = !ownership.needsClassification;
+        if(ownershipSelect) ownershipSelect.value = ownership.ownershipType;
+        document.getElementById('t-msi-share').value = ownership.ownershipType === 'shared' ? ownership.ownerSharePercentage : 50;
+        window.uiToggleMsiOwnership();
         const totalFallback = Number.isFinite(t.msiMonthly)
           ? (t.msiMonthly * (t.msiMonths || 1))
           : t.amount;
@@ -10372,6 +10439,11 @@ const getHistoryContext = () => {
       document.getElementById('t-msi-total').value="";
       document.getElementById('t-msi-start').value = document.getElementById('t-date').value;
       document.getElementById('t-msi-current').value = "";
+      const unknownOption = document.querySelector('#t-msi-ownership option[value="unknown"]');
+      if(unknownOption) unknownOption.disabled = true;
+      document.getElementById('t-msi-ownership').value = 'personal';
+      document.getElementById('t-msi-share').value = '50';
+      window.uiToggleMsiOwnership();
       updateMsiCardCycleHint();
       uiToggleMsiFields();
       uiCalcMsiMonthly();
