@@ -1172,7 +1172,7 @@
         ✅ TARJETAS
   ======================= -->
   <div id="view-planning" class="view-section p-3">
-    <div class="d-flex justify-content-between align-items-start gap-2 mb-3"><div><h4 class="fw-black mb-1">Planeación</h4><div class="text-muted small">Decide con claridad cuánto ya está comprometido.</div></div><button class="btn btn-primary btn-sm" type="button" onclick="openPlanForm()"><i class="fas fa-plus me-1"></i> Plan</button></div>
+    <div class="d-flex justify-content-between align-items-start gap-2 mb-3"><div><h4 class="fw-black mb-1">Planeación</h4><div class="text-muted small">Tus MSI registrados aparecen automáticamente; agrega aquí sólo compromisos externos.</div></div><button class="btn btn-primary btn-sm" type="button" onclick="openPlanForm()"><i class="fas fa-plus me-1"></i> Otro compromiso</button></div>
     <div class="planning-kpis mb-3">
       <div class="card-box m-0"><div class="kpi-label">Disponible seguro / mes</div><div id="planning-safe-month" class="kpi-value sensitive-data">Datos pendientes</div><small id="planning-safe-why" class="text-muted">Completa tus supuestos abajo.</small></div>
       <div class="card-box m-0"><div class="kpi-label">Compromiso efectivo</div><div id="planning-current" class="kpi-value sensitive-data">$0.00</div><small class="text-muted">Personal + tu parte compartida</small></div>
@@ -1180,13 +1180,13 @@
     </div>
     <div class="card-box mb-3"><div class="d-flex justify-content-between align-items-center mb-2"><div><h6 class="fw-bold m-0">Proyección 12 meses</h6><small class="text-muted">Compromiso, liberación y planes que terminan</small></div></div><div id="planning-timeline" class="planning-timeline"></div></div>
     <div class="card-box mb-3"><h6 class="fw-bold">Disponible seguro</h6><div class="planning-form-grid">
-      <input class="form-control" id="safe-income" type="number" step=".01" placeholder="Ingreso disponible"><input class="form-control" id="safe-fixed" type="number" step=".01" placeholder="Gastos fijos"><input class="form-control" id="safe-spending" type="number" step=".01" placeholder="Gasto corriente"><input class="form-control" id="safe-card-payments" type="number" step=".01" placeholder="Pagos corrientes TDC"><input class="form-control" id="safe-goals" type="number" step=".01" placeholder="Metas / apartados"><input class="form-control" id="safe-buffer" type="number" step=".01" placeholder="Colchón"><input class="form-control" id="safe-target" type="number" step=".01" value="0" placeholder="Objetivo de reducción"><button class="btn btn-outline-primary" type="button" onclick="calculatePlanningSafe()">Calcular</button>
+      <input class="form-control" id="safe-income" type="number" step=".01" placeholder="Ingreso disponible"><input class="form-control" id="safe-fixed" type="number" step=".01" placeholder="Gastos fijos"><input class="form-control" id="safe-spending" type="number" step=".01" placeholder="Gasto corriente (automático)" disabled><input class="form-control" id="safe-card-payments" type="number" step=".01" placeholder="Abonos conocidos (automático)" disabled><input class="form-control" id="safe-goals" type="number" step=".01" placeholder="Metas / apartados"><input class="form-control" id="safe-buffer" type="number" step=".01" placeholder="Colchón"><input class="form-control" id="safe-target" type="number" step=".01" value="0" placeholder="Objetivo de reducción"><button class="btn btn-outline-primary" type="button" onclick="calculatePlanningSafe()">Calcular</button>
     </div><div id="planning-safe-detail" class="small text-muted mt-2">No se inventarán importes faltantes.</div></div>
     <div class="card-box mb-3"><h6 class="fw-bold">¿Qué pasa si compro?</h6><div class="planning-form-grid"><input id="sim-amount" class="form-control" type="number" step=".01" placeholder="Monto"><select id="sim-card" class="form-select"></select><input id="sim-months" class="form-control" type="number" min="1" value="12" placeholder="Meses"><select id="sim-ownership" class="form-select"><option value="personal">Personal</option><option value="shared">Compartida 50/50</option></select><button class="btn btn-primary wide" type="button" onclick="runPurchaseSimulation()">Simular sin guardar</button></div><div id="planning-simulation" class="mt-3 small text-muted">La simulación no escribe en Firestore.</div></div>
     <div class="card-box"><h6 class="fw-bold">MSI y diferidos</h6><div id="planning-plans" class="text-muted small">Cargando planes…</div></div>
   </div>
 
-  <div class="modal fade" id="modalPlan" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content card-box border-0"><div class="modal-body"><h5 class="fw-black">Registrar compra diferida</h5><form id="form-plan"><div class="mb-2"><label class="small fw-bold">Descripción</label><input id="p-description" class="form-control" required></div><div class="row g-2 mb-2"><div class="col-6"><label class="small fw-bold">Tarjeta</label><select id="p-card" class="form-select" required></select></div><div class="col-6"><label class="small fw-bold">Monto original</label><input id="p-amount" type="number" step=".01" class="form-control" required></div></div><div class="row g-2 mb-2"><div class="col-4"><label class="small fw-bold">Mensualidades</label><input id="p-total" type="number" min="1" class="form-control" required></div><div class="col-4"><label class="small fw-bold">Pagada #</label><input id="p-current" type="number" min="0" value="0" class="form-control" required></div><div class="col-4"><label class="small fw-bold">Mensualidad</label><input id="p-installment" type="number" step=".01" class="form-control" required></div></div><div class="row g-2 mb-3"><div class="col-6"><select id="p-interest" class="form-select"><option value="none">MSI</option><option value="interest">Con interés</option></select></div><div class="col-6"><select id="p-ownership" class="form-select"><option value="personal">Personal</option><option value="shared">Compartida 50/50</option></select></div></div><button class="btn btn-primary w-100" type="submit">Guardar plan</button></form></div></div></div></div>
+  <div class="modal fade" id="modalPlan" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content card-box border-0"><div class="modal-body"><h5 class="fw-black">Registrar otro compromiso</h5><p class="small text-muted">Para préstamos, deuda externa o financiamientos que no estén registrados como MSI.</p><form id="form-plan"><div class="mb-2"><label class="small fw-bold">Descripción</label><input id="p-description" class="form-control" required></div><div class="row g-2 mb-2"><div class="col-6"><label class="small fw-bold">Tarjeta</label><select id="p-card" class="form-select" required></select></div><div class="col-6"><label class="small fw-bold">Monto original</label><input id="p-amount" type="number" step=".01" class="form-control" required></div></div><div class="row g-2 mb-2"><div class="col-4"><label class="small fw-bold">Mensualidades</label><input id="p-total" type="number" min="1" class="form-control" required></div><div class="col-4"><label class="small fw-bold">Pagada #</label><input id="p-current" type="number" min="0" value="0" class="form-control" required></div><div class="col-4"><label class="small fw-bold">Mensualidad</label><input id="p-installment" type="number" step=".01" class="form-control" required></div></div><div class="row g-2 mb-3"><div class="col-6"><select id="p-interest" class="form-select"><option value="none">MSI</option><option value="interest">Con interés</option></select></div><div class="col-6"><select id="p-ownership" class="form-select"><option value="personal">Personal</option><option value="shared">Compartida 50/50</option></select></div></div><button class="btn btn-primary w-100" type="submit">Guardar plan</button></form></div></div></div></div>
 
   <div id="view-cards" class="view-section p-3">
     <h4 class="fw-black mb-4">Mis Tarjetas</h4>
@@ -1981,6 +1981,7 @@
     import { groupMsiByCard, getMsiCardGroupKey } from "./utils/groupMsiByCard.js";
     import { buildCardLogicalKey } from "./utils/cardCanonicalKey.js";
     import { normalizeCard, projectInstallments, calculateSafeAvailable, simulateNewPurchase, simulatePlanPayoff, calculateCostToFreeOneMonthlyPeso } from "./utils/planningEngine.js";
+    import { normalizeFinancialCommitments, calculateMonthlyFinancialSummary } from "./utils/financialCore.js";
     import { consolidateCards, hasLogicalCardName, resolveCanonicalCardId, resolveTransactionCardAliases } from "./utils/cardConsolidation.js";
     import {
       getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc,
@@ -4723,32 +4724,40 @@
       if(!kpisEl || !emptyEl) return;
 
       const expense = safeNumber(summary?.totals?.expense);
+      const installments = safeNumber(summary?.totals?.installments);
       const income = safeNumber(summary?.totals?.income);
-      const net = safeNumber(summary?.totals?.net);
+      const commitment = safeNumber(summary?.totals?.effectiveCommitment ?? summary?.totals?.expense);
+      const householdCommitment = safeNumber(summary?.totals?.householdCommitment ?? commitment);
       const txCount = safeNumber(summary?.counts?.txCount);
       const abonosKpiLabel = summary?.labels?.abonosKpi || "Abonos";
-      const netKpiLabel = summary?.labels?.netKpi || "Neto";
 
-      if(!txCount){
+      if(!txCount && !installments){
         kpisEl.innerHTML = "";
         emptyEl.classList.remove("d-none");
         return;
       }
 
       emptyEl.classList.add("d-none");
-      const netTone = net >= 0 ? "text-success" : "text-danger";
       kpisEl.innerHTML = `
         <div class="summary-kpi-card">
-          <div class="kpi-label">Gastos</div>
+          <div class="kpi-label">Compras del periodo</div>
           <div class="kpi-value sensitive-data">${formatCurrency(expense)}</div>
+        </div>
+        <div class="summary-kpi-card">
+          <div class="kpi-label">MSI y diferidos</div>
+          <div class="kpi-value sensitive-data">${formatCurrency(installments)}</div>
         </div>
         <div class="summary-kpi-card">
           <div class="kpi-label">${abonosKpiLabel}</div>
           <div class="kpi-value sensitive-data text-success">${formatCurrency(income)}</div>
         </div>
         <div class="summary-kpi-card">
-          <div class="kpi-label">${netKpiLabel}</div>
-          <div class="kpi-value sensitive-data ${netTone}">${formatCurrency(net)}</div>
+          <div class="kpi-label">Compromiso del hogar</div>
+          <div class="kpi-value sensitive-data">${formatCurrency(householdCommitment)}</div>
+        </div>
+        <div class="summary-kpi-card">
+          <div class="kpi-label">Compromiso efectivo</div>
+          <div class="kpi-value sensitive-data">${formatCurrency(commitment)}</div>
         </div>
         <div class="summary-kpi-card">
           <div class="kpi-label">Movimientos</div>
@@ -4770,19 +4779,19 @@
         return;
       }
 
-      entries.sort(([, a], [, b]) => safeNumber(b?.expense) - safeNumber(a?.expense));
+      entries.sort(([, a], [, b]) => safeNumber(b?.householdCommitment ?? b?.expense) - safeNumber(a?.householdCommitment ?? a?.expense));
       listEl.innerHTML = entries.map(([, card]) => {
         const expense = safeNumber(card?.expense);
-        const income = safeNumber(card?.income);
-        const net = safeNumber(card?.net);
-        const netTone = net >= 0 ? "text-success" : "text-danger";
+        const income = safeNumber(card?.payments ?? card?.income);
+        const installments = safeNumber(card?.installmentCommitment) + safeNumber(card?.interestDeferredCommitment);
+        const commitment = safeNumber(card?.effectiveCommitment ?? card?.expense);
         return `
           <div class="summary-card-item breakRow">
             <div class="summary-card-main breakLeft">
               <div class="summary-card-title breakTitle">${card?.cardName || "Sin tarjeta"}</div>
-              <div class="summary-card-subline breakSub">Gasto: <span class="sensitive-data">${formatCurrency(expense)}</span> · Abono: <span class="sensitive-data">${formatCurrency(income)}</span></div>
+              <div class="summary-card-subline breakSub">Compras: <span class="sensitive-data">${formatCurrency(card?.purchases ?? expense)}</span> · MSI/diferidos: <span class="sensitive-data">${formatCurrency(installments)}</span> · Abonos: <span class="sensitive-data">${formatCurrency(income)}</span></div>
             </div>
-            <div class="summary-card-net breakRight breakNet sensitive-data ${netTone}">${formatCurrency(net)}</div>
+            <div class="summary-card-net breakRight breakNet sensitive-data">${formatCurrency(commitment)}</div>
           </div>
         `;
       }).join("");
@@ -4941,13 +4950,13 @@
             const d = toDate(item?.date);
             return context.range ? (d >= context.range.startDate && d < context.range.endExclusive) : true;
           });
-          const monthMsiMonthly = itemsByOwner
-            .filter((item) => item?.type === "expense" && item?.isMsi === true)
-            .flatMap((item) => expandMsiToMonthlyCharges(item, context.range.startDate, new Date(context.range.endExclusive.getTime() - 1)));
-          const nonMsiRanged = ranged.filter((item) => !(item?.type === "expense" && item?.isMsi === true));
-          const filteredBase = [...nonMsiRanged, ...monthMsiMonthly];
-          const filtered = context.selectedCardId === "all" ? filteredBase : filteredBase.filter((item) => item?.cardId === context.selectedCardId);
-          summary = buildMonthlyCardSummary(filtered, { owner, periodKey: currentSelected, anchorDate: context.anchorDate });
+          const commitments = getFinancialCommitments();
+          const core = calculateMonthlyFinancialSummary({ movements: ranged, commitments, monthKey: currentSelected, cardId: context.selectedCardId });
+          summary = {
+            totals: { expense: core.purchases, installments: round2(core.installmentCommitment + core.interestDeferredCommitment), income: core.payments, effectiveCommitment: core.effectiveCommitment, householdCommitment: core.householdCommitment },
+            byCard: core.byCard,
+            counts: { txCount: core.movementCount }
+          };
         }
 
         summaryState.cache.set(getSummaryCacheKey(owner, currentSelected, scopeFilter), summary);
@@ -6145,6 +6154,8 @@
         fillHistFilters();
         emit("DATA_LOADED", { owner: OWNER, count: trans.length });
         refreshCardsCycleBudget({ monthKey: getLocalMonthKey(), silent: true });
+        renderPlanning();
+        renderSummaryView({ force: true });
 
         if(privacy) togglePrivacy();
       }, (err)=>{
@@ -7193,21 +7204,45 @@
 
     function subscribeInstallmentPlans(){
       const qPlans=query(collection(db,"installment_plans"),where("owner","==",OWNER));
-      unsubInstallmentPlans=onSnapshot(qPlans,(snap)=>{ installmentPlans=snap.docs.map(d=>({id:d.id,...d.data()})); renderPlanning(); },(err)=>{ console.error("Installment plans error",err); installmentPlans=[]; renderPlanning(); });
+      unsubInstallmentPlans=onSnapshot(qPlans,(snap)=>{ installmentPlans=snap.docs.map(d=>({id:d.id,...d.data()})); renderPlanning(); renderSummaryView({ force:true }); },(err)=>{ console.error("Installment plans error",err); installmentPlans=[]; renderPlanning(); renderSummaryView({ force:true }); });
+    }
+    function getFinancialCommitments(){
+      const scopeFilter=getActiveScopeFilter();
+      const expenses=FEATURES.coupleMode?applyScopeFilter(trans,scopeFilter):trans;
+      const plans=installmentPlans.filter((plan)=>scopeFilter==='all' || (scopeFilter==='shared')===(plan.ownershipType==='shared'));
+      return normalizeFinancialCommitments({ expenses, installmentPlans:plans, asOfMonth:getLocalMonthKey() }).map((commitment)=>({ ...commitment, cardName:cards.find((card)=>card.id===commitment.cardId)?.name || commitment.cardName || 'Sin tarjeta' }));
     }
     const planningMoney=(value)=>new Intl.NumberFormat('es-MX',{style:'currency',currency:'MXN'}).format(Number(value)||0);
     function fillPlanningCards(){ ['p-card','sim-card'].forEach(id=>{ const el=document.getElementById(id); if(!el)return; const old=el.value; el.innerHTML=cards.map(c=>`<option value="${c.id}">${c.name}</option>`).join(''); if([...el.options].some(o=>o.value===old))el.value=old; }); }
     function renderPlanning(){
-      fillPlanningCards(); const projection=projectInstallments(installmentPlans,{months:12}); const current=projection[0];
+      fillPlanningCards(); const commitments=getFinancialCommitments(); const projection=projectInstallments(commitments,{months:12}); const current=projection[0];
       const currentEl=document.getElementById('planning-current'); if(currentEl)currentEl.textContent=planningMoney(current?.effectiveCommitment||0);
       const next=projection.find(row=>row.releasedFlow>0); const release=document.getElementById('planning-next-release'); if(release)release.textContent=next?`+${planningMoney(next.releasedFlow)}/mes`:'—'; const releaseMonth=document.getElementById('planning-next-release-month'); if(releaseMonth)releaseMonth.textContent=next?next.monthKey:'Sin planes próximos';
-      const timeline=document.getElementById('planning-timeline'); if(timeline)timeline.innerHTML=projection.map(row=>`<div class="planning-month"><small class="text-muted">${row.monthKey}</small><strong>${planningMoney(row.effectiveCommitment)}</strong><div class="small">Libera: <b>${planningMoney(row.releasedFlow)}</b></div><div class="small text-muted">${row.endingPlans.length?row.endingPlans.map(p=>p.description).join(', '):'Sin cierres'}</div></div>`).join('');
-      const list=document.getElementById('planning-plans'); if(list)list.innerHTML=installmentPlans.length?installmentPlans.map(plan=>{ const remaining=Number(plan.remainingInstallments??(Number(plan.totalInstallments)-Number(plan.currentInstallment)))||0; return `<div class="planning-plan"><div class="d-flex justify-content-between gap-2"><div><b>${plan.description||'Plan sin descripción'}</b><div class="text-muted">${plan.interestType==='interest'?'Diferido con interés':'MSI'} · ${remaining} pagos · ${plan.ownershipType==='shared'?(plan.ownerSharePercentage||50)+'% propio':'Personal'}</div></div><b>${planningMoney(plan.installmentAmount)}/mes</b></div><div class="small mt-1">Pendiente: ${planningMoney(plan.remainingBalance)} · costo/flujo: ${calculateCostToFreeOneMonthlyPeso(plan)?.toFixed(2)||'—'}</div><button class="btn btn-sm btn-link px-0" onclick="simulatePayoff('${plan.id}')">Simular liquidación</button></div>`;}).join(''):'No hay planes explícitos. Registra el primero sin alterar tus MSI históricos.';
+      const timeline=document.getElementById('planning-timeline'); if(timeline)timeline.innerHTML=projection.map(row=>`<div class="planning-month"><small class="text-muted">${row.monthKey}</small><strong>${planningMoney(row.effectiveCommitment)}</strong><div class="small">Hogar: <b>${planningMoney(row.totalCommitment)}</b></div><div class="small">Libera: <b>${planningMoney(row.releasedFlow)}</b></div><div class="small text-muted">${row.endingPlans.length?row.endingPlans.map(p=>p.description).join(', '):'Sin cierres'}</div></div>`).join('');
+      const list=document.getElementById('planning-plans'); if(list)list.innerHTML=commitments.length?commitments.map(plan=>{ const remaining=Number(plan.remainingInstallments??(Number(plan.totalInstallments)-Number(plan.currentInstallment)))||0; return `<div class="planning-plan"><div class="d-flex justify-content-between gap-2"><div><b>${plan.description||'Plan sin descripción'}</b><div class="text-muted">${plan.interestType==='interest'?'Diferido con interés':'MSI'} · ${remaining} pagos · ${plan.ownershipType==='shared'?(plan.ownerSharePercentage||50)+'% propio':'Personal'} · ${plan.sourceType==='expense'?'Registrado en MSI':'Otro compromiso'}</div></div><b>${planningMoney(plan.installmentAmount)}/mes</b></div><div class="small mt-1">Pendiente: ${planningMoney(plan.remainingBalance)} · costo/flujo: ${calculateCostToFreeOneMonthlyPeso(plan)?.toFixed(2)||'—'}</div><button class="btn btn-sm btn-link px-0" onclick="simulatePayoff('${plan.id}')">Simular liquidación</button></div>`;}).join(''):'No hay MSI ni otros compromisos activos.';
     }
     window.openPlanForm=()=>{ fillPlanningCards(); new bootstrap.Modal(document.getElementById('modalPlan')).show(); };
-    window.calculatePlanningSafe=()=>{ const val=id=>document.getElementById(id)?.value; const projection=projectInstallments(installmentPlans,{months:12}); const result=calculateSafeAvailable({incomeAvailable:val('safe-income'),fixedExpenses:val('safe-fixed'),currentSpending:val('safe-spending'),currentCardPayments:val('safe-card-payments'),goalsReserved:val('safe-goals'),buffer:val('safe-buffer'),reductionTarget:val('safe-target')||0,nextInstallments:projection[0]?.effectiveCommitment||0}); const output=document.getElementById('planning-safe-month'), detail=document.getElementById('planning-safe-detail'); if(result.missing.length){ output.textContent='Datos pendientes'; detail.textContent='Falta: '+result.missing.join(', ')+'. No se inventaron cantidades.'; }else{ output.textContent=planningMoney(result.availableSafeMonth); detail.textContent=`Aproximación semanal: ${planningMoney(result.availableSafeWeek)}. Incluye ${planningMoney(projection[0]?.effectiveCommitment||0)} de planes próximos.`; } };
-    window.runPurchaseSimulation=()=>{ const amount=Number(document.getElementById('sim-amount')?.value), months=Math.trunc(Number(document.getElementById('sim-months')?.value)), ownershipType=document.getElementById('sim-ownership')?.value, cardId=document.getElementById('sim-card')?.value; if(!(amount>0&&months>0))return showToast('Ingresa monto y mensualidades válidos.',{tone:'warning'}); const result=simulateNewPurchase(installmentPlans,{amount,totalInstallments:months,cardId,ownershipType,ownerSharePercentage:ownershipType==='shared'?50:100},{months:12}); const before=result.before[0]?.effectiveCommitment||0, after=result.after[0]?.effectiveCommitment||0; const releaseMonth=result.after[months]?.monthKey||'fuera del horizonte'; document.getElementById('planning-simulation').innerHTML=`Mensualidad aproximada: <b>${planningMoney(result.plan.installmentAmount)}</b>. Tu compromiso cambia de <b>${planningMoney(before)}</b> a <b>${planningMoney(after)}</b>. Liberación estimada: ${releaseMonth}. <br><b>No se escribió en Firestore.</b>`; };
-    window.simulatePayoff=(id)=>{ const result=simulatePlanPayoff(installmentPlans,id,{months:12}); const before=result.before[0]?.effectiveCommitment||0, after=result.after[0]?.effectiveCommitment||0; document.getElementById('planning-simulation').innerHTML=`Liquidación simulada: compromiso potencial ${planningMoney(before)} → <b>${planningMoney(after)}</b>.<br>${result.warning} No se modificaron datos reales.`; document.getElementById('planning-simulation').scrollIntoView({behavior:'smooth'}); };
+    window.calculatePlanningSafe=()=>{
+      const val=id=>document.getElementById(id)?.value;
+      const commitments=getFinancialCommitments();
+      const projection=projectInstallments(commitments,{months:12});
+      const monthKey=getLocalMonthKey();
+      const start=getMonthRange(monthKey);
+      const monthMovements=trans.filter((item)=>{ const date=toDate(item.date); return date>=start.startDate && date<start.endExclusive; });
+      const known=calculateMonthlyFinancialSummary({ movements:monthMovements, commitments, monthKey });
+      const result=calculateSafeAvailable({
+        incomeAvailable:val('safe-income'), fixedExpenses:val('safe-fixed'),
+        currentSpending:known.purchases, currentCardPayments:known.payments,
+        goalsReserved:val('safe-goals'), buffer:val('safe-buffer'), reductionTarget:val('safe-target')||0,
+        nextInstallments:projection[0]?.effectiveCommitment||0
+      });
+      const output=document.getElementById('planning-safe-month'), detail=document.getElementById('planning-safe-detail');
+      const labels={incomeAvailable:'ingreso disponible',fixedExpenses:'gastos fijos no registrados',goalsReserved:'metas / apartados',buffer:'colchón deseado'};
+      if(result.missing.length){ output.textContent='Datos pendientes'; detail.textContent='Falta: '+result.missing.map((key)=>labels[key]||key).join(', ')+`. Yayos reutilizó ${planningMoney(known.purchases)} de compras, ${planningMoney(known.payments)} de abonos y ${planningMoney(projection[0]?.effectiveCommitment||0)} de compromisos.`; }
+      else { output.textContent=planningMoney(result.availableSafeMonth); detail.textContent=`Aproximación semanal: ${planningMoney(result.availableSafeWeek)}. Datos automáticos: compras ${planningMoney(known.purchases)}, abonos ${planningMoney(known.payments)} y compromisos ${planningMoney(projection[0]?.effectiveCommitment||0)}.`; }
+    };
+    window.runPurchaseSimulation=()=>{ const amount=Number(document.getElementById('sim-amount')?.value), months=Math.trunc(Number(document.getElementById('sim-months')?.value)), ownershipType=document.getElementById('sim-ownership')?.value, cardId=document.getElementById('sim-card')?.value; if(!(amount>0&&months>0))return showToast('Ingresa monto y mensualidades válidos.',{tone:'warning'}); const result=simulateNewPurchase(getFinancialCommitments(),{amount,totalInstallments:months,cardId,ownershipType,ownerSharePercentage:ownershipType==='shared'?50:100},{months:12}); const before=result.before[0]?.effectiveCommitment||0, after=result.after[0]?.effectiveCommitment||0; const releaseMonth=result.after[months]?.monthKey||'fuera del horizonte'; document.getElementById('planning-simulation').innerHTML=`Mensualidad aproximada: <b>${planningMoney(result.plan.installmentAmount)}</b>. Tu compromiso cambia de <b>${planningMoney(before)}</b> a <b>${planningMoney(after)}</b>. Liberación estimada: ${releaseMonth}. <br><b>No se escribió en Firestore.</b>`; };
+    window.simulatePayoff=(id)=>{ const plan=getFinancialCommitments().find((item)=>item.id===id); const result=simulatePlanPayoff(getFinancialCommitments(),id,{months:12}); const before=result.before[0]?.effectiveCommitment||0, after=result.after[0]?.effectiveCommitment||0; document.getElementById('planning-simulation').innerHTML=`Liquidación simulada: costo hoy ${planningMoney(plan?.remainingBalance||0)}; desaparece ${planningMoney(plan?.installmentAmount||0)}/mes. Compromiso ${planningMoney(before)} → <b>${planningMoney(after)}</b>.<br>${result.warning} No se modificaron datos reales.`; document.getElementById('planning-simulation').scrollIntoView({behavior:'smooth'}); };
     document.getElementById('form-plan')?.addEventListener('submit',async(e)=>{ e.preventDefault(); const total=Number(document.getElementById('p-total').value), current=Number(document.getElementById('p-current').value), installmentAmount=Number(document.getElementById('p-installment').value), originalAmount=Number(document.getElementById('p-amount').value), remainingInstallments=Math.max(total-current,0); const now=new Date(); const end=new Date(now.getFullYear(),now.getMonth()+remainingInstallments,1); const ownershipType=document.getElementById('p-ownership').value; await addDoc(collection(db,'installment_plans'),{owner:OWNER,cardId:document.getElementById('p-card').value,description:document.getElementById('p-description').value.trim(),merchant:'',originalAmount,remainingBalance:Math.round(installmentAmount*remainingInstallments*100)/100,installmentAmount,totalInstallments:total,currentInstallment:current,remainingInstallments,startDate:Timestamp.fromDate(now),estimatedEndDate:Timestamp.fromDate(end),interestType:document.getElementById('p-interest').value,annualInterestRate:null,active:remainingInstallments>0,ownershipType,ownerSharePercentage:ownershipType==='shared'?50:100,notes:'',createdAt:serverTimestamp()}); bootstrap.Modal.getInstance(document.getElementById('modalPlan'))?.hide(); e.target.reset(); showToast('Plan guardado.',{tone:'success'}); });
 
     // Smart pick
