@@ -9,6 +9,9 @@ const monthFrom = (value) => {
   return date && !Number.isNaN(date.getTime()) ? getLocalMonthKey(date) : null;
 };
 const isPayment = (item) => item?.type === 'payment' || item?.type === 'card_payment' || item?.isCardPayment === true;
+const presentNumber = (value) => value !== '' && value != null && Number.isFinite(Number(value));
+const paymentCardId = (item) => item?.targetCardId || item?.cardId;
+const movementCardId = (item) => isPayment(item) ? paymentCardId(item) : item?.cardId;
 
 const monthDistance = (from, to) => ((Number(to.slice(0, 4)) - Number(from.slice(0, 4))) * 12)
   + Number(to.slice(5, 7)) - Number(from.slice(5, 7));
@@ -122,6 +125,84 @@ export function calculateMonthlyFinancialSummary({ movements = [], commitments =
   return { purchases, installmentCommitment, interestDeferredCommitment, payments, householdCommitment, effectiveCommitment,
     effectiveCommitmentPartial: unclassifiedCommitmentCount > 0, unclassifiedCommitment, unclassifiedCommitmentCount,
     movementCount: filteredMovements.length, byCard };
+}
+
+const normalizePaymentPeriod = (period, fallbackMonth) => {
+  if(typeof period === 'string') return { key: period, mode: 'month' };
+  return { key: period?.key || period?.monthKey || fallbackMonth, mode: period?.mode === 'statement' ? 'statement' : 'month',
+    start: period?.start || period?.startDate || null, end: period?.end || period?.endExclusive || null,
+    cycleId: period?.cycleId || null, statementId: period?.statementId || null };
+};
+
+const inPaymentPeriod = (item, period) => {
+  const raw = item?.date?.toDate ? item.date.toDate() : item?.date;
+  const date = raw instanceof Date ? raw : raw ? new Date(raw) : null;
+  if(period.start && period.end && date && !Number.isNaN(date.getTime())) return date >= period.start && date < period.end;
+  return !date || Number.isNaN(date.getTime()) ? true : monthFrom(date) === period.key;
+};
+
+const statementTarget = (card, period, asOfMonth) => {
+  const periodField = card?.statementPeriod || card?.statementMonth || card?.paymentPeriod || null;
+  const belongsToPeriod = periodField ? periodField === period.key : period.key === asOfMonth;
+  if(!belongsToPeriod) return null;
+  for(const field of ['paymentToAvoidInterest', 'payGoal', 'paymentGoal', 'paymentTarget', 'montoCiclo', 'goal']){
+    if(presentNumber(card?.[field]) && Number(card[field]) > 0) return { amount: money(card[field]), field };
+  }
+  return null;
+};
+
+/**
+ * Resolves the amount expected by the bank for one card and period. Payments
+ * are reported, but never subtracted without an explicit cycle/statement link.
+ */
+export function resolveCardMonthlyPayment({ card = {}, movements = [], commitments = [], period, monthKey, asOfMonth = getLocalMonthKey() } = {}) {
+  const normalizedPeriod = normalizePaymentPeriod(period, monthKey || asOfMonth);
+  const cardId = card.id || card.cardId || null;
+  const cardMovements = movements.filter((item) => movementCardId(item) === cardId && inPaymentPeriod(item, normalizedPeriod));
+  const purchases = money(cardMovements.filter((item) => item?.type === 'expense' && item?.isMsi !== true && !isPayment(item))
+    .reduce((sum, item) => sum + money(item.computedAmount ?? item.amount), 0));
+  const payments = money(cardMovements.filter(isPayment).reduce((sum, item) => sum + money(item.computedAmount ?? item.amount), 0));
+  const activeCommitments = commitments.filter((item) => item?.cardId === cardId
+    && normalizedPeriod.key >= (item.billingStartMonth || item.startMonth)
+    && normalizedPeriod.key <= (item.billingEndMonth || item.endMonth));
+  const installments = money(activeCommitments.reduce((sum, item) => sum + money(item.installmentAmount), 0));
+  const bank = statementTarget(card, normalizedPeriod, asOfMonth);
+  const linkedPayments = cardMovements.filter((item) => isPayment(item) && (
+    (normalizedPeriod.statementId && item?.statementId === normalizedPeriod.statementId)
+    || (normalizedPeriod.cycleId && item?.cardCycleId === normalizedPeriod.cycleId)
+  ));
+  const reconciledPaid = money(linkedPayments.reduce((sum, item) => sum + money(item.computedAmount ?? item.amount), 0));
+  const baseComponents = { purchases, installments, paymentsRecorded: payments,
+    paid: linkedPayments.length ? reconciledPaid : null, remaining: null,
+    remainingBalanceExcluded: true, msiOriginalAmountsExcluded: true };
+
+  if(bank){
+    return { amount: bank.amount, source: 'statement', confidence: 'high', components: {
+      ...baseComponents, statementAmount: bank.amount, statementField: bank.field,
+      remaining: linkedPayments.length ? money(Math.max(0, bank.amount - reconciledPaid)) : null
+    }, cardId, period: normalizedPeriod };
+  }
+  if(purchases > 0 || installments > 0){
+    return { amount: money(purchases + installments), source: 'estimated', confidence: 'medium',
+      components: { ...baseComponents, estimatedFromMovements: purchases, estimatedFromInstallments: installments },
+      cardId, period: normalizedPeriod };
+  }
+  return { amount: null, source: 'insufficient_data', confidence: 'none', components: baseComponents, cardId, period: normalizedPeriod };
+}
+
+/** Aggregates per-card answers without turning missing information into zero. */
+export function calculateMonthlyPaymentSummary({ cards = [], movements = [], commitments = [], period, monthKey, cardId = 'all', asOfMonth = getLocalMonthKey() } = {}) {
+  const selectedCards = cards.filter((card) => card?.active !== false && (cardId === 'all' || card.id === cardId));
+  const results = selectedCards.map((card) => resolveCardMonthlyPayment({ card, movements, commitments, period, monthKey, asOfMonth }));
+  const sources = new Set(results.map((item) => item.source));
+  let sourceStatus = 'insufficient_data';
+  if(results.length && !sources.has('insufficient_data')){
+    if(sources.size > 1) sourceStatus = 'mixed';
+    else sourceStatus = sources.has('statement') ? 'confirmed' : 'estimated';
+  }else if(sources.has('statement') || sources.has('estimated')) sourceStatus = 'insufficient_data';
+  const known = results.filter((item) => item.amount != null);
+  return { totalAmount: known.length ? money(known.reduce((sum, item) => sum + item.amount, 0)) : null,
+    sourceStatus, cards: results };
 }
 
 export function projectFinancialCommitments(sources = {}, options = {}) {

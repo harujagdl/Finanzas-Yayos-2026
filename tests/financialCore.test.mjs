@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeFinancialCommitments, calculateMonthlyFinancialSummary, resolveInstallmentPosition } from '../utils/financialCore.js';
+import { normalizeFinancialCommitments, calculateMonthlyFinancialSummary, resolveInstallmentPosition, resolveCardMonthlyPayment, calculateMonthlyPaymentSummary } from '../utils/financialCore.js';
 import { projectInstallments, calculateSafeAvailable, simulateNewPurchase } from '../utils/planningEngine.js';
 import { resolveCommitmentOwnership } from '../utils/commitmentOwnership.js';
 
@@ -146,4 +146,78 @@ test('filtro por tarjeta coincide entre Resumen y proyección Financial Core', (
 test('disponible seguro resta flujos disjuntos una sola vez', () => {
   const result=calculateSafeAvailable({incomeAvailable:10000,fixedExpenses:1000,currentSpending:1000,currentCardPayments:500,goalsReserved:500,buffer:500,nextInstallments:1000});
   assert.equal(result.availableSafeMonth,5500);
+});
+
+test('pago bancario confirmado tiene prioridad sobre reconstrucción', () => {
+  const result=resolveCardMonthlyPayment({card:{id:'free',paymentToAvoidInterest:900},movements:[{type:'expense',cardId:'free',amount:300,date:'2026-09-02'}],period:'2026-09',asOfMonth:'2026-09'});
+  assert.deepEqual([result.amount,result.source,result.confidence],[900,'statement','high']);
+  assert.equal(result.components.statementField,'paymentToAvoidInterest');
+});
+
+test('sin dato bancario estima compra normal una vez más mensualidad MSI, no precio ni saldo', () => {
+  const commitments=normalizeFinancialCommitments({expenses:[legacy({msiTotal:5280,msiMonthly:440,remainingBalance:4840})],asOfMonth:'2026-09'});
+  const result=resolveCardMonthlyPayment({card:{id:'free'},movements:[
+    {type:'expense',cardId:'free',amount:300,date:'2026-09-02'},
+    legacy({amount:5280,date:'2026-09-03'})
+  ],commitments,period:'2026-09'});
+  assert.deepEqual([result.amount,result.source,result.components.purchases,result.components.installments],[740,'estimated',300,440]);
+  assert.equal(result.components.remainingBalanceExcluded,true);
+});
+
+test('tarjeta sin información devuelve insufficient_data y null, no cero', () => {
+  const result=resolveCardMonthlyPayment({card:{id:'empty'},period:'2026-09'});
+  assert.deepEqual([result.amount,result.source],[null,'insufficient_data']);
+});
+
+test('abono se informa pero no descuenta dos veces una estimación', () => {
+  const result=resolveCardMonthlyPayment({card:{id:'free'},movements:[
+    {type:'expense',cardId:'free',amount:1000,date:'2026-09-02'},
+    {type:'card_payment',targetCardId:'free',amount:700,date:'2026-09-10'}
+  ],period:'2026-09'});
+  assert.equal(result.amount,1000); assert.equal(result.components.paymentsRecorded,700); assert.equal(result.components.remaining,null);
+});
+
+test('statement + estimated produce total mixed and respect card filter', () => {
+  const input={cards:[{id:'like',payGoal:1000},{id:'costco'}],movements:[{type:'expense',cardId:'costco',amount:250,date:'2026-09-04'}],period:'2026-09',asOfMonth:'2026-09'};
+  const mixed=calculateMonthlyPaymentSummary(input);
+  assert.deepEqual([mixed.totalAmount,mixed.sourceStatus],[1250,'mixed']);
+  const filtered=calculateMonthlyPaymentSummary({...input,cardId:'costco'});
+  assert.deepEqual([filtered.totalAmount,filtered.sourceStatus,filtered.cards.length],[250,'estimated',1]);
+});
+
+test('pago mensual filtra movimientos por periodo', () => {
+  const result=resolveCardMonthlyPayment({card:{id:'free'},movements:[
+    {type:'expense',cardId:'free',amount:100,date:'2026-08-31'},
+    {type:'expense',cardId:'free',amount:200,date:'2026-09-01'}
+  ],period:'2026-09'});
+  assert.equal(result.amount,200);
+});
+
+test('ownership cambia effective commitment pero no pago exigido del hogar', () => {
+  const summarize=(ownership)=>{
+    const commitments=normalizeFinancialCommitments({installmentPlans:[explicit({cardId:'like',installmentAmount:1000,...ownership})],asOfMonth:'2026-09'});
+    return {
+      commitment:calculateMonthlyFinancialSummary({commitments,monthKey:'2026-09'}),
+      payment:resolveCardMonthlyPayment({card:{id:'like'},commitments,period:'2026-09'})
+    };
+  };
+  const personal=summarize({ownershipType:'personal'}), shared=summarize({ownershipType:'shared',ownerSharePercentage:30});
+  assert.deepEqual([personal.payment.amount,shared.payment.amount],[1000,1000]);
+  assert.deepEqual([personal.commitment.effectiveCommitment,shared.commitment.effectiveCommitment],[1000,300]);
+});
+
+test('fixture 4871.60 permanece intacto al calcular el nuevo KPI', async () => {
+  const {regressionExpenses,regressionHousehold,regressionMonth}=await import('./fixtures/financialCoreRegression.mjs');
+  const commitments=normalizeFinancialCommitments({expenses:regressionExpenses,asOfMonth:regressionMonth});
+  const summary=calculateMonthlyFinancialSummary({commitments,monthKey:regressionMonth});
+  const payment=calculateMonthlyPaymentSummary({cards:[...new Set(commitments.map(item=>item.cardId))].map(id=>({id})),commitments,period:regressionMonth});
+  assert.deepEqual([summary.installmentCommitment,summary.householdCommitment,summary.effectiveCommitment],[4871.60,4871.60,4871.60]);
+  assert.equal(payment.totalAmount,4871.60);
+});
+
+test('pago statement sólo concilia restante con vínculo explícito al ciclo', () => {
+  const result=resolveCardMonthlyPayment({card:{id:'free',payGoal:1000},movements:[
+    {type:'card_payment',targetCardId:'free',amount:400,date:'2026-09-10',cardCycleId:'free:2026-09'}
+  ],period:{key:'2026-09',mode:'statement',cycleId:'free:2026-09'},asOfMonth:'2026-09'});
+  assert.deepEqual([result.amount,result.components.paid,result.components.remaining],[1000,400,600]);
 });
